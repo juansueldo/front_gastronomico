@@ -39,7 +39,7 @@ export function LoginView() {
   };
 
   return (
-    <div className="h-screen bg-[#1a202c] flex items-center justify-center p-4">
+    <div className="h-screen bg-[#2f3349] flex items-center justify-center p-4">
       <Toaster />
       <div className="w-full max-w-md">
         {/* Logo & Title */}
@@ -52,7 +52,7 @@ export function LoginView() {
         </div>
 
         {/* Login Form */}
-        <div className="bg-[#2d3748] rounded-lg p-6 md:p-8">
+        <div className="p-6 md:p-8">
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
               <Label htmlFor="email" className="text-gray-300">
@@ -66,7 +66,7 @@ export function LoginView() {
                   placeholder="tu@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10 bg-[#1a202c] border-gray-600 text-white"
+                  className="pl-10 bg-[#25293c] border-gray-600 text-white"
                   disabled={isLoading}
                 />
               </div>
@@ -84,7 +84,7 @@ export function LoginView() {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10 bg-[#1a202c] border-gray-600 text-white"
+                  className="pl-10 bg-[#25293c] border-gray-600 text-white"
                   disabled={isLoading}
                 />
               </div>
@@ -94,7 +94,7 @@ export function LoginView() {
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  className="w-4 h-4 rounded border-gray-600 bg-[#1a202c] text-indigo-600 focus:ring-indigo-600"
+                  className="w-4 h-4 rounded border-gray-600 bg-[#25293c] text-indigo-600 focus:ring-indigo-600"
                 />
                 <span className="text-sm text-gray-400">Recordarme</span>
               </label>
@@ -105,7 +105,7 @@ export function LoginView() {
 
             <Button
               type="submit"
-              className="w-full bg-indigo-600 hover:bg-indigo-700"
+              className="w-full"
               disabled={isLoading}
             >
               {isLoading ? 'Iniciando sesión...' : 'Iniciar sesión'}
@@ -113,7 +113,7 @@ export function LoginView() {
           </form>
 
           {/* Demo credentials */}
-          <div className="mt-6 p-4 bg-[#1a202c] rounded-lg border border-gray-700">
+          <div className="mt-6 p-4 bg-[#25293c] rounded-lg border border-gray-700">
             <p className="text-xs text-gray-400 mb-2">Para demo, usa cualquier email y contraseña:</p>
             <p className="text-xs text-gray-500">Email: demo@ejemplo.com</p>
             <p className="text-xs text-gray-500">Contraseña: cualquier contraseña</p>

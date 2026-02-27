@@ -126,7 +126,7 @@ export function CalendarView() {
   const selectedDateEvents = getEventsForDate(selectedDate);
 
   return (
-    <div className="h-full bg-[#1a202c] overflow-y-auto">
+    <div className="h-full bg-[#25293c] overflow-y-auto">
       <div className="p-4 md:p-6 max-w-7xl mx-auto pb-20">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -136,38 +136,38 @@ export function CalendarView() {
           </div>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-indigo-600 hover:bg-indigo-700 w-full md:w-auto">
+              <Button className=" w-full md:w-auto">
                 <Plus className="h-4 w-4 mr-2" />
                 Nuevo Evento
               </Button>
             </DialogTrigger>
-            <DialogContent className="bg-[#2d3748] text-white border-gray-700">
+            <DialogContent className="bg-[#2f3349] text-white border-gray-700">
               <DialogHeader>
                 <DialogTitle>Crear Nuevo Evento</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div>
                   <Label>Título</Label>
-                  <Input placeholder="Título del evento" className="bg-[#1a202c] border-gray-600" />
+                  <Input placeholder="Título del evento" className="bg-[#25293c] border-gray-600" />
                 </div>
                 <div>
                   <Label>Descripción</Label>
-                  <Textarea placeholder="Descripción del evento" className="bg-[#1a202c] border-gray-600" />
+                  <Textarea placeholder="Descripción del evento" className="bg-[#25293c] border-gray-600" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Hora inicio</Label>
-                    <Input type="time" className="bg-[#1a202c] border-gray-600" />
+                    <Input type="time" className="bg-[#25293c] border-gray-600" />
                   </div>
                   <div>
                     <Label>Hora fin</Label>
-                    <Input type="time" className="bg-[#1a202c] border-gray-600" />
+                    <Input type="time" className="bg-[#25293c] border-gray-600" />
                   </div>
                 </div>
                 <div>
                   <Label>Tipo</Label>
                   <Select>
-                    <SelectTrigger className="bg-[#1a202c] border-gray-600">
+                    <SelectTrigger className="bg-[#25293c] border-gray-600">
                       <SelectValue placeholder="Selecciona tipo" />
                     </SelectTrigger>
                     <SelectContent>
@@ -188,7 +188,7 @@ export function CalendarView() {
         {/* View Mode Tabs */}
         <div className="flex items-center justify-between gap-4 mb-6">
           <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)} className="w-full md:w-auto">
-            <TabsList className="bg-[#2d3748] w-full">
+            <TabsList className="bg-[#2f3349] w-full">
               <TabsTrigger value="month" className="flex-1 md:flex-none">Mes</TabsTrigger>
               <TabsTrigger value="week" className="flex-1 md:flex-none">Semana</TabsTrigger>
               <TabsTrigger value="day" className="flex-1 md:flex-none">Día</TabsTrigger>
@@ -196,7 +196,7 @@ export function CalendarView() {
           </Tabs>
         </div>
 
-        <div className="bg-[#2d3748] rounded-lg p-4 md:p-6">
+        <div className="bg-[#2f3349] rounded-lg p-4 md:p-6">
           {/* Calendar Header */}
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-white font-medium text-lg">
@@ -300,7 +300,7 @@ export function CalendarView() {
                         return (
                           <div
                             key={i}
-                            className="min-h-[60px] bg-[#1a202c] rounded p-1 border border-gray-700"
+                            className="min-h-[60px] bg-[#25293c] rounded p-1 border border-gray-700"
                           >
                             {events.map((event) => (
                               <div
@@ -329,7 +329,7 @@ export function CalendarView() {
                 return (
                   <div key={hour} className="flex gap-4">
                     <div className="w-20 text-gray-400 text-sm py-2">{hour}</div>
-                    <div className="flex-1 min-h-[80px] bg-[#1a202c] rounded-lg p-3 border border-gray-700">
+                    <div className="flex-1 min-h-[80px] bg-[#25293c] rounded-lg p-3 border border-gray-700">
                       {events.map((event) => (
                         <div
                           key={event.id}
@@ -358,7 +358,7 @@ export function CalendarView() {
 
         {/* Events Sidebar for Month View */}
         {viewMode === 'month' && (
-          <div className="mt-6 bg-[#2d3748] rounded-lg p-4 md:p-6">
+          <div className="mt-6 bg-[#2f3349] rounded-lg p-4 md:p-6">
             <div className="flex items-center gap-2 mb-4">
               <CalendarIcon className="h-5 w-5 text-indigo-400" />
               <h3 className="text-white font-medium">
@@ -375,7 +375,7 @@ export function CalendarView() {
                 selectedDateEvents.map((event) => (
                   <div
                     key={event.id}
-                    className="bg-[#1a202c] rounded-lg p-4 border-l-4"
+                    className="bg-[#25293c] rounded-lg p-4 border-l-4"
                     style={{ borderLeftColor: getEventTypeColor(event.type).replace('bg-', '#') }}
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">

@@ -178,4 +178,8 @@
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
   }
+  .bg-primary{
+    background: #7367f0 !important;
+    color: #fff !important;
+  }
 }

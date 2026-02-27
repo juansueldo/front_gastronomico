@@ -36,7 +36,7 @@ export function ChatView() {
 
   if (!conversation) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#1a202c] text-white">
+      <div className="flex items-center justify-center h-screen bg-[#25293c] text-white">
         <div className="text-center">
           <p className="mb-4">Conversación no encontrada</p>
           <Button onClick={() => navigate('/')}>Volver a la lista</Button>
@@ -103,9 +103,9 @@ export function ChatView() {
   }, {} as Record<string, Message[]>);
 
   return (
-    <div className="flex flex-col h-screen bg-[#1a202c]">
+    <div className="flex flex-col h-screen bg-[#25293c]">
       {/* Header */}
-      <div className="bg-[#2d3748] p-4 border-b border-gray-700">
+      <div className="bg-[#2f3349] p-4 border-b border-gray-700">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <Button
@@ -161,7 +161,7 @@ export function ChatView() {
         {/* Assignment */}
         <div className="mt-3">
           <Select value={assignedAgent} onValueChange={setAssignedAgent}>
-            <SelectTrigger className="bg-[#1a202c] border-gray-600 text-white">
+            <SelectTrigger className="bg-[#25293c] border-gray-600 text-white">
               <SelectValue placeholder="Asignar a un agente" />
             </SelectTrigger>
             <SelectContent>
@@ -181,7 +181,7 @@ export function ChatView() {
           <div key={date}>
             {/* Date separator */}
             <div className="flex items-center justify-center mb-4">
-              <div className="bg-[#2d3748] px-3 py-1 rounded-full">
+              <div className="bg-[#2f3349] px-3 py-1 rounded-full">
                 <span className="text-xs text-gray-400">{date}</span>
               </div>
             </div>
@@ -196,8 +196,8 @@ export function ChatView() {
                   <div
                     className={`max-w-[75%] rounded-2xl px-4 py-2 ${
                       message.sender === 'agent'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-[#2d3748] text-white'
+                        ? 'bg-primary text-white'
+                        : 'bg-[#2f3349] text-white'
                     }`}
                   >
                     <p className="text-sm break-words">{message.content}</p>
@@ -218,7 +218,7 @@ export function ChatView() {
       </div>
 
       {/* Input */}
-      <div className="bg-[#2d3748] p-4 border-t border-gray-700">
+      <div className="bg-[#2f3349] p-4 border-t border-gray-700">
         <div className="flex items-end gap-2">
           <Button
             variant="ghost"
@@ -228,7 +228,7 @@ export function ChatView() {
             <Paperclip className="h-5 w-5" />
           </Button>
 
-          <div className="flex-1 bg-[#1a202c] rounded-lg border border-gray-600 px-4 py-2">
+          <div className="flex-1 bg-[#25293c] rounded-lg border border-gray-600 px-4 py-2">
             <Input
               placeholder="Escribe un mensaje..."
               value={newMessage}
@@ -249,7 +249,7 @@ export function ChatView() {
           <Button
             onClick={handleSendMessage}
             size="icon"
-            className="bg-indigo-600 hover:bg-indigo-700 shrink-0"
+            className="shrink-0"
             disabled={!newMessage.trim()}
           >
             <Send className="h-5 w-5" />

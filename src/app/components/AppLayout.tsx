@@ -46,10 +46,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   };
 
   return (
-    <div className="flex h-screen bg-[#1a202c]">
+    <div className="flex h-screen bg-[#25293c]">
       <Toaster />
       {/* Desktop Sidebar */}
-      <div className="hidden md:flex md:w-20 lg:w-64 flex-col bg-[#2d3748] border-r border-gray-700">
+      <div className="hidden md:flex md:w-20 lg:w-64 flex-col bg-[#2f3349] border-r border-gray-700">
         {/* User Profile */}
         <div className="p-4 border-b border-gray-700">
           <div className="flex items-center gap-3">
@@ -59,7 +59,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   {getInitials(loggedUser.name)}
                 </AvatarFallback>
               </Avatar>
-              <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#2d3748] ${statusColors[loggedUser.status]}`} />
+              <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#2f3349] ${statusColors[loggedUser.status]}`} />
             </div>
             <div className="hidden lg:block flex-1 min-w-0">
               <h3 className="text-white font-medium truncate">{loggedUser.name}</h3>
@@ -79,7 +79,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 onClick={() => navigate(item.path)}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                   active
-                    ? 'bg-indigo-600 text-white'
+                    ? 'bg-primary text-white'
                     : 'text-gray-400 hover:bg-gray-700 hover:text-white'
                 }`}
               >
@@ -109,7 +109,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         </div>
 
         {/* Mobile Bottom Navigation */}
-        <div className="md:hidden bg-[#2d3748] border-t border-gray-700 safe-area-bottom">
+        <div className="md:hidden bg-[#2f3349] border-t border-gray-700 safe-area-bottom">
           <div className="flex items-center justify-around px-2 py-3">
             {navItems.map((item) => {
               const Icon = item.icon;

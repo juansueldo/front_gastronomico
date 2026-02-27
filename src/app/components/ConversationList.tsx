@@ -144,9 +144,9 @@ export function ConversationList() {
   };
 
   const Sidebar = () => (
-    <div className="flex flex-col h-full bg-[#2d3748] text-white">
+    <div className="flex flex-col h-full bg-[#2f3349] text-white">
       <div className="p-4 space-y-4">
-        <Button className="w-full bg-indigo-600 hover:bg-indigo-700">
+        <Button className="w-full">
           <MessageSquarePlus className="mr-2 h-4 w-4" />
           Nuevo Chat
         </Button>
@@ -160,7 +160,7 @@ export function ConversationList() {
                 onClick={() => setSelectedFilter(filter.id)}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
                   selectedFilter === filter.id
-                    ? 'bg-indigo-600'
+                    ? 'bg-primary'
                     : 'hover:bg-gray-700'
                 }`}
               >
@@ -197,12 +197,12 @@ export function ConversationList() {
   );
 
   return (
-    <div className="flex h-screen bg-[#1a202c]">
+    <div className="flex h-screen bg-[#25293c]">
       <Toaster />
 
       {/* Context Menu Dialog */}
       <Dialog open={!!contextMenuConv} onOpenChange={() => setContextMenuConv(null)}>
-        <DialogContent className="bg-[#2d3748] text-white border-gray-700">
+        <DialogContent className="bg-[#2f3349] text-white border-gray-700">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>Opciones de conversación</span>
@@ -255,7 +255,7 @@ export function ConversationList() {
 
       {/* Assign User Dialog */}
       <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
-        <DialogContent className="bg-[#2d3748] text-white border-gray-700">
+        <DialogContent className="bg-[#2f3349] text-white border-gray-700">
           <DialogHeader>
             <DialogTitle>Asignar conversación</DialogTitle>
           </DialogHeader>
@@ -263,7 +263,7 @@ export function ConversationList() {
             <div>
               <Label className="text-gray-300">Selecciona un agente</Label>
               <Select value={tempAssignedAgent} onValueChange={setTempAssignedAgent}>
-                <SelectTrigger className="bg-[#1a202c] border-gray-600 text-white mt-2">
+                <SelectTrigger className="bg-[#25293c] border-gray-600 text-white mt-2">
                   <SelectValue placeholder="Selecciona un agente" />
                 </SelectTrigger>
                 <SelectContent>
@@ -287,7 +287,7 @@ export function ConversationList() {
                 Cancelar
               </Button>
               <Button
-                className="flex-1 bg-indigo-600 hover:bg-indigo-700"
+                className="flex-1"
                 onClick={handleConfirmAssign}
                 disabled={!tempAssignedAgent}
               >
@@ -300,7 +300,7 @@ export function ConversationList() {
 
       {/* Add Label Dialog */}
       <Dialog open={showLabelDialog} onOpenChange={setShowLabelDialog}>
-        <DialogContent className="bg-[#2d3748] text-white border-gray-700">
+        <DialogContent className="bg-[#2f3349] text-white border-gray-700">
           <DialogHeader>
             <DialogTitle>Agregar etiqueta</DialogTitle>
           </DialogHeader>
@@ -308,7 +308,7 @@ export function ConversationList() {
             <div>
               <Label className="text-gray-300">Selecciona una etiqueta</Label>
               <Select value={tempLabel} onValueChange={setTempLabel}>
-                <SelectTrigger className="bg-[#1a202c] border-gray-600 text-white mt-2">
+                <SelectTrigger className="bg-[#25293c] border-gray-600 text-white mt-2">
                   <SelectValue placeholder="Selecciona una etiqueta" />
                 </SelectTrigger>
                 <SelectContent>
@@ -335,7 +335,7 @@ export function ConversationList() {
                 Cancelar
               </Button>
               <Button
-                className="flex-1 bg-indigo-600 hover:bg-indigo-700"
+                className="flex-1"
                 onClick={handleConfirmLabel}
                 disabled={!tempLabel}
               >
@@ -354,7 +354,7 @@ export function ConversationList() {
       {/* Main content */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <div className="bg-[#2d3748] p-4 space-y-3">
+        <div className="bg-[#2f3349] p-4 space-y-3">
           <div className="flex items-center gap-2">
             {/* Mobile menu */}
             <Sheet>
@@ -363,7 +363,7 @@ export function ConversationList() {
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-64 p-0 bg-[#2d3748]">
+              <SheetContent side="left" className="w-64 p-0 bg-[#2f3349]">
                 <Sidebar />
               </SheetContent>
             </Sheet>
@@ -374,13 +374,13 @@ export function ConversationList() {
                 placeholder="Buscar chat"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 bg-[#1a202c] border-gray-600 text-white placeholder:text-gray-400"
+                className="pl-10 bg-[#25293c] border-gray-600 text-white placeholder:text-gray-400"
               />
             </div>
           </div>
 
           <Select value={selectedAgent} onValueChange={setSelectedAgent}>
-            <SelectTrigger className="bg-[#1a202c] border-gray-600 text-white">
+            <SelectTrigger className="bg-[#25293c] border-gray-600 text-white">
               <SelectValue placeholder="Asignar a:" />
             </SelectTrigger>
             <SelectContent>
@@ -412,7 +412,7 @@ export function ConversationList() {
                   onMouseDown={() => handleLongPressStart(conv)}
                   onMouseUp={handleLongPressEnd}
                   onMouseLeave={handleLongPressEnd}
-                  className="p-4 hover:bg-[#2d3748] cursor-pointer transition-colors select-none"
+                  className="p-4 hover:bg-[#2f3349] cursor-pointer transition-colors select-none"
                 >
                   <div className="flex items-start gap-3">
                     <Avatar className="h-12 w-12">
@@ -447,7 +447,7 @@ export function ConversationList() {
                           </Badge>
                         )}
                         {conv.unreadCount > 0 && (
-                          <Badge variant="secondary" className="bg-indigo-600 text-white text-xs">
+                          <Badge variant="secondary" className="bg-primary text-white text-xs">
                             {conv.unreadCount}
                           </Badge>
                         )}

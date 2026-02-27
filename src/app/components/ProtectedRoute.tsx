@@ -20,7 +20,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (isAuthenticated === null) {
     return (
-      <div className="h-screen bg-[#1a202c] flex items-center justify-center">
+      <div className="h-screen bg-[#25293c] flex items-center justify-center">
         <div className="text-white">Cargando...</div>
       </div>
     );

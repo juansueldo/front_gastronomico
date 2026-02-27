@@ -42,7 +42,7 @@ export function SettingsView() {
   ];
 
   return (
-    <div className="h-full bg-[#1a202c] overflow-y-auto">
+    <div className="h-full bg-[#25293c] overflow-y-auto">
       <Toaster />
       <div className="p-4 md:p-6 max-w-4xl mx-auto pb-20">
         {/* Header */}
@@ -53,7 +53,7 @@ export function SettingsView() {
 
         <div className="space-y-6">
           {/* Profile Section */}
-          <div className="bg-[#2d3748] rounded-lg p-6">
+          <div className="bg-[#2f3349] rounded-lg p-6">
             <h2 className="text-white font-medium mb-4 flex items-center gap-2">
               <Camera className="h-5 w-5" />
               Información del Perfil
@@ -63,7 +63,7 @@ export function SettingsView() {
               {/* Avatar */}
               <div className="flex flex-col items-center gap-3">
                 <Avatar className="h-24 w-24">
-                  <AvatarFallback className="bg-indigo-600 text-white text-2xl">
+                  <AvatarFallback className="text-white text-2xl">
                     {getInitials(userData.name)}
                   </AvatarFallback>
                 </Avatar>
@@ -86,7 +86,7 @@ export function SettingsView() {
                     <Input
                       value={userData.name}
                       onChange={(e) => setUserData({ ...userData, name: e.target.value })}
-                      className="bg-[#1a202c] border-gray-600 text-white"
+                      className="bg-[#25293c] border-gray-600 text-white"
                     />
                   </div>
                   <div>
@@ -95,7 +95,7 @@ export function SettingsView() {
                       type="email"
                       value={userData.email}
                       onChange={(e) => setUserData({ ...userData, email: e.target.value })}
-                      className="bg-[#1a202c] border-gray-600 text-white"
+                      className="bg-[#25293c] border-gray-600 text-white"
                     />
                   </div>
                 </div>
@@ -106,7 +106,7 @@ export function SettingsView() {
                     <Input
                       value={userData.phone}
                       onChange={(e) => setUserData({ ...userData, phone: e.target.value })}
-                      className="bg-[#1a202c] border-gray-600 text-white"
+                      className="bg-[#25293c] border-gray-600 text-white"
                     />
                   </div>
                   <div>
@@ -114,7 +114,7 @@ export function SettingsView() {
                     <Input
                       value={userData.role}
                       onChange={(e) => setUserData({ ...userData, role: e.target.value })}
-                      className="bg-[#1a202c] border-gray-600 text-white"
+                      className="bg-[#25293c] border-gray-600 text-white"
                     />
                   </div>
                 </div>
@@ -125,7 +125,7 @@ export function SettingsView() {
                     value={userData.status}
                     onValueChange={(value: any) => setUserData({ ...userData, status: value })}
                   >
-                    <SelectTrigger className="bg-[#1a202c] border-gray-600 text-white">
+                    <SelectTrigger className="bg-[#25293c] border-gray-600 text-white">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -143,7 +143,7 @@ export function SettingsView() {
 
                 <Button
                   onClick={handleSaveProfile}
-                  className="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700"
+                  className="w-full md:w-auto"
                 >
                   <Save className="h-4 w-4 mr-2" />
                   Guardar cambios
@@ -153,7 +153,7 @@ export function SettingsView() {
           </div>
 
           {/* Notifications Section */}
-          <div className="bg-[#2d3748] rounded-lg p-6">
+          <div className="bg-[#2f3349] rounded-lg p-6">
             <h2 className="text-white font-medium mb-4 flex items-center gap-2">
               <Bell className="h-5 w-5" />
               Notificaciones
@@ -221,7 +221,7 @@ export function SettingsView() {
           </div>
 
           {/* Appearance Section */}
-          <div className="bg-[#2d3748] rounded-lg p-6">
+          <div className="bg-[#2f3349] rounded-lg p-6">
             <h2 className="text-white font-medium mb-4 flex items-center gap-2">
               <Moon className="h-5 w-5" />
               Apariencia
@@ -231,7 +231,7 @@ export function SettingsView() {
               <div>
                 <Label className="text-gray-300">Tema</Label>
                 <Select value={theme} onValueChange={setTheme}>
-                  <SelectTrigger className="bg-[#1a202c] border-gray-600 text-white">
+                  <SelectTrigger className="bg-[#25293c] border-gray-600 text-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -248,7 +248,7 @@ export function SettingsView() {
                   Idioma
                 </Label>
                 <Select value={language} onValueChange={setLanguage}>
-                  <SelectTrigger className="bg-[#1a202c] border-gray-600 text-white">
+                  <SelectTrigger className="bg-[#25293c] border-gray-600 text-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -262,7 +262,7 @@ export function SettingsView() {
           </div>
 
           {/* Security Section */}
-          <div className="bg-[#2d3748] rounded-lg p-6">
+          <div className="bg-[#2f3349] rounded-lg p-6">
             <h2 className="text-white font-medium mb-4 flex items-center gap-2">
               <Shield className="h-5 w-5" />
               Seguridad
@@ -291,7 +291,7 @@ export function SettingsView() {
           </div>
 
           {/* Logout Section */}
-          <div className="bg-[#2d3748] rounded-lg p-6">
+          <div className="bg-[#2f3349] rounded-lg p-6">
             <Button
               variant="destructive"
               className="w-full"
