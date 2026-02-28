@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, Send, Paperclip, Smile, MoreVertical, Star, Archive, Trash2 } from 'lucide-react';
+import { ArrowLeft, Send, Paperclip, Smile, MoreVertical, Star, Archive, Trash2, Check, CheckCheck } from 'lucide-react';
 import { conversations, messages as mockMessages, agents, type Message } from '../data/mockData';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Button } from './ui/button';
@@ -24,11 +24,18 @@ export function ChatView() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const conversation = conversations.find((c) => c.id === id);
   const [messages, setMessages] = useState<Message[]>(mockMessages[id || ''] || []);
+  // Simular estado de mensaje: 'sent', 'delivered', 'read'
+  const [messageStatus, setMessageStatus] = useState<Record<string, 'sent' | 'delivered' | 'read'>>({});
   const [newMessage, setNewMessage] = useState('');
   const [assignedAgent, setAssignedAgent] = useState(conversation?.assignedTo || '');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+
+  const quickEmojis = ['😀', '😂', '😍', '🙏', '👍', '🎉', '❤️', '🤖'];
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -46,25 +53,60 @@ export function ChatView() {
   }
 
   const handleSendMessage = () => {
-    if (!newMessage.trim()) return;
-
+    const cleanedMessage = newMessage.trim();
+    if (!cleanedMessage && attachedFiles.length === 0) {
+      return;
+    }
+    const attachmentText = attachedFiles.length > 0
+      ? attachedFiles.map((file) => `📎 ${file.name}`).join('\n')
+      : '';
+    const fullContent = [cleanedMessage, attachmentText].filter(Boolean).join('\n\n');
+    const messageId = `m${Date.now()}`;
     const message: Message = {
-      id: `m${Date.now()}`,
+      id: messageId,
       conversationId: id || '',
       sender: 'agent',
-      content: newMessage,
+      content: fullContent,
       timestamp: new Date(),
     };
-
     setMessages([...messages, message]);
+    setMessageStatus((prev) => ({ ...prev, [messageId]: 'sent' }));
     setNewMessage('');
+    setAttachedFiles([]);
+    setShowEmojiPicker(false);
+    // Simular cambio de estado a 'delivered' y 'read'
+    setTimeout(() => {
+      setMessageStatus((prev) => ({ ...prev, [messageId]: 'delivered' }));
+      setTimeout(() => {
+        setMessageStatus((prev) => ({ ...prev, [messageId]: 'read' }));
+      }, 1200);
+    }, 800);
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
+  };
+
+  const handleAttachFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = event.target.files;
+    if (!selected || selected.length === 0) {
+      return;
+    }
+
+    const nextFiles = Array.from(selected);
+    setAttachedFiles((prev) => [...prev, ...nextFiles]);
+    event.target.value = '';
+  };
+
+  const removeAttachedFile = (index: number) => {
+    setAttachedFiles((prev) => prev.filter((_, fileIndex) => fileIndex !== index));
+  };
+
+  const addEmoji = (emoji: string) => {
+    setNewMessage((prev) => `${prev}${emoji}`);
   };
 
   const formatTime = (date: Date) => {
@@ -188,29 +230,38 @@ export function ChatView() {
 
             {/* Messages for this date */}
             <div className="space-y-3">
-              {dateMessages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex ${message.sender === 'agent' ? 'justify-end' : 'justify-start'}`}
-                >
+              {dateMessages.map((message) => {
+                const isAgent = message.sender === 'agent';
+                const status = isAgent ? messageStatus[message.id] : undefined;
+                return (
                   <div
-                    className={`max-w-[75%] rounded-2xl px-4 py-2 ${
-                      message.sender === 'agent'
-                        ? 'bg-primary text-white'
-                        : 'bg-[#2f3349] text-white'
-                    }`}
+                    key={message.id}
+                    className={`flex w-full ${isAgent ? 'justify-end' : 'justify-start'}`}
                   >
-                    <p className="text-sm break-words">{message.content}</p>
-                    <p
-                      className={`text-xs mt-1 ${
-                        message.sender === 'agent' ? 'text-indigo-200' : 'text-gray-400'
-                      }`}
-                    >
-                      {formatTime(message.timestamp)}
-                    </p>
+                    <div className={`flex flex-col ${isAgent ? 'items-end' : 'items-start'} max-w-[75%]`}>
+                      <div
+                        className={`rounded-2xl px-4 py-2 w-fit ${
+                          isAgent
+                            ? 'bg-primary text-white'
+                            : 'bg-[#2f3349] text-white'
+                        }`}
+                      >
+                        <p className="text-sm break-words">{message.content}</p>
+                      </div>
+                      <div className={`flex items-center gap-1 mt-1 ${isAgent ? 'justify-end' : 'justify-start'}`}>
+                        <span className={`text-xs ${isAgent ? 'text-indigo-200' : 'text-gray-400'}`}>{formatTime(message.timestamp)}</span>
+                        {isAgent && (
+                          <span className="ml-1 flex items-center">
+                            {status === 'sent' && <Check className="h-4 w-4 text-indigo-300" />}
+                            {status === 'delivered' && <CheckCheck className="h-4 w-4 text-indigo-300" />}
+                            {status === 'read' && <CheckCheck className="h-4 w-4 text-green-400" />}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))}
@@ -219,21 +270,61 @@ export function ChatView() {
 
       {/* Input */}
       <div className="bg-[#2f3349] p-4 border-t border-gray-700">
+        {showEmojiPicker && (
+          <div className="mb-3 bg-[#25293c] border border-gray-600 rounded-lg p-2 grid grid-cols-8 gap-2">
+            {quickEmojis.map((emoji) => (
+              <button
+                key={emoji}
+                onClick={() => addEmoji(emoji)}
+                className="text-xl hover:bg-gray-700 rounded-md py-1"
+                type="button"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {attachedFiles.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {attachedFiles.map((file, index) => (
+              <button
+                key={`${file.name}-${index}`}
+                onClick={() => removeAttachedFile(index)}
+                className="text-xs px-2 py-1 rounded-full bg-[#25293c] border border-gray-600 text-gray-300 hover:bg-gray-700"
+                type="button"
+              >
+                {file.name} ×
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-end gap-2">
           <Button
             variant="ghost"
             size="icon"
             className="text-gray-400 hover:text-white shrink-0"
+            onClick={() => fileInputRef.current?.click()}
+            type="button"
           >
             <Paperclip className="h-5 w-5" />
           </Button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            multiple
+            onChange={handleAttachFiles}
+          />
 
           <div className="flex-1 bg-[#25293c] rounded-lg border border-gray-600 px-4 py-2">
             <Input
               placeholder="Escribe un mensaje..."
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyDown}
               className="bg-transparent border-0 p-0 text-white placeholder:text-gray-400 focus-visible:ring-0 focus-visible:ring-offset-0"
             />
           </div>
@@ -242,6 +333,8 @@ export function ChatView() {
             variant="ghost"
             size="icon"
             className="text-gray-400 hover:text-white shrink-0"
+            onClick={() => setShowEmojiPicker((prev) => !prev)}
+            type="button"
           >
             <Smile className="h-5 w-5" />
           </Button>
@@ -250,7 +343,7 @@ export function ChatView() {
             onClick={handleSendMessage}
             size="icon"
             className="shrink-0"
-            disabled={!newMessage.trim()}
+            disabled={!newMessage.trim() && attachedFiles.length === 0}
           >
             <Send className="h-5 w-5" />
           </Button>

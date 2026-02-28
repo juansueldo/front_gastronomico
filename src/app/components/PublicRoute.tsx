@@ -1,14 +1,14 @@
 import { ReactNode } from 'react';
 import { Navigate } from 'react-router';
 
-interface ProtectedRouteProps {
+interface PublicRouteProps {
   children: ReactNode;
 }
 
-export function ProtectedRoute({ children }: ProtectedRouteProps) {
+export function PublicRoute({ children }: PublicRouteProps) {
   const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true' && !!localStorage.getItem('access_token');
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+  if (isAuthenticated) {
+    return <Navigate to="/" replace />;
   }
   return <>{children}</>;
 }

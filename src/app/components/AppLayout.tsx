@@ -1,10 +1,17 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { MessageSquare, Calendar, Settings, LogOut } from 'lucide-react';
+import { MessageSquare, Calendar, Settings, LogOut, Bot, Link2, Megaphone, Bell, MoreHorizontal } from 'lucide-react';
 import { Avatar, AvatarFallback } from './ui/avatar';
-import { loggedUser } from '../data/mockData';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
 import { toast } from 'sonner';
 import { Toaster } from './ui/sonner';
+
+interface User {
+  firstname: string;
+  lastname: string;
+  role: string;
+  status: 'active' | 'away' | 'busy' | 'offline';
+}
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -13,6 +20,20 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [loggedUser, setLoggedUser] = useState(null);
+
+  useEffect(() => {
+    // Primero intenta leer de localStorage
+    const stored = localStorage.getItem('loggedUser');
+    if (stored) {
+      try {
+        setLoggedUser(JSON.parse(stored));
+      } catch {}
+    }
+    // Si tienes token y quieres refrescar desde API, puedes hacerlo aquí
+    // ...fetch API opcional...
+  }, []);
 
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -21,8 +42,16 @@ export function AppLayout({ children }: AppLayoutProps) {
   const navItems = [
     { path: '/', icon: MessageSquare, label: 'Chats' },
     { path: '/calendar', icon: Calendar, label: 'Calendario' },
+    { path: '/campaigns', icon: Megaphone, label: 'Campañas' },
+    { path: '/notifications', icon: Bell, label: 'Notificaciones' },
+    { path: '/agent', icon: Bot, label: 'Agente IA' },
+    { path: '/connections', icon: Link2, label: 'Conexiones' },
     { path: '/settings', icon: Settings, label: 'Configuración' },
   ];
+
+  const mobilePrimaryPaths = ['/', '/calendar', '/campaigns', '/notifications'];
+  const mobilePrimaryItems = navItems.filter((item) => mobilePrimaryPaths.includes(item.path));
+  const mobileMoreItems = navItems.filter((item) => !mobilePrimaryPaths.includes(item.path));
 
   const isActive = (path: string) => {
     if (path === '/') {
@@ -52,20 +81,24 @@ export function AppLayout({ children }: AppLayoutProps) {
       <div className="hidden md:flex md:w-20 lg:w-64 flex-col bg-[#2f3349] border-r border-gray-700">
         {/* User Profile */}
         <div className="p-4 border-b border-gray-700">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Avatar className="h-12 w-12">
-                <AvatarFallback className="bg-indigo-600 text-white">
-                  {getInitials(loggedUser.name)}
-                </AvatarFallback>
-              </Avatar>
-              <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#2f3349] ${statusColors[loggedUser.status]}`} />
+          {!loggedUser ? (
+            <div className="text-gray-400">Cargando usuario...</div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Avatar className="h-12 w-12">
+                  <AvatarFallback className="bg-indigo-600 text-white">
+                    {getInitials(loggedUser.firstname + ' ' + loggedUser.lastname)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#2f3349] ${statusColors[loggedUser.status]}`} />
+              </div>
+              <div className="hidden lg:block flex-1 min-w-0">
+                <h3 className="text-white font-medium truncate">{loggedUser.firstname} {loggedUser.lastname}</h3>
+                <p className="text-xs text-gray-400 truncate">{loggedUser.role}</p>
+              </div>
             </div>
-            <div className="hidden lg:block flex-1 min-w-0">
-              <h3 className="text-white font-medium truncate">{loggedUser.name}</h3>
-              <p className="text-xs text-gray-400 truncate">{loggedUser.role}</p>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Navigation */}
@@ -110,15 +143,15 @@ export function AppLayout({ children }: AppLayoutProps) {
 
         {/* Mobile Bottom Navigation */}
         <div className="md:hidden bg-[#2f3349] border-t border-gray-700 safe-area-bottom">
-          <div className="flex items-center justify-around px-2 py-3">
-            {navItems.map((item) => {
+          <div className="grid grid-cols-5 gap-1 px-2 py-3">
+            {mobilePrimaryItems.map((item) => {
               const Icon = item.icon;
               const active = isActive(item.path);
               return (
                 <button
                   key={item.path}
                   onClick={() => navigate(item.path)}
-                  className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-colors ${
+                  className={`flex flex-col items-center gap-1 px-2 py-2 rounded-lg transition-colors ${
                     active
                       ? 'text-indigo-400'
                       : 'text-gray-400'
@@ -129,6 +162,50 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </button>
               );
             })}
+
+            <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <button
+                  className={`flex flex-col items-center gap-1 px-2 py-2 rounded-lg transition-colors ${
+                    mobileMoreItems.some((item) => isActive(item.path))
+                      ? 'text-indigo-400'
+                      : 'text-gray-400'
+                  }`}
+                >
+                  <MoreHorizontal className="h-6 w-6" />
+                  <span className="text-xs">Más</span>
+                </button>
+              </SheetTrigger>
+
+              <SheetContent side="bottom" className="bg-[#2f3349] border-gray-700 text-white">
+                <SheetHeader>
+                  <SheetTitle className="text-white">Más opciones</SheetTitle>
+                </SheetHeader>
+                <div className="p-4 pt-0 space-y-2">
+                  {mobileMoreItems.map((item) => {
+                    const Icon = item.icon;
+                    const active = isActive(item.path);
+                    return (
+                      <button
+                        key={item.path}
+                        onClick={() => {
+                          navigate(item.path);
+                          setIsMobileMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                          active
+                            ? 'bg-primary text-white'
+                            : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                        }`}
+                      >
+                        <Icon className="h-5 w-5 shrink-0" />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
       </div>

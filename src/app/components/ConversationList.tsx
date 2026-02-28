@@ -50,7 +50,7 @@ export function ConversationList() {
   const [showLabelDialog, setShowLabelDialog] = useState(false);
   const [tempAssignedAgent, setTempAssignedAgent] = useState('');
   const [tempLabel, setTempLabel] = useState('');
-  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const filteredConversations = conversations.filter((conv) => {
     const matchesFilter = selectedFilter === 'all' || conv.status === selectedFilter;
@@ -143,10 +143,36 @@ export function ConversationList() {
     }
   };
 
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [selectedInstance, setSelectedInstance] = useState(agents[0]?.id || '');
+  const [phone, setPhone] = useState('');
+  const [selectedContactId, setSelectedContactId] = useState('');
+
+  const handleStartChat = () => {
+    // Prioridad: si hay contacto, usar ese; si no, usar teléfono
+    let contact = conversations.find(c => c.id === selectedContactId && selectedContactId !== 'none');
+    let contactName = contact?.contactName || phone;
+    if ((!contactName && selectedContactId === 'none') || !selectedInstance) {
+      toast.error('Selecciona una instancia y un contacto o número');
+      return;
+    }
+    // Simular navegación a chat
+    if (contact?.id) {
+      navigate(`/chat/${contact.id}`);
+    } else {
+      // En real, aquí crearías la conversación
+      toast.success(`Nuevo chat con ${contactName} usando instancia ${selectedInstance}`);
+    }
+    setShowNewChatModal(false);
+    setPhone('');
+    setSelectedContactId('none');
+    setSelectedInstance(agents[0]?.id || '');
+  };
+
   const Sidebar = () => (
     <div className="flex flex-col h-full bg-[#2f3349] text-white">
       <div className="p-4 space-y-4">
-        <Button className="w-full">
+        <Button className="w-full" onClick={() => setShowNewChatModal(true)}>
           <MessageSquarePlus className="mr-2 h-4 w-4" />
           Nuevo Chat
         </Button>
@@ -192,12 +218,62 @@ export function ConversationList() {
             ))}
           </div>
         </div>
+        {/* Nuevo Chat Modal */}
+        <Dialog open={showNewChatModal} onOpenChange={setShowNewChatModal}>
+          <DialogContent className="bg-[#2f3349] text-white border-gray-700 max-w-md">
+            <DialogHeader>
+              <DialogTitle>Nuevo Chat</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-gray-300">Instancia</Label>
+                <Select value={selectedInstance} onValueChange={setSelectedInstance}>
+                  <SelectTrigger className="bg-[#25293c] border-gray-600 text-white mt-2">
+                    <SelectValue placeholder="Selecciona una instancia" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {agents.map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-gray-300">Número de teléfono</Label>
+                <Input
+                  type="text"
+                  placeholder="Ej: +54 9 11 1234-5678"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  className="bg-[#25293c] border-gray-600 text-white mt-2"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-300">O seleccionar contacto existente</Label>
+                <Select value={selectedContactId} onValueChange={setSelectedContactId}>
+                  <SelectTrigger className="bg-[#25293c] border-gray-600 text-white mt-2">
+                    <SelectValue placeholder="Selecciona un contacto" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Ninguno</SelectItem>
+                    {conversations.map((conv) => (
+                      <SelectItem key={conv.id} value={conv.id}>{conv.contactName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button className="w-full" onClick={handleStartChat}>
+                Iniciar Chat
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
 
   return (
-    <div className="flex h-screen bg-[#25293c]">
+    <div className="flex h-full bg-[#25293c]">
       <Toaster />
 
       {/* Context Menu Dialog */}
