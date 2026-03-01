@@ -5,13 +5,8 @@ import { Avatar, AvatarFallback } from './ui/avatar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
 import { toast } from 'sonner';
 import { Toaster } from './ui/sonner';
-
-interface User {
-  firstname: string;
-  lastname: string;
-  role: string;
-  status: 'active' | 'away' | 'busy' | 'offline';
-}
+import { clearAuthSession, getLoggedUser } from '../authStorage';
+import { AuthUser } from '../authStorage';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -21,18 +16,13 @@ export function AppLayout({ children }: AppLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [loggedUser, setLoggedUser] = useState(null);
+  const [loggedUser, setLoggedUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
-    // Primero intenta leer de localStorage
-    const stored = localStorage.getItem('loggedUser');
-    if (stored) {
-      try {
-        setLoggedUser(JSON.parse(stored));
-      } catch {}
+    const storedUser = getLoggedUser();
+    if (storedUser) {
+      setLoggedUser(storedUser as AuthUser);
     }
-    // Si tienes token y quieres refrescar desde API, puedes hacerlo aquí
-    // ...fetch API opcional...
   }, []);
 
   const getInitials = (name: string) => {
@@ -68,17 +58,16 @@ export function AppLayout({ children }: AppLayoutProps) {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('isAuthenticated');
-    localStorage.removeItem('userEmail');
+    clearAuthSession();
     toast.success('Sesión cerrada correctamente');
     navigate('/login');
   };
 
   return (
-    <div className="flex h-screen bg-[#25293c]">
+    <div className="flex h-screen bg-body">
       <Toaster />
       {/* Desktop Sidebar */}
-      <div className="hidden md:flex md:w-20 lg:w-64 flex-col bg-[#2f3349] border-r border-gray-700">
+      <div className="hidden md:flex md:w-20 lg:w-64 flex-col bg-card border-r border-gray-700">
         {/* User Profile */}
         <div className="p-4 border-b border-gray-700">
           {!loggedUser ? (
@@ -87,11 +76,11 @@ export function AppLayout({ children }: AppLayoutProps) {
             <div className="flex items-center gap-3">
               <div className="relative">
                 <Avatar className="h-12 w-12">
-                  <AvatarFallback className="bg-indigo-600 text-white">
+                  <AvatarFallback className="bg-primary text-white">
                     {getInitials(loggedUser.firstname + ' ' + loggedUser.lastname)}
                   </AvatarFallback>
                 </Avatar>
-                <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#2f3349] ${statusColors[loggedUser.status]}`} />
+                <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#2f3349] ${statusColors[loggedUser.status ?? 'offline']}`} />
               </div>
               <div className="hidden lg:block flex-1 min-w-0">
                 <h3 className="text-white font-medium truncate">{loggedUser.firstname} {loggedUser.lastname}</h3>
@@ -153,7 +142,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   onClick={() => navigate(item.path)}
                   className={`flex flex-col items-center gap-1 px-2 py-2 rounded-lg transition-colors ${
                     active
-                      ? 'text-indigo-400'
+                      ? 'text-primary'
                       : 'text-gray-400'
                   }`}
                 >
@@ -168,7 +157,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 <button
                   className={`flex flex-col items-center gap-1 px-2 py-2 rounded-lg transition-colors ${
                     mobileMoreItems.some((item) => isActive(item.path))
-                      ? 'text-indigo-400'
+                      ? 'text-primary'
                       : 'text-gray-400'
                   }`}
                 >

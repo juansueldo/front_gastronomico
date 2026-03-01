@@ -8,8 +8,8 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: #030213;
-  --primary-foreground: oklch(1 0 0);
+  --primary: #7367f0;
+  --primary-foreground: #7267f036;
   --secondary: oklch(0.95 0.0058 264.53);
   --secondary-foreground: #030213;
   --muted: #ececf0;
@@ -42,16 +42,14 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
+  --background: #25293c;
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
+  --card: #2f3349;
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.145 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
+  --primary: #7367f0;
+  --primary-foreground: #7267f036;
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
   --accent: oklch(0.269 0 0);
@@ -76,6 +74,16 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(0.269 0 0);
   --sidebar-ring: oklch(0.439 0 0);
+  --success: #25d333;
+  --success-foreground: #25d33360;
+  --info: #3b82f6;
+  --info-foreground: #3b82f660;
+  --warning: #facc15;
+  --warning-foreground: #facc1560;
+  --danger: #ef4444;
+  --danger-foreground: #ef444460;
+  --secondary: #656568;
+  --secondary-foreground: #0f0f0f7c;
 }
 
 @theme inline {
@@ -181,5 +189,39 @@
   .bg-primary{
     background: #7367f0 !important;
     color: #fff !important;
+  }
+  .text-primary{
+    color: #7367f0 !important;
+  }
+  .bg-body{
+    background: var(--background) !important;
+  }
+  .bg-card{
+    background: var(--card) !important;
+  }
+  .bg-label-primary{
+    background: var(--primary-foreground) !important;
+    color: var(--primary) !important;
+  }
+  .bg-label-danger{
+    background: var(--danger-foreground) !important;
+    color: var(--danger) !important;
+  }
+  .bg-label-secondary{
+    background: var(--secondary-foreground) !important;
+    color: var(--secondary) !important;
+  }
+  .bg-label-success{
+    background: var(--success-foreground) !important;
+    color: var(--success) !important;
+  }
+  .bg-label-info{
+    background: var(--info-foreground) !important;
+    color: var(--info) !important;
+  }
+  .close-sidebar,.close-modal{
+    color: #fff !important;
+    background: var(--primary-foreground);
+    opacity: 0.7 !important;
   }
 }

@@ -6,6 +6,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { toast } from 'sonner';
 import { Toaster } from './ui/sonner';
+import { isUserAuthenticated, saveAuthSession } from '../authStorage';
 
 export function LoginView() {
   const navigate = useNavigate();
@@ -13,8 +14,9 @@ export function LoginView() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const API_URL = import.meta.env.VITE_API_URL;
-  const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true' && !!localStorage.getItem('access_token');
+  const [rememberMe, setRememberMe] = useState(true);
+  const API_URL = import.meta.env?.VITE_API_URL;
+  const isAuthenticated = isUserAuthenticated();
   // Redirige solo una vez si ya está autenticado
   useEffect(() => {
     if (isAuthenticated) {
@@ -51,15 +53,12 @@ export function LoginView() {
         return;
       }
       const data = await response.json();
-      // Guarda el token y usuario en localStorage si lo necesitas
-      localStorage.setItem('isAuthenticated', 'true');
-      localStorage.setItem('userEmail', username);
-      if (data.access_token) {
-        localStorage.setItem('access_token', data.access_token);
-      }
-      if (data.user) {
-        localStorage.setItem('loggedUser', JSON.stringify(data.user));
-      }
+      saveAuthSession({
+        username,
+        user: data.user,
+        accessToken: data.access_token,
+        rememberMe,
+      });
       toast.success('Inicio de sesión exitoso');
       setTimeout(() => {
         navigate('/');
@@ -124,7 +123,13 @@ export function LoginView() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <input type="checkbox" id="remember" className="w-4 h-4 rounded border-gray-600 bg-[#23264a] text-indigo-600 focus:ring-indigo-600" />
+            <input
+              type="checkbox"
+              id="remember"
+              checked={rememberMe}
+              onChange={(event) => setRememberMe(event.target.checked)}
+              className="w-4 h-4 rounded border-gray-600 bg-[#23264a] text-indigo-600 focus:ring-indigo-600"
+            />
             <label htmlFor="remember" className="text-sm text-gray-400">Recuérdame por 30 días</label>
           </div>
           <Button type="submit" className="w-full bg-[#6c63ff] hover:bg-[#554fd8] text-white font-semibold text-base py-2 rounded-lg" disabled={isLoading}>

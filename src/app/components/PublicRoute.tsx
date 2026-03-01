@@ -1,12 +1,13 @@
 import { ReactNode } from 'react';
 import { Navigate } from 'react-router';
+import { isUserAuthenticated } from '../authStorage';
 
 interface PublicRouteProps {
   children: ReactNode;
 }
 
 export function PublicRoute({ children }: PublicRouteProps) {
-  const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true' && !!localStorage.getItem('access_token');
+  const isAuthenticated = isUserAuthenticated();
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
   }

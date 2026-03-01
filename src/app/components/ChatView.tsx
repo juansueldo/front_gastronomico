@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from './ui/select';
+import { APP_NEW_MESSAGE_EVENT, type AppNewMessageDetail } from '../pushNotifications';
 
 export function ChatView() {
   const { id } = useParams<{ id: string }>();
@@ -36,6 +37,45 @@ export function ChatView() {
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
 
   const quickEmojis = ['😀', '😂', '😍', '🙏', '👍', '🎉', '❤️', '🤖'];
+
+  useEffect(() => {
+    setMessages(mockMessages[id || ''] || []);
+  }, [id]);
+
+  useEffect(() => {
+    const handleIncomingMessage = (event: Event) => {
+      const customEvent = event as CustomEvent<AppNewMessageDetail>;
+      const payload = customEvent.detail;
+
+      if (payload.conversationId !== id) {
+        return;
+      }
+
+      setMessages((prev) => {
+        if (prev.some((message) => message.id === payload.messageId)) {
+          return prev;
+        }
+
+        const timestamp = new Date(payload.timestamp);
+        const normalizedDate = Number.isNaN(timestamp.getTime()) ? new Date() : timestamp;
+
+        const nextMessage: Message = {
+          id: payload.messageId,
+          conversationId: payload.conversationId,
+          sender: payload.sender,
+          content: payload.content,
+          timestamp: normalizedDate,
+        };
+
+        return [...prev, nextMessage];
+      });
+    };
+
+    window.addEventListener(APP_NEW_MESSAGE_EVENT, handleIncomingMessage);
+    return () => {
+      window.removeEventListener(APP_NEW_MESSAGE_EVENT, handleIncomingMessage);
+    };
+  }, [id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

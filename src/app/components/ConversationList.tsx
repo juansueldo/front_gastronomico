@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Search, Filter, MessageSquarePlus, Star, Archive, Trash2, Edit, Menu, UserPlus, Tag, X } from 'lucide-react';
 import { conversations, agents, type Conversation } from '../data/mockData';
@@ -23,6 +23,7 @@ import {
 import { Label } from './ui/label';
 import { toast } from 'sonner';
 import { Toaster } from './ui/sonner';
+import { APP_NEW_MESSAGE_EVENT, type AppNewMessageDetail } from '../pushNotifications';
 
 const statusFilters = [
   { id: 'all', label: 'Todos', icon: null },
@@ -42,6 +43,7 @@ const labels = [
 
 export function ConversationList() {
   const navigate = useNavigate();
+  const [conversationItems, setConversationItems] = useState<Conversation[]>(conversations);
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
@@ -52,7 +54,7 @@ export function ConversationList() {
   const [tempLabel, setTempLabel] = useState('');
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const filteredConversations = conversations.filter((conv) => {
+  const filteredConversations = conversationItems.filter((conv) => {
     const matchesFilter = selectedFilter === 'all' || conv.status === selectedFilter;
     const matchesSearch = conv.contactName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          conv.lastMessage.toLowerCase().includes(searchQuery.toLowerCase());
@@ -148,9 +150,51 @@ export function ConversationList() {
   const [phone, setPhone] = useState('');
   const [selectedContactId, setSelectedContactId] = useState('');
 
+  useEffect(() => {
+    const handleNewMessage = (event: Event) => {
+      const customEvent = event as CustomEvent<AppNewMessageDetail>;
+      const payload = customEvent.detail;
+
+      setConversationItems((prev) => {
+        const now = new Date(payload.timestamp);
+        const existing = prev.find((conversation) => conversation.id === payload.conversationId);
+
+        if (!existing) {
+          const newConversation: Conversation = {
+            id: payload.conversationId,
+            contactName: payload.contactName ?? 'Nuevo contacto',
+            contactAvatar: '',
+            lastMessage: payload.content,
+            timestamp: Number.isNaN(now.getTime()) ? new Date() : now,
+            unreadCount: payload.sender === 'contact' ? 1 : 0,
+            status: 'new',
+            channel: payload.channel ?? 'whatsapp',
+          };
+
+          return [newConversation, ...prev];
+        }
+
+        const updatedConversation: Conversation = {
+          ...existing,
+          lastMessage: payload.content,
+          timestamp: Number.isNaN(now.getTime()) ? new Date() : now,
+          unreadCount: payload.sender === 'contact' ? existing.unreadCount + 1 : existing.unreadCount,
+          channel: payload.channel ?? existing.channel,
+        };
+
+        return [updatedConversation, ...prev.filter((conversation) => conversation.id !== existing.id)];
+      });
+    };
+
+    window.addEventListener(APP_NEW_MESSAGE_EVENT, handleNewMessage);
+    return () => {
+      window.removeEventListener(APP_NEW_MESSAGE_EVENT, handleNewMessage);
+    };
+  }, []);
+
   const handleStartChat = () => {
     // Prioridad: si hay contacto, usar ese; si no, usar teléfono
-    let contact = conversations.find(c => c.id === selectedContactId && selectedContactId !== 'none');
+    let contact = conversationItems.find(c => c.id === selectedContactId && selectedContactId !== 'none');
     let contactName = contact?.contactName || phone;
     if ((!contactName && selectedContactId === 'none') || !selectedInstance) {
       toast.error('Selecciona una instancia y un contacto o número');
@@ -171,7 +215,7 @@ export function ConversationList() {
 
   const Sidebar = () => (
     <div className="flex flex-col h-full bg-[#2f3349] text-white">
-      <div className="p-4 space-y-4">
+      <div className="p-4 space-y-4 mt-6">
         <Button className="w-full" onClick={() => setShowNewChatModal(true)}>
           <MessageSquarePlus className="mr-2 h-4 w-4" />
           Nuevo Chat
@@ -282,14 +326,6 @@ export function ConversationList() {
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>Opciones de conversación</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setContextMenuConv(null)}
-                className="text-gray-400 hover:text-white"
-              >
-                <X className="h-4 w-4" />
-              </Button>
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
@@ -513,7 +549,7 @@ export function ConversationList() {
 
                       <div className="flex items-center gap-2 flex-wrap">
                         {conv.assignedTo && (
-                          <Badge variant="secondary" className="bg-orange-600 text-white text-xs">
+                          <Badge variant="secondary" className="bg-label-info">
                             {conv.assignedTo}
                           </Badge>
                         )}

@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Camera, Bell, Shield, Globe, Moon, LogOut, Save } from 'lucide-react';
-import { loggedUser } from '../data/mockData';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -10,15 +9,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Separator } from './ui/separator';
 import { toast } from 'sonner';
 import { Toaster } from './ui/sonner';
+import { AuthUser } from '../authStorage';
+import { clearAuthSession, getLoggedUser } from '../authStorage';
+import { useNavigate } from 'react-router';
 
 export function SettingsView() {
-  const [userData, setUserData] = useState(loggedUser);
+  const navigate = useNavigate();
+  const [loggedUser, setLoggedUser] = useState<AuthUser | null>(null);
   const [notifications, setNotifications] = useState({
     newMessages: true,
     emailNotifications: true,
     desktopNotifications: false,
     soundEnabled: true,
   });
+  useEffect(() => {
+    const storedUser = getLoggedUser() as Partial<AuthUser> | null;
+    if (storedUser) {
+      setLoggedUser(storedUser as AuthUser);
+    }
+  }, []);
   const [theme, setTheme] = useState('dark');
   const [language, setLanguage] = useState('es');
 
@@ -32,6 +41,12 @@ export function SettingsView() {
 
   const handlePhotoUpload = () => {
     toast.info('Función de carga de foto no disponible en demo');
+  };
+
+  const handleLogout = () => {
+    clearAuthSession();
+    toast.success('Sesión cerrada correctamente');
+    navigate('/login');
   };
 
   const statusOptions = [
@@ -63,8 +78,8 @@ export function SettingsView() {
               {/* Avatar */}
               <div className="flex flex-col items-center gap-3">
                 <Avatar className="h-24 w-24">
-                  <AvatarFallback className="text-white text-2xl">
-                    {getInitials(userData.name)}
+                  <AvatarFallback className="bg-primary text-white text-2xl">
+                    {loggedUser ? getInitials(loggedUser.firstname + ' ' + loggedUser.lastname) : ''}
                   </AvatarFallback>
                 </Avatar>
                 <Button
@@ -82,19 +97,18 @@ export function SettingsView() {
               <div className="flex-1 space-y-4">
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-gray-300">Nombre completo</Label>
+                    <Label className="text-gray-300">Nombre</Label>
                     <Input
-                      value={userData.name}
-                      onChange={(e) => setUserData({ ...userData, name: e.target.value })}
+                      value={loggedUser?.firstname ?? ''}
                       className="bg-[#25293c] border-gray-600 text-white"
                     />
                   </div>
                   <div>
-                    <Label className="text-gray-300">Email</Label>
+                    <Label className="text-gray-300">Apellido</Label>
                     <Input
-                      type="email"
-                      value={userData.email}
-                      onChange={(e) => setUserData({ ...userData, email: e.target.value })}
+                      type="text"
+                      value={loggedUser?.lastname ?? ''}
+                      //onChange={(e) => setLoggedUser({ ...loggedUser, lastname: e.target.value })}
                       className="bg-[#25293c] border-gray-600 text-white"
                     />
                   </div>
@@ -102,18 +116,19 @@ export function SettingsView() {
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-gray-300">Teléfono</Label>
+                    <Label className="text-gray-300">Email</Label>
                     <Input
-                      value={userData.phone}
-                      onChange={(e) => setUserData({ ...userData, phone: e.target.value })}
+                      type="email"
+                      value={loggedUser?.email ?? ''}
+                      //onChange={(e) => setLoggedUser({ ...loggedUser, email: e.target.value })}
                       className="bg-[#25293c] border-gray-600 text-white"
                     />
                   </div>
                   <div>
                     <Label className="text-gray-300">Rol</Label>
                     <Input
-                      value={userData.role}
-                      onChange={(e) => setUserData({ ...userData, role: e.target.value })}
+                      value={loggedUser?.role ?? ''}
+                      //onChange={(e) => setLoggedUser({ ...loggedUser, role: e.target.value })}
                       className="bg-[#25293c] border-gray-600 text-white"
                     />
                   </div>
@@ -122,8 +137,8 @@ export function SettingsView() {
                 <div>
                   <Label className="text-gray-300">Estado</Label>
                   <Select
-                    value={userData.status}
-                    onValueChange={(value: any) => setUserData({ ...userData, status: value })}
+                    //value={loggedUser.status}
+                    //onValueChange={(value: any) => setLoggedUser({ ...loggedUser, status: value })}
                   >
                     <SelectTrigger className="bg-[#25293c] border-gray-600 text-white">
                       <SelectValue />
@@ -295,6 +310,7 @@ export function SettingsView() {
             <Button
               variant="destructive"
               className="w-full"
+              onClick={handleLogout}
             >
               <LogOut className="h-4 w-4 mr-2" />
               Cerrar sesión
