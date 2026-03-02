@@ -24,6 +24,50 @@ import { Label } from './ui/label';
 import { toast } from 'sonner';
 import { Toaster } from './ui/sonner';
 import { APP_NEW_MESSAGE_EVENT, type AppNewMessageDetail } from '../pushNotifications';
+import { getAuthSession, getLoggedUser } from '../authStorage';
+
+interface InstanceItem {
+  id: number;
+  description?: string;
+  network?: string;
+  phone?: string;
+}
+
+interface ContactApiItem {
+  id: number;
+  name?: string;
+  phone?: string;
+  label?: number;
+  last_message?: string | null;
+  last_message_date?: string | null;
+}
+
+const API_URL = import.meta.env?.VITE_API_URL;
+
+const statusByLabel: Record<number, Conversation['status']> = {
+  1: 'new',
+  2: 'assigned',
+  3: 'starred',
+  4: 'closed',
+  5: 'deleted',
+};
+
+function mapContactToConversation(contact: ContactApiItem): Conversation {
+  const labelValue = Number(contact.label);
+  const mappedStatus = statusByLabel[labelValue] ?? 'draft';
+  const parsedDate = contact.last_message_date ? new Date(contact.last_message_date) : new Date();
+
+  return {
+    id: String(contact.id),
+    contactName: contact.name || contact.phone || `Contacto ${contact.id}`,
+    contactAvatar: '',
+    lastMessage: contact.last_message || 'Sin mensajes',
+    timestamp: Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate,
+    unreadCount: mappedStatus === 'new' ? 1 : 0,
+    status: mappedStatus,
+    instance_description: 'whatsapp',
+  };
+}
 
 const statusFilters = [
   { id: 'all', label: 'Todos', icon: null },
@@ -44,6 +88,8 @@ const labels = [
 export function ConversationList() {
   const navigate = useNavigate();
   const [conversationItems, setConversationItems] = useState<Conversation[]>(conversations);
+  const [instances, setInstances] = useState<InstanceItem[]>([]);
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
@@ -101,7 +147,12 @@ export function ConversationList() {
 
   const handleConversationClick = (conv: Conversation) => {
     if (!contextMenuConv) {
-      navigate(`/chat/${conv.id}`);
+      navigate(`/chat/${conv.id}`, {
+        state: {
+          contactName: conv.contactName,
+          //channel: conv.channel,
+        },
+      });
     }
   };
 
@@ -146,9 +197,10 @@ export function ConversationList() {
   };
 
   const [showNewChatModal, setShowNewChatModal] = useState(false);
-  const [selectedInstance, setSelectedInstance] = useState(agents[0]?.id || '');
+  const [selectedInstance, setSelectedInstance] = useState('');
   const [phone, setPhone] = useState('');
   const [selectedContactId, setSelectedContactId] = useState('');
+  const [contactName, setContactName] = useState('');
 
   useEffect(() => {
     const handleNewMessage = (event: Event) => {
@@ -192,28 +244,204 @@ export function ConversationList() {
     };
   }, []);
 
-  const handleStartChat = () => {
-    // Prioridad: si hay contacto, usar ese; si no, usar teléfono
-    let contact = conversationItems.find(c => c.id === selectedContactId && selectedContactId !== 'none');
-    let contactName = contact?.contactName || phone;
-    if ((!contactName && selectedContactId === 'none') || !selectedInstance) {
-      toast.error('Selecciona una instancia y un contacto o número');
+  useEffect(() => {
+    const loadInstances = async () => {
+      if (!API_URL) {
+        return;
+      }
+
+      const token = getAuthSession()?.accessToken;
+      if (!token) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_URL}/instance`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = await response.json();
+        const parsedInstances = Array.isArray(data) ? data : [];
+        setInstances(parsedInstances);
+
+        if (parsedInstances.length > 0) {
+          setSelectedInstance(String(parsedInstances[0].id));
+        }
+      } catch {
+        toast.error('No se pudieron cargar las instancias');
+      }
+    };
+
+    void loadInstances();
+  }, []);
+
+  useEffect(() => {
+    const loadContacts = async () => {
+      if (!API_URL) {
+        return;
+      }
+
+      const token = getAuthSession()?.accessToken;
+      const loggedUser = getLoggedUser() as { customerId?: number; customer_id?: number; id?: number } | null;
+      const customerId = loggedUser?.customerId ?? loggedUser?.customer_id ?? loggedUser?.id;
+
+      if (!token || !customerId) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_URL}/contact?customerId=${customerId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          toast.error('No se pudieron cargar los contactos');
+          return;
+        }
+
+        const data = await response.json();
+        const parsedContacts: ContactApiItem[] = Array.isArray(data) ? data : [];
+        setConversationItems(parsedContacts.map(mapContactToConversation));
+      } catch {
+        toast.error('No se pudieron cargar los contactos');
+      }
+    };
+
+    void loadContacts();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedContactId || selectedContactId === 'none') {
       return;
     }
-    // Simular navegación a chat
-    if (contact?.id) {
-      navigate(`/chat/${contact.id}`);
-    } else {
-      // En real, aquí crearías la conversación
-      toast.success(`Nuevo chat con ${contactName} usando instancia ${selectedInstance}`);
+
+    const selectedConversation = conversationItems.find((conversation) => conversation.id === selectedContactId);
+    if (selectedConversation) {
+      setContactName(selectedConversation.contactName);
     }
-    setShowNewChatModal(false);
-    setPhone('');
-    setSelectedContactId('none');
-    setSelectedInstance(agents[0]?.id || '');
+  }, [selectedContactId, conversationItems]);
+
+  const handleStartChat = async () => {
+    if (!API_URL) {
+      toast.error('VITE_API_URL no está configurada');
+      return;
+    }
+
+    if (selectedContactId && selectedContactId !== 'none') {
+      const selectedConversation = conversationItems.find((conversation) => conversation.id === selectedContactId);
+
+      if (!selectedConversation) {
+        toast.error('No se encontró el contacto seleccionado');
+        return;
+      }
+
+      setShowNewChatModal(false);
+      setPhone('');
+      setContactName('');
+      setSelectedContactId('none');
+      navigate(`/chat/${selectedConversation.id}`, {
+        state: {
+          contactName: selectedConversation.contactName,
+          channel: selectedConversation.channel,
+        },
+      });
+      return;
+    }
+
+    if (!selectedInstance || !phone.trim() || !contactName.trim()) {
+      toast.error('Completa instancia, teléfono y nombre');
+      return;
+    }
+
+    const token = getAuthSession()?.accessToken;
+    if (!token) {
+      toast.error('Tu sesión expiró. Inicia sesión nuevamente');
+      return;
+    }
+
+    const loggedUser = getLoggedUser() as {
+      seat_id?: number;
+      seatId?: number;
+      customerId?: number;
+      customer_id?: number;
+      id?: number;
+    } | null;
+    const seatId = loggedUser?.seat_id ?? loggedUser?.seatId ?? loggedUser?.id;
+    const customerId = loggedUser?.customerId ?? loggedUser?.customer_id ?? loggedUser?.id;
+
+    if (!seatId || !customerId) {
+      toast.error('No se encontró seat_id/customer_id del usuario logueado');
+      return;
+    }
+
+    setIsCreatingChat(true);
+    try {
+      const response = await fetch(`${API_URL}/contact/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          customer_id: customerId,
+          instance_id: Number(selectedInstance),
+          phone: phone.trim(),
+          name: contactName.trim(),
+          seat_id: seatId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        toast.error(errorData?.detail || 'No se pudo crear el contacto');
+        return;
+      }
+
+      const data = await response.json();
+      const newConversationId = String(data.contactId ?? crypto.randomUUID());
+
+      const newConversation: Conversation = {
+        id: newConversationId,
+        contactName: contactName.trim(),
+        contactAvatar: '',
+        lastMessage: 'Chat iniciado',
+        timestamp: new Date(),
+        unreadCount: 0,
+        status: 'assigned',
+        channel: 'whatsapp',
+      };
+
+      setConversationItems((prev) => [newConversation, ...prev]);
+      toast.success(`Nuevo chat con ${contactName.trim()} creado`);
+      setShowNewChatModal(false);
+      setPhone('');
+      setContactName('');
+      setSelectedContactId('none');
+      if (instances.length > 0) {
+        setSelectedInstance(String(instances[0].id));
+      }
+      navigate(`/chat/${newConversationId}`, {
+        state: {
+          contactName: contactName.trim(),
+          channel: 'whatsapp',
+        },
+      });
+    } catch {
+      toast.error('No se pudo conectar al servidor');
+    } finally {
+      setIsCreatingChat(false);
+    }
   };
 
-  const Sidebar = () => (
+  const renderSidebar = () => (
     <div className="flex flex-col h-full bg-[#2f3349] text-white">
       <div className="p-4 space-y-4 mt-6">
         <Button className="w-full" onClick={() => setShowNewChatModal(true)}>
@@ -276,11 +504,23 @@ export function ConversationList() {
                     <SelectValue placeholder="Selecciona una instancia" />
                   </SelectTrigger>
                   <SelectContent>
-                    {agents.map((agent) => (
-                      <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
+                    {instances.map((instance) => (
+                      <SelectItem key={instance.id} value={String(instance.id)}>
+                        {instance.description || `Instancia ${instance.id}`}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <Label className="text-gray-300">Nombre del contacto</Label>
+                <Input
+                  type="text"
+                  placeholder="Ej: Juan Pérez"
+                  value={contactName}
+                  onChange={(e) => setContactName(e.target.value)}
+                  className="bg-[#25293c] border-gray-600 text-white mt-2"
+                />
               </div>
               <div>
                 <Label className="text-gray-300">Número de teléfono</Label>
@@ -300,14 +540,14 @@ export function ConversationList() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Ninguno</SelectItem>
-                    {conversations.map((conv) => (
+                    {conversationItems.map((conv) => (
                       <SelectItem key={conv.id} value={conv.id}>{conv.contactName}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-              <Button className="w-full" onClick={handleStartChat}>
-                Iniciar Chat
+              <Button className="w-full" onClick={handleStartChat} disabled={isCreatingChat || instances.length === 0}>
+                {isCreatingChat ? 'Creando...' : 'Iniciar Chat'}
               </Button>
             </div>
           </DialogContent>
@@ -460,7 +700,7 @@ export function ConversationList() {
 
       {/* Sidebar for desktop */}
       <div className="hidden md:block w-64 border-r border-gray-700">
-        <Sidebar />
+        {renderSidebar()}
       </div>
 
       {/* Main content */}
@@ -476,7 +716,7 @@ export function ConversationList() {
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-64 p-0 bg-[#2f3349]">
-                <Sidebar />
+                {renderSidebar()}
               </SheetContent>
             </Sheet>
 
@@ -556,6 +796,11 @@ export function ConversationList() {
                         {conv.label && (
                           <Badge variant="secondary" className={`${getLabelColor(conv.label)} text-white text-xs`}>
                             {conv.label}
+                          </Badge>
+                        )}
+                        {conv.instance_description && (
+                          <Badge variant="secondary" className="bg-label-success text-white text-xs">
+                            {conv.instance_description}
                           </Badge>
                         )}
                         {conv.unreadCount > 0 && (

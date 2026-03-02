@@ -8,14 +8,16 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { toast } from 'sonner';
 import { Toaster } from './ui/sonner';
+import { getAuthSession, getLoggedUser } from '../authStorage';
 
 interface ConnectionItem {
   id: string;
-  name: string;
-  type: string;
-  endpoint: string;
+  description: string;
+  network: string;
+  phone: string;
 }
-
+const API_URL = import.meta.env?.VITE_API_URL;
+const CREATE_INSTANCE_PATH = import.meta.env?.VITE_INSTANCE_CREATE_PATH ?? '/instance';
 const CONNECTIONS_STORAGE_KEY = 'savedConnections';
 
 const defaultConnections: ConnectionItem[] = [];
@@ -24,9 +26,10 @@ export function ConnectionsView() {
   const [connections, setConnections] = useState<ConnectionItem[]>(defaultConnections);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingConnectionId, setEditingConnectionId] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [type, setType] = useState('api');
-  const [endpoint, setEndpoint] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [description, setDescription] = useState('');
+  const [network, setNetwork] = useState('whatsapp');
+  const [phone, setPhone] = useState('');
 
   useEffect(() => {
     const stored = localStorage.getItem(CONNECTIONS_STORAGE_KEY);
@@ -36,7 +39,15 @@ export function ConnectionsView() {
 
     try {
       const parsed = JSON.parse(stored);
-      setConnections(parsed);
+      const normalizedConnections = Array.isArray(parsed)
+        ? parsed.map((item) => ({
+            id: String(item.id ?? crypto.randomUUID()),
+            description: String(item.description ?? item.name ?? ''),
+            network: String(item.network ?? item.type ?? 'whatsapp'),
+            phone: String(item.phone ?? item.endpoint ?? ''),
+          }))
+        : [];
+      setConnections(normalizedConnections);
     } catch {
       toast.error('No se pudieron cargar las conexiones');
     }
@@ -49,9 +60,9 @@ export function ConnectionsView() {
 
   const resetForm = () => {
     setEditingConnectionId(null);
-    setName('');
-    setType('api');
-    setEndpoint('');
+    setDescription('');
+    setNetwork('whatsapp');
+    setPhone('');
   };
 
   const openCreateModal = () => {
@@ -61,40 +72,103 @@ export function ConnectionsView() {
 
   const openEditModal = (connection: ConnectionItem) => {
     setEditingConnectionId(connection.id);
-    setName(connection.name);
-    setType(connection.type);
-    setEndpoint(connection.endpoint);
+    setDescription(connection.description);
+    setNetwork(connection.network);
+    setPhone(connection.phone);
     setIsModalOpen(true);
   };
 
-  const handleSaveConnection = (event: FormEvent<HTMLFormElement>) => {
+  const handleSaveConnection = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!name.trim() || !endpoint.trim()) {
-      toast.error('Completa nombre y endpoint de la conexión');
+    if (!description.trim() || !phone.trim()) {
+      toast.error('Completa descripción y teléfono de la conexión');
       return;
     }
 
-    const normalizedName = name.trim();
-    const normalizedEndpoint = endpoint.trim();
+    if (!API_URL) {
+      toast.error('VITE_API_URL no está configurada');
+      return;
+    }
+
+    const normalizedDescription = description.trim();
+    const normalizedPhone = phone.trim();
+
+    if (!editingConnectionId) {
+      const loggedUser = getLoggedUser() as { customerId?: number; customer_id?: number; id?: number } | null;
+      const customerId = loggedUser?.customerId ?? loggedUser?.customer_id ?? loggedUser?.id;
+
+      if (!customerId) {
+        toast.error('No se encontró customer_id del usuario logueado');
+        return;
+      }
+
+      const authToken = getAuthSession()?.accessToken;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      if (authToken) {
+        headers.Authorization = `Bearer ${authToken}`;
+      }
+
+      setIsSaving(true);
+      try {
+        const response = await fetch(`${API_URL}${CREATE_INSTANCE_PATH}`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            customer_id: customerId,
+            phone: normalizedPhone,
+            description: normalizedDescription,
+            network,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => null);
+          toast.error(errorData?.detail || 'No se pudo crear la conexión en backend');
+          return;
+        }
+
+        const data = await response.json();
+        const newConnection: ConnectionItem = {
+          id: String(data.instanceId ?? crypto.randomUUID()),
+          description: normalizedDescription,
+          network,
+          phone: normalizedPhone,
+        };
+
+        persistConnections([newConnection, ...connections]);
+        setIsModalOpen(false);
+        resetForm();
+        toast.success('Conexión registrada');
+        return;
+      } catch {
+        toast.error('No se pudo conectar al servidor');
+        return;
+      } finally {
+        setIsSaving(false);
+      }
+    }
 
     const updatedConnections = editingConnectionId
       ? connections.map((connection) =>
           connection.id === editingConnectionId
             ? {
                 ...connection,
-                name: normalizedName,
-                type,
-                endpoint: normalizedEndpoint,
+                description: normalizedDescription,
+                network,
+                phone: normalizedPhone,
               }
             : connection,
         )
       : [
           {
             id: crypto.randomUUID(),
-            name: normalizedName,
-            type,
-            endpoint: normalizedEndpoint,
+            description: normalizedDescription,
+            network,
+            phone: normalizedPhone,
           },
           ...connections,
         ];
@@ -138,18 +212,18 @@ export function ConnectionsView() {
             <Table>
               <TableHeader>
                 <TableRow className="border-gray-700 hover:bg-transparent">
-                  <TableHead className="text-gray-300">Nombre</TableHead>
-                  <TableHead className="text-gray-300">Tipo</TableHead>
-                  <TableHead className="text-gray-300">Endpoint</TableHead>
+                  <TableHead className="text-gray-300">Descripción</TableHead>
+                  <TableHead className="text-gray-300">Network</TableHead>
+                  <TableHead className="text-gray-300">Phone</TableHead>
                   <TableHead className="text-gray-300 text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {connections.map((connection) => (
                   <TableRow key={connection.id} className="border-gray-700 hover:bg-[#25293c]">
-                    <TableCell className="text-white font-medium">{connection.name}</TableCell>
-                    <TableCell className="text-gray-300 uppercase">{connection.type}</TableCell>
-                    <TableCell className="text-gray-300 max-w-[360px] truncate">{connection.endpoint}</TableCell>
+                    <TableCell className="text-white font-medium">{connection.description}</TableCell>
+                    <TableCell className="text-gray-300 uppercase">{connection.network}</TableCell>
+                    <TableCell className="text-gray-300 max-w-[360px] truncate">{connection.phone}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button
@@ -185,36 +259,40 @@ export function ConnectionsView() {
 
             <form className="space-y-4" onSubmit={handleSaveConnection}>
               <div>
-                <Label className="text-gray-300">Nombre</Label>
+                <Label className="text-gray-300">Descripción</Label>
                 <Input
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
                   className="bg-[#25293c] border-gray-600 text-white"
-                  placeholder="Mi API"
+                  placeholder="Instancia principal"
+                  disabled={isSaving}
                 />
               </div>
 
               <div>
-                <Label className="text-gray-300">Tipo</Label>
-                <Select value={type} onValueChange={setType}>
-                  <SelectTrigger className="bg-[#25293c] border-gray-600 text-white">
+                <Label className="text-gray-300">Network</Label>
+                <Select value={network} onValueChange={setNetwork}>
+                  <SelectTrigger className="bg-[#25293c] border-gray-600 text-white" disabled={isSaving}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="api">API</SelectItem>
-                    <SelectItem value="database">Base de datos</SelectItem>
-                    <SelectItem value="webhook">Webhook</SelectItem>
+                    <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                    <SelectItem value="webwidget">WebWidget</SelectItem>
+                    <SelectItem value="telegram">Telegram</SelectItem>
+                    <SelectItem value="fbmessenger">FB Messenger</SelectItem>
+                    <SelectItem value="instagramdm">Instagram DM</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <Label className="text-gray-300">Endpoint</Label>
+                <Label className="text-gray-300">Phone</Label>
                 <Input
-                  value={endpoint}
-                  onChange={(event) => setEndpoint(event.target.value)}
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
                   className="bg-[#25293c] border-gray-600 text-white"
-                  placeholder="https://..."
+                  placeholder="54911..."
+                  disabled={isSaving}
                 />
               </div>
 
@@ -227,10 +305,13 @@ export function ConnectionsView() {
                     resetForm();
                   }}
                   className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+                  disabled={isSaving}
                 >
                   Cancelar
                 </Button>
-                <Button type="submit">{editingConnectionId ? 'Guardar cambios' : 'Agregar conexión'}</Button>
+                <Button type="submit" disabled={isSaving}>
+                  {isSaving ? 'Guardando...' : editingConnectionId ? 'Guardar cambios' : 'Agregar conexión'}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>

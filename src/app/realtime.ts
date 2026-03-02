@@ -57,7 +57,7 @@ function getRealtimeConfig() {
 }
 
 function normalizeSender(sender: unknown): SenderType {
-  return sender === 'agent' ? 'agent' : 'contact';
+  return sender === 'agent' || sender === 'user' ? 'agent' : 'contact';
 }
 
 function normalizeChannel(channel: unknown): ChannelType {

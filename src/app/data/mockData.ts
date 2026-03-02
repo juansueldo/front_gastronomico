@@ -43,7 +43,7 @@ export interface Conversation {
   status: 'new' | 'assigned' | 'starred' | 'closed' | 'deleted' | 'draft';
   assignedTo?: string;
   label?: 'demorado' | 'escalado' | 'cancelado';
-  channel: 'whatsapp' | 'facebook' | 'instagram' | 'email';
+  instance_description: string;
 }
 
 export const agents: User[] = [
@@ -53,15 +53,7 @@ export const agents: User[] = [
   { id: '4', name: 'Carlos Ruiz', avatar: '' },
 ];
 
-export const loggedUser: LoggedUser = {
-  id: 'logged-1',
-  name: 'Ana García',
-  email: 'ana.garcia@empresa.com',
-  avatar: '',
-  phone: '+1 234 567 890',
-  role: 'Agente Senior',
-  status: 'active',
-};
+
 
 export const calendarEvents: CalendarEvent[] = [
   {
@@ -114,162 +106,9 @@ export const calendarEvents: CalendarEvent[] = [
 ];
 
 export const conversations: Conversation[] = [
-  {
-    id: '1',
-    contactName: 'María González',
-    contactAvatar: '',
-    lastMessage: 'Hola — soy el asistente de Chatbot',
-    timestamp: new Date('2026-02-26T09:16:00'),
-    unreadCount: 0,
-    status: 'new',
-    assignedTo: 'Dweb Widget_ES_F',
-    channel: 'whatsapp',
-  },
-  {
-    id: '2',
-    contactName: 'Pedro Santos',
-    contactAvatar: '',
-    lastMessage: 'ads',
-    timestamp: new Date('2026-02-26T17:27:00'),
-    unreadCount: 1,
-    status: 'assigned',
-    assignedTo: 'Dweb Widget_PT',
-    channel: 'facebook',
-  },
-  {
-    id: '3',
-    contactName: 'Laura Martínez',
-    contactAvatar: '',
-    lastMessage: '¿Tienen disponibilidad para mañana?',
-    timestamp: new Date('2026-02-26T14:30:00'),
-    unreadCount: 2,
-    status: 'new',
-    label: 'demorado',
-    channel: 'instagram',
-  },
-  {
-    id: '4',
-    contactName: 'Juan Pérez',
-    contactAvatar: '',
-    lastMessage: 'Gracias por la información',
-    timestamp: new Date('2026-02-26T11:45:00'),
-    unreadCount: 0,
-    status: 'assigned',
-    assignedTo: 'Ana García',
-    label: 'escalado',
-    channel: 'whatsapp',
-  },
-  {
-    id: '5',
-    contactName: 'Sofia Rodríguez',
-    contactAvatar: '',
-    lastMessage: 'Necesito cambiar mi pedido',
-    timestamp: new Date('2026-02-26T10:20:00'),
-    unreadCount: 3,
-    status: 'new',
-    channel: 'email',
-  },
-  {
-    id: '6',
-    contactName: 'Diego López',
-    contactAvatar: '',
-    lastMessage: 'Ok, perfecto',
-    timestamp: new Date('2026-02-25T16:00:00'),
-    unreadCount: 0,
-    status: 'starred',
-    assignedTo: 'Carlos Ruiz',
-    channel: 'whatsapp',
-  },
+
 ];
 
 export const messages: Record<string, Message[]> = {
-  '1': [
-    {
-      id: 'm1',
-      conversationId: '1',
-      sender: 'contact',
-      content: 'Hola, necesito información sobre sus servicios',
-      timestamp: new Date('2026-02-26T09:10:00'),
-    },
-    {
-      id: 'm2',
-      conversationId: '1',
-      sender: 'agent',
-      content: 'Hola — soy el asistente de Chatbot',
-      timestamp: new Date('2026-02-26T09:16:00'),
-    },
-  ],
-  '2': [
-    {
-      id: 'm3',
-      conversationId: '2',
-      sender: 'contact',
-      content: 'ads',
-      timestamp: new Date('2026-02-26T17:27:00'),
-    },
-  ],
-  '3': [
-    {
-      id: 'm4',
-      conversationId: '3',
-      sender: 'contact',
-      content: '¿Tienen disponibilidad para mañana?',
-      timestamp: new Date('2026-02-26T14:30:00'),
-    },
-  ],
-  '4': [
-    {
-      id: 'm5',
-      conversationId: '4',
-      sender: 'contact',
-      content: '¿Cuál es el precio del producto X?',
-      timestamp: new Date('2026-02-26T11:30:00'),
-    },
-    {
-      id: 'm6',
-      conversationId: '4',
-      sender: 'agent',
-      content: 'El precio del producto X es $299',
-      timestamp: new Date('2026-02-26T11:35:00'),
-    },
-    {
-      id: 'm7',
-      conversationId: '4',
-      sender: 'contact',
-      content: 'Gracias por la información',
-      timestamp: new Date('2026-02-26T11:45:00'),
-    },
-  ],
-  '5': [
-    {
-      id: 'm8',
-      conversationId: '5',
-      sender: 'contact',
-      content: 'Hola, hice un pedido ayer',
-      timestamp: new Date('2026-02-26T10:15:00'),
-    },
-    {
-      id: 'm9',
-      conversationId: '5',
-      sender: 'contact',
-      content: 'Necesito cambiar mi pedido',
-      timestamp: new Date('2026-02-26T10:20:00'),
-    },
-  ],
-  '6': [
-    {
-      id: 'm10',
-      conversationId: '6',
-      sender: 'agent',
-      content: 'Tu pedido está listo para envío',
-      timestamp: new Date('2026-02-25T15:50:00'),
-    },
-    {
-      id: 'm11',
-      conversationId: '6',
-      sender: 'contact',
-      content: 'Ok, perfecto',
-      timestamp: new Date('2026-02-25T16:00:00'),
-    },
-  ],
+
 };

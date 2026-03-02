@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams, useNavigate, useLocation } from 'react-router';
 import { ArrowLeft, Send, Paperclip, Smile, MoreVertical, Star, Archive, Trash2, Check, CheckCheck } from 'lucide-react';
 import { conversations, messages as mockMessages, agents, type Message } from '../data/mockData';
 import { Avatar, AvatarFallback } from './ui/avatar';
@@ -20,14 +20,81 @@ import {
   SelectValue,
 } from './ui/select';
 import { APP_NEW_MESSAGE_EVENT, type AppNewMessageDetail } from '../pushNotifications';
+import { getAuthSession, getLoggedUser } from '../authStorage';
+import { toast } from 'sonner';
+
+
+type ChatImportMeta = ImportMeta & {
+  env: {
+    VITE_API_URL?: string;
+    VITE_SEND_MESSAGE_PATH?: string;
+  };
+};
+
+type ChatChannel = 'whatsapp' | 'facebook' | 'instagram' | 'email';
+
+interface ChatConversation {
+  id: string;
+  contactName: string;
+  contactAvatar: string;
+  lastMessage: string;
+  timestamp: Date;
+  unreadCount: number;
+  status: 'new' | 'assigned' | 'starred' | 'closed' | 'deleted' | 'draft';
+  assignedTo?: string;
+  channel: ChatChannel;
+}
+
+const API_URL = (import.meta as ChatImportMeta).env?.VITE_API_URL;
+const SEND_MESSAGE_PATH = (import.meta as ChatImportMeta).env?.VITE_SEND_MESSAGE_PATH ?? '/messages/send';
+
+interface ApiMessageItem {
+  id?: number | string;
+  contact_id?: number | string;
+  sender?: string;
+  content?: string;
+  message?: string;
+  text?: string;
+  created_at?: string;
+  timestamp?: string;
+  date?: string;
+}
+
+interface ApiMessagesResponse {
+  messages?: ApiMessageItem[];
+  contact?: {
+    id?: number | string;
+    name?: string;
+    phone?: string;
+  };
+  ok?: boolean;
+}
 
 export function ChatView() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const conversation = conversations.find((c) => c.id === id);
+  const routeContactName = (location.state as { contactName?: string } | null)?.contactName;
+  const routeChannel = (location.state as { channel?: ChatChannel } | null)?.channel;
+
+  const mockConversation = conversations.find((c) => c.id === id) as (ChatConversation | undefined);
+  const conversation =
+    mockConversation ||
+    (id
+      ? {
+          id,
+          contactName: routeContactName ?? 'Nuevo contacto',
+          contactAvatar: '',
+          lastMessage: '',
+          timestamp: new Date(),
+          unreadCount: 0,
+          status: 'new' as const,
+          channel: routeChannel ?? 'whatsapp',
+        }
+      : undefined);
   const [messages, setMessages] = useState<Message[]>(mockMessages[id || ''] || []);
   // Simular estado de mensaje: 'sent', 'delivered', 'read'
   const [messageStatus, setMessageStatus] = useState<Record<string, 'sent' | 'delivered' | 'read'>>({});
@@ -35,12 +102,83 @@ export function ChatView() {
   const [assignedAgent, setAssignedAgent] = useState(conversation?.assignedTo || '');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [isSending, setIsSending] = useState(false);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
 
   const quickEmojis = ['😀', '😂', '😍', '🙏', '👍', '🎉', '❤️', '🤖'];
 
   useEffect(() => {
-    setMessages(mockMessages[id || ''] || []);
+    const loadMessages = async () => {
+      if (!id) {
+        setMessages([]);
+        return;
+      }
+
+      const authToken = getAuthSession()?.accessToken;
+      if (!API_URL || !authToken) {
+        setMessages(mockMessages[id] || []);
+        return;
+      }
+      const loggedUser = getLoggedUser() as {
+            seat_id?: number;
+            seatId?: number;
+            customerId?: number;
+            customer_id?: number;
+            id?: number;
+          } | null;
+          const seatId = loggedUser?.seat_id ?? loggedUser?.seatId ?? loggedUser?.id;
+          const customerId = loggedUser?.customerId ?? loggedUser?.customer_id ?? loggedUser?.id;
+      
+          if (!seatId || !customerId) {
+            toast.error('No se encontró seat_id/customer_id del usuario logueado');
+            return;
+      }
+
+      setIsLoadingMessages(true);
+      try {
+        const response = await fetch(`${API_URL}/messages?contactId=${encodeURIComponent(id)}`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        });
+
+        if (!response.ok) {
+          setMessages(mockMessages[id] || []);
+          return;
+        }
+
+        const data = (await response.json()) as ApiMessagesResponse;
+        const apiMessages = Array.isArray(data.messages) ? data.messages : [];
+        const mappedMessages: Message[] = apiMessages.map((messageItem, index) => {
+        const rawTimestamp = messageItem.created_at ?? messageItem.timestamp ?? messageItem.date;
+        const parsedDate = rawTimestamp ? new Date(rawTimestamp) : new Date();
+        const normalizedDate = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+
+          return {
+            id: String(messageItem.id ?? `${id}-${index}`),
+            conversationId: String(messageItem.contact_id ?? id),
+            sender: messageItem.sender === 'agent' || messageItem.sender === 'user' ? 'agent' : 'contact',
+            content: messageItem.content ?? messageItem.message ?? messageItem.text ?? '',
+            timestamp: normalizedDate,
+          };
+        });
+
+        mappedMessages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+        setMessages(mappedMessages);
+      } catch {
+        setMessages(mockMessages[id] || []);
+      } finally {
+        setIsLoadingMessages(false);
+      }
+    };
+
+    void loadMessages();
   }, [id]);
+
+  useEffect(() => {
+    setAssignedAgent(conversation?.assignedTo || '');
+  }, [conversation?.assignedTo, id]);
 
   useEffect(() => {
     const handleIncomingMessage = (event: Event) => {
@@ -92,11 +230,21 @@ export function ChatView() {
     );
   }
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     const cleanedMessage = newMessage.trim();
     if (!cleanedMessage && attachedFiles.length === 0) {
       return;
     }
+    if (!id) {
+      return;
+    }
+
+    const authToken = getAuthSession()?.accessToken;
+    if (!API_URL || !authToken) {
+      toast.error('No se pudo enviar el mensaje. Revisa tu sesión.');
+      return;
+    }
+
     const attachmentText = attachedFiles.length > 0
       ? attachedFiles.map((file) => `📎 ${file.name}`).join('\n')
       : '';
@@ -109,18 +257,45 @@ export function ChatView() {
       content: fullContent,
       timestamp: new Date(),
     };
+
+    setIsSending(true);
     setMessages([...messages, message]);
     setMessageStatus((prev) => ({ ...prev, [messageId]: 'sent' }));
     setNewMessage('');
     setAttachedFiles([]);
     setShowEmojiPicker(false);
-    // Simular cambio de estado a 'delivered' y 'read'
-    setTimeout(() => {
+
+    try {
+      const response = await fetch(`${API_URL}${SEND_MESSAGE_PATH}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          contactId: id,
+          content: fullContent,
+          seatId: getLoggedUser()?.seat_id ?? getLoggedUser()?.seatId ?? getLoggedUser()?.id,
+          //customerId: getLoggedUser()?.customerId ?? getLoggedUser()?.customer_id ?? getLoggedUser()?.id,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        toast.error(errorData?.detail || 'No se pudo enviar el mensaje');
+        setMessageStatus((prev) => ({ ...prev, [messageId]: 'sent' }));
+        return;
+      }
+
       setMessageStatus((prev) => ({ ...prev, [messageId]: 'delivered' }));
       setTimeout(() => {
         setMessageStatus((prev) => ({ ...prev, [messageId]: 'read' }));
-      }, 1200);
-    }, 800);
+      }, 600);
+    } catch {
+      toast.error('No se pudo conectar al servidor');
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -259,6 +434,11 @@ export function ChatView() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {isLoadingMessages && messages.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-gray-400">
+            <p>Cargando mensajes...</p>
+          </div>
+        ) : null}
         {Object.entries(groupedMessages).map(([date, dateMessages]) => (
           <div key={date}>
             {/* Date separator */}
@@ -383,7 +563,7 @@ export function ChatView() {
             onClick={handleSendMessage}
             size="icon"
             className="shrink-0"
-            disabled={!newMessage.trim() && attachedFiles.length === 0}
+            disabled={isSending || (!newMessage.trim() && attachedFiles.length === 0)}
           >
             <Send className="h-5 w-5" />
           </Button>

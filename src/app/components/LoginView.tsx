@@ -41,7 +41,6 @@ export function LoginView() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          tenant_url: 'tomatina.cloud',
           username,
           password,
         }),
@@ -56,7 +55,7 @@ export function LoginView() {
       saveAuthSession({
         username,
         user: data.user,
-        accessToken: data.access_token,
+        accessToken: data.token,
         rememberMe,
       });
       toast.success('Inicio de sesión exitoso');
