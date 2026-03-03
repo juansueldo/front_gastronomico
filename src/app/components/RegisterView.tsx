@@ -39,7 +39,7 @@ export function RegisterView() {
   };
 
   return (
-    <div className="h-screen bg-[#25293c] flex items-center justify-center p-4">
+    <div className="h-screen bg-body flex items-center justify-center p-4">
       <div className="w-full max-w-sm mx-auto">
         {/* Logo */}
         <div className='mb-4'>

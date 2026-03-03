@@ -77,7 +77,7 @@ export function NotificationsView() {
   };
 
   return (
-    <div className="h-full bg-[#25293c] overflow-y-auto">
+    <div className="h-full bg-body overflow-y-auto">
       <Toaster />
       <div className="p-4 md:p-6 max-w-4xl mx-auto pb-20">
         <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -92,7 +92,7 @@ export function NotificationsView() {
           </Button>
         </div>
 
-        <div className="bg-[#2f3349] rounded-lg p-6">
+        <div className="bg-card rounded-lg p-6">
           <h2 className="text-white font-medium mb-4 flex items-center gap-2">
             <Bell className="h-5 w-5" />
             Historial de notificaciones
@@ -112,7 +112,7 @@ export function NotificationsView() {
                   key={notification.id}
                   className={`border rounded-lg p-4 ${
                     notification.read
-                      ? 'bg-[#25293c] border-gray-700'
+                      ? 'bg-body border-gray-700'
                       : 'bg-indigo-900/20 border-indigo-700'
                   }`}
                 >

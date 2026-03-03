@@ -75,7 +75,7 @@ export function CampaignsView() {
   };
 
   return (
-    <div className="h-full bg-[#25293c] overflow-y-auto">
+    <div className="h-full bg-body overflow-y-auto">
       <Toaster />
       <div className="p-4 md:p-6 max-w-4xl mx-auto pb-20">
         <div className="mb-6">
@@ -83,7 +83,7 @@ export function CampaignsView() {
           <p className="text-gray-400 text-sm">Crea campañas para enviar mensajes masivos</p>
         </div>
 
-        <div className="bg-[#2f3349] rounded-lg p-6 mb-6">
+        <div className="bg-card rounded-lg p-6 mb-6">
           <h2 className="text-white font-medium mb-4 flex items-center gap-2">
             <Plus className="h-5 w-5" />
             Nueva campaña
@@ -96,7 +96,7 @@ export function CampaignsView() {
                 <Input
                   value={name}
                   onChange={(event) => setName(event.target.value)}
-                  className="bg-[#25293c] border-gray-600 text-white"
+                  className="bg-body border-gray-600 text-white"
                   placeholder="Promoción de verano"
                 />
               </div>
@@ -104,7 +104,7 @@ export function CampaignsView() {
               <div>
                 <Label className="text-gray-300">Canal</Label>
                 <Select value={channel} onValueChange={setChannel}>
-                  <SelectTrigger className="bg-[#25293c] border-gray-600 text-white">
+                  <SelectTrigger className="bg-body border-gray-600 text-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -122,7 +122,7 @@ export function CampaignsView() {
               <Textarea
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
-                className="bg-[#25293c] border-gray-600 text-white min-h-28"
+                className="bg-body border-gray-600 text-white min-h-28"
                 placeholder="Escribe el mensaje que se enviará a los contactos..."
               />
             </div>
@@ -134,7 +134,7 @@ export function CampaignsView() {
           </form>
         </div>
 
-        <div className="bg-[#2f3349] rounded-lg p-6">
+        <div className="bg-card rounded-lg p-6">
           <h2 className="text-white font-medium mb-4 flex items-center gap-2">
             <Megaphone className="h-5 w-5" />
             Campañas registradas
@@ -145,7 +145,7 @@ export function CampaignsView() {
           ) : (
             <div className="space-y-3">
               {campaigns.map((campaign) => (
-                <div key={campaign.id} className="bg-[#25293c] border border-gray-700 rounded-lg p-4">
+                <div key={campaign.id} className="bg-body border border-gray-700 rounded-lg p-4">
                   <div className="flex items-center justify-between gap-3 mb-2">
                     <p className="text-white font-medium truncate">{campaign.name}</p>
                     <Badge variant="secondary" className="bg-indigo-600 text-white uppercase">

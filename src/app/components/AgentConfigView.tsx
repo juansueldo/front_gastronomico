@@ -51,7 +51,7 @@ export function AgentConfigView() {
   };
 
   return (
-    <div className="h-full bg-[#25293c] overflow-y-auto">
+    <div className="h-full bg-body overflow-y-auto">
       <Toaster />
       <div className="p-4 md:p-6 max-w-3xl mx-auto pb-20">
         <div className="mb-6">
@@ -59,7 +59,7 @@ export function AgentConfigView() {
           <p className="text-gray-400 text-sm">Configura el proveedor y parámetros del asistente</p>
         </div>
 
-        <div className="bg-[#2f3349] rounded-lg p-6 space-y-5">
+        <div className="bg-card rounded-lg p-6 space-y-5">
           <h2 className="text-white font-medium flex items-center gap-2">
             <Bot className="h-5 w-5" />
             Configuración del agente
@@ -70,14 +70,14 @@ export function AgentConfigView() {
             <Input
               value={config.name}
               onChange={(event) => setConfig({ ...config, name: event.target.value })}
-              className="bg-[#25293c] border-gray-600 text-white"
+              className="bg-body border-gray-600 text-white"
             />
           </div>
 
           <div>
             <Label className="text-gray-300">Proveedor</Label>
             <Select value={config.provider} onValueChange={(value) => setConfig({ ...config, provider: value })}>
-              <SelectTrigger className="bg-[#25293c] border-gray-600 text-white">
+              <SelectTrigger className="bg-body border-gray-600 text-white">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -93,7 +93,7 @@ export function AgentConfigView() {
             <Input
               value={config.model}
               onChange={(event) => setConfig({ ...config, model: event.target.value })}
-              className="bg-[#25293c] border-gray-600 text-white"
+              className="bg-body border-gray-600 text-white"
             />
           </div>
 
@@ -102,7 +102,7 @@ export function AgentConfigView() {
             <Input
               value={config.endpoint}
               onChange={(event) => setConfig({ ...config, endpoint: event.target.value })}
-              className="bg-[#25293c] border-gray-600 text-white"
+              className="bg-body border-gray-600 text-white"
             />
           </div>
 
@@ -112,7 +112,7 @@ export function AgentConfigView() {
               type="password"
               value={config.apiKey}
               onChange={(event) => setConfig({ ...config, apiKey: event.target.value })}
-              className="bg-[#25293c] border-gray-600 text-white"
+              className="bg-body border-gray-600 text-white"
             />
           </div>
 

@@ -222,7 +222,7 @@ export function ChatView() {
 
   if (!conversation) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#25293c] text-white">
+      <div className="flex items-center justify-center h-screen bg-body text-white">
         <div className="text-center">
           <p className="mb-4">Conversación no encontrada</p>
           <Button onClick={() => navigate('/')}>Volver a la lista</Button>
@@ -361,9 +361,9 @@ export function ChatView() {
   }, {} as Record<string, Message[]>);
 
   return (
-    <div className="flex flex-col h-screen bg-[#25293c]">
+    <div className="flex flex-col h-screen bg-body">
       {/* Header */}
-      <div className="bg-[#2f3349] p-4 border-b border-gray-700">
+      <div className="bg-card p-4 border-b border-gray-700">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <Button
@@ -376,7 +376,7 @@ export function ChatView() {
             </Button>
 
             <Avatar className="h-10 w-10 shrink-0">
-              <AvatarFallback className="bg-indigo-600 text-white">
+              <AvatarFallback className="bg-primary">
                 {getInitials(conversation.contactName)}
               </AvatarFallback>
             </Avatar>
@@ -416,21 +416,7 @@ export function ChatView() {
           </div>
         </div>
 
-        {/* Assignment */}
-        <div className="mt-3">
-          <Select value={assignedAgent} onValueChange={setAssignedAgent}>
-            <SelectTrigger className="bg-[#25293c] border-gray-600 text-white">
-              <SelectValue placeholder="Asignar a un agente" />
-            </SelectTrigger>
-            <SelectContent>
-              {agents.map((agent) => (
-                <SelectItem key={agent.id} value={agent.name}>
-                  {agent.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        
       </div>
 
       {/* Messages */}
@@ -444,7 +430,7 @@ export function ChatView() {
           <div key={date}>
             {/* Date separator */}
             <div className="flex items-center justify-center mb-4">
-              <div className="bg-[#2f3349] px-3 py-1 rounded-full">
+              <div className="bg-card px-3 py-1 rounded-full">
                 <span className="text-xs text-gray-400">{date}</span>
               </div>
             </div>
@@ -463,8 +449,8 @@ export function ChatView() {
                       <div
                         className={`rounded-2xl px-4 py-2 w-fit ${
                           isAgent
-                            ? 'bg-primary text-white'
-                            : 'bg-[#2f3349] text-white'
+                            ? 'bg-primary'
+                            : 'bg-card text-white'
                         }`}
                       >
                         <p className="text-sm break-words">{message.content}</p>
@@ -490,9 +476,9 @@ export function ChatView() {
       </div>
 
       {/* Input */}
-      <div className="bg-[#2f3349] p-4 border-t border-gray-700">
+      <div className="bg-card p-4 border-t border-gray-700">
         {showEmojiPicker && (
-          <div className="mb-3 bg-[#25293c] border border-gray-600 rounded-lg p-2 grid grid-cols-8 gap-2">
+          <div className="mb-3 bg-body border border-gray-600 rounded-lg p-2 grid grid-cols-8 gap-2">
             {quickEmojis.map((emoji) => (
               <button
                 key={emoji}
@@ -512,7 +498,7 @@ export function ChatView() {
               <button
                 key={`${file.name}-${index}`}
                 onClick={() => removeAttachedFile(index)}
-                className="text-xs px-2 py-1 rounded-full bg-[#25293c] border border-gray-600 text-gray-300 hover:bg-gray-700"
+                className="text-xs px-2 py-1 rounded-full bg-body border border-gray-600 text-gray-300 hover:bg-gray-700"
                 type="button"
               >
                 {file.name} ×
@@ -540,7 +526,7 @@ export function ChatView() {
             onChange={handleAttachFiles}
           />
 
-          <div className="flex-1 bg-[#25293c] rounded-lg border border-gray-600 px-4 py-2">
+          <div className="flex-1 bg-body rounded-lg border border-gray-600 px-4 py-2">
             <Input
               placeholder="Escribe un mensaje..."
               value={newMessage}

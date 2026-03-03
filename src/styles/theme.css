@@ -2,9 +2,9 @@
 
 :root {
   --font-size: 16px;
-  --background: #ffffff;
+  --background: #f8f7fa;
   --foreground: oklch(0.145 0 0);
-  --card: #ffffff;
+  --card: #fff;
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
@@ -39,6 +39,20 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --success: #318f39;
+  --success-foreground: #25d333a9;
+  --info: #3b82f6;
+  --info-foreground: #3b82f660;
+  --warning: #facc15;
+  --warning-foreground: #facc1560;
+  --danger: #ef4444;
+  --danger-foreground: #ef444460;
+  --secondary: #656568;
+  --secondary-foreground: #0f0f0f7c;
+  --color-gray-700: #a9acaf;
+  --color-gray-400: #61666b;
+  --color-gray-300: #404666;
+  --color-gray-200: #404666;
 }
 
 .dark {
@@ -84,6 +98,10 @@
   --danger-foreground: #ef444460;
   --secondary: #656568;
   --secondary-foreground: #0f0f0f7c;
+  --color-gray-700: #404666;
+  --color-gray-400: #d3d9df;
+  --color-gray-300: #d5d7e0;
+  --color-gray-200: #d5d7e0;
 }
 
 @theme inline {
@@ -180,19 +198,44 @@
     font-weight: var(--font-weight-medium);
     line-height: 1.5;
   }
-
   input {
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
   }
+  input:focus {
+    background: var(--bg-body) !important;
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 1px var(--primary) !important;
+  }
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 1000px var(--bg-body) inset !important;
+    box-shadow: 0 0 0 1000px var(--bg-body) inset !important;
+    -webkit-text-fill-color: var(--bs-body-color) !important;
+    border-color: var(--primary) !important;
+    transition: background-color 9999s ease-in-out 0s;
+  }
+  input:focus,
+  input:-webkit-autofill:focus {
+    background: var(--bg-body) !important;
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 1px var(--primary) !important;
+  }
   .bg-primary{
-    background: #7367f0 !important;
+    background: var(--primary) !important;
     color: #fff !important;
   }
-  .text-primary{
-    color: #7367f0 !important;
+  .hover\:bg-primary:hover {
+    opacity: 0.8 !important;
+    cursor: pointer;
   }
+  .text-primary{
+    color: var(--primary) !important;
+  }
+  
   .bg-body{
     background: var(--background) !important;
   }
@@ -223,5 +266,18 @@
     color: #fff !important;
     background: var(--primary-foreground);
     opacity: 0.7 !important;
+  }
+  .hover\:bg-gray-700:hover {
+    background: #443c9985 !important;
+    color: #fff !important;
+  }
+  .text-white{
+    color: var(--color-gray-400) !important;
+  }
+  .text-gray-300{
+    color: var(--color-gray-300) !important;
+  }
+  .text-gray-200{
+    color: var(--color-gray-200) !important;
   }
 }

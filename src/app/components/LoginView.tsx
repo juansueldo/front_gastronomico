@@ -69,7 +69,7 @@ export function LoginView() {
   };
 
   return (
-    <div className="h-screen bg-[#25293c] flex items-center justify-center p-4">
+    <div className="h-screen bg-body flex items-center justify-center p-4">
       <Toaster />
       <div className="w-full max-w-sm mx-auto">
         {/* Logo */}
@@ -89,7 +89,7 @@ export function LoginView() {
                 placeholder="Ingrese su nombre de usuario"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="pl-10 bg-[#23264a] border border-[#3c4060] text-white"
+                className="pl-10 bg-body border border-[#3c4060] text-white"
                 disabled={isLoading}
               />
               <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -104,7 +104,7 @@ export function LoginView() {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="pl-10 pr-10 bg-[#23264a] border border-[#3c4060] text-white"
+                className="pl-10 pr-10 bg-body border border-[#3c4060] text-white"
                 disabled={isLoading}
               />
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -127,11 +127,11 @@ export function LoginView() {
               id="remember"
               checked={rememberMe}
               onChange={(event) => setRememberMe(event.target.checked)}
-              className="w-4 h-4 rounded border-gray-600 bg-[#23264a] text-indigo-600 focus:ring-indigo-600"
+              className="w-4 h-4 rounded border-gray-600 bg-body text-indigo-600 focus:ring-indigo-600"
             />
             <label htmlFor="remember" className="text-sm text-gray-400">Recuérdame por 30 días</label>
           </div>
-          <Button type="submit" className="w-full bg-[#6c63ff] hover:bg-[#554fd8] text-white font-semibold text-base py-2 rounded-lg" disabled={isLoading}>
+          <Button type="submit" className="w-full bg-primary hover:bg-primary font-semibold text-base py-2 rounded-lg" disabled={isLoading}>
             {isLoading ? 'Iniciando sesión...' : 'Iniciar sesión'}
           </Button>
         </form>

@@ -37,7 +37,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="size-full dark">
+    <div className="size-full">
       <Toaster />
       <RouterProvider router={router} />
     </div>

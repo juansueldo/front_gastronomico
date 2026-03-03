@@ -462,7 +462,7 @@ export function ConversationList() {
   };
 
   const renderSidebar = () => (
-    <div className="flex flex-col h-full bg-[#2f3349] text-white">
+    <div className="flex flex-col h-full bg-card">
       <div className="p-4 space-y-4 mt-6">
         <Button className="w-full" onClick={() => setShowNewChatModal(true)}>
           <MessageSquarePlus className="mr-2 h-4 w-4" />
@@ -476,7 +476,7 @@ export function ConversationList() {
               <button
                 key={filter.id}
                 onClick={() => setSelectedFilter(filter.id)}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
+                className={`w-full flex items-center text-gray-400 justify-between px-3 py-2 rounded-lg transition-colors ${
                   selectedFilter === filter.id
                     ? 'bg-primary'
                     : 'hover:bg-gray-700'
@@ -512,7 +512,7 @@ export function ConversationList() {
         </div>
         {/* Nuevo Chat Modal */}
         <Dialog open={showNewChatModal} onOpenChange={setShowNewChatModal}>
-          <DialogContent className="bg-[#2f3349] text-white border-gray-700 max-w-md">
+          <DialogContent className="bg-card border-gray-700 max-w-md">
             <DialogHeader>
               <DialogTitle>Nuevo Chat</DialogTitle>
             </DialogHeader>
@@ -520,7 +520,7 @@ export function ConversationList() {
               <div>
                 <Label className="text-gray-300">Instancia</Label>
                 <Select value={selectedInstance} onValueChange={setSelectedInstance}>
-                  <SelectTrigger className="bg-[#25293c] border-gray-600 text-white mt-2">
+                  <SelectTrigger className="bg-body border-gray-600 text-white mt-2">
                     <SelectValue placeholder="Selecciona una instancia" />
                   </SelectTrigger>
                   <SelectContent>
@@ -539,7 +539,7 @@ export function ConversationList() {
                   placeholder="Ej: Juan Pérez"
                   value={contactName}
                   onChange={(e) => setContactName(e.target.value)}
-                  className="bg-[#25293c] border-gray-600 text-white mt-2"
+                  className="bg-body border-gray-600 text-white mt-2"
                 />
               </div>
               <div>
@@ -549,13 +549,13 @@ export function ConversationList() {
                   placeholder="Ej: +54 9 11 1234-5678"
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
-                  className="bg-[#25293c] border-gray-600 text-white mt-2"
+                  className="bg-body border-gray-600 text-white mt-2"
                 />
               </div>
               <div>
                 <Label className="text-gray-300">O seleccionar contacto existente</Label>
                 <Select value={selectedContactId} onValueChange={setSelectedContactId}>
-                  <SelectTrigger className="bg-[#25293c] border-gray-600 text-white mt-2">
+                  <SelectTrigger className="bg-body border-gray-600 text-white mt-2">
                     <SelectValue placeholder="Selecciona un contacto" />
                   </SelectTrigger>
                   <SelectContent>
@@ -577,12 +577,12 @@ export function ConversationList() {
   );
 
   return (
-    <div className="flex h-full bg-[#25293c]">
+    <div className="flex h-full bg-body">
       <Toaster />
 
       {/* Context Menu Dialog */}
       <Dialog open={!!contextMenuConv} onOpenChange={() => setContextMenuConv(null)}>
-        <DialogContent className="bg-[#2f3349] text-white border-gray-700">
+        <DialogContent className="bg-card border-gray-700">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>Opciones de conversación</span>
@@ -627,7 +627,7 @@ export function ConversationList() {
 
       {/* Assign User Dialog */}
       <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
-        <DialogContent className="bg-[#2f3349] text-white border-gray-700">
+        <DialogContent className="bg-card border-gray-700">
           <DialogHeader>
             <DialogTitle>Asignar conversación</DialogTitle>
           </DialogHeader>
@@ -635,7 +635,7 @@ export function ConversationList() {
             <div>
               <Label className="text-gray-300">Selecciona un agente</Label>
               <Select value={tempAssignedAgent} onValueChange={setTempAssignedAgent}>
-                <SelectTrigger className="bg-[#25293c] border-gray-600 text-white mt-2">
+                <SelectTrigger className="bg-body border-gray-600  mt-2">
                   <SelectValue placeholder="Selecciona un agente" />
                 </SelectTrigger>
                 <SelectContent>
@@ -672,7 +672,7 @@ export function ConversationList() {
 
       {/* Add Label Dialog */}
       <Dialog open={showLabelDialog} onOpenChange={setShowLabelDialog}>
-        <DialogContent className="bg-[#2f3349] text-white border-gray-700">
+        <DialogContent className="bg-card border-gray-700">
           <DialogHeader>
             <DialogTitle>Agregar etiqueta</DialogTitle>
           </DialogHeader>
@@ -680,7 +680,7 @@ export function ConversationList() {
             <div>
               <Label className="text-gray-300">Selecciona una etiqueta</Label>
               <Select value={tempLabel} onValueChange={setTempLabel}>
-                <SelectTrigger className="bg-[#25293c] border-gray-600 text-white mt-2">
+                <SelectTrigger className="bg-body border-gray-600 text-white mt-2">
                   <SelectValue placeholder="Selecciona una etiqueta" />
                 </SelectTrigger>
                 <SelectContent>
@@ -726,7 +726,7 @@ export function ConversationList() {
       {/* Main content */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <div className="bg-[#2f3349] p-4 space-y-3">
+        <div className="bg-card p-4 space-y-3">
           <div className="flex items-center gap-2">
             {/* Mobile menu */}
             <Sheet>
@@ -735,7 +735,7 @@ export function ConversationList() {
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-64 p-0 bg-[#2f3349]">
+              <SheetContent side="left" className="w-64 p-0 bg-card">
                 {renderSidebar()}
               </SheetContent>
             </Sheet>
@@ -746,7 +746,7 @@ export function ConversationList() {
                 placeholder="Buscar chat"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 bg-[#25293c] border-gray-600 text-white placeholder:text-gray-400"
+                className="pl-10 bg-body border-gray-600 text-white placeholder:text-gray-400"
               />
             </div>
           </div>
@@ -772,11 +772,11 @@ export function ConversationList() {
                   onMouseDown={() => handleLongPressStart(conv)}
                   onMouseUp={handleLongPressEnd}
                   onMouseLeave={handleLongPressEnd}
-                  className="p-4 hover:bg-[#2f3349] cursor-pointer transition-colors select-none"
+                  className="p-4 hover:bg-card cursor-pointer transition-colors select-none"
                 >
                   <div className="flex items-start gap-3">
                     <Avatar className="h-12 w-12">
-                      <AvatarFallback className="bg-indigo-600 text-white">
+                      <AvatarFallback className="bg-primary">
                         {getInitials(conv.contactName)}
                       </AvatarFallback>
                     </Avatar>
@@ -807,7 +807,7 @@ export function ConversationList() {
                           </Badge>
                         )}
                         {conv.instance_description && (
-                          <Badge variant="secondary" className="bg-label-success text-white text-xs">
+                          <Badge variant="secondary" className="bg-label-success text-xs">
                             {conv.instance_description}
                           </Badge>
                         )}

@@ -339,7 +339,7 @@ export function ConnectionsView() {
   };
 
   return (
-    <div className="h-full bg-[#25293c] overflow-y-auto">
+    <div className="h-full bg-body overflow-y-auto">
       <Toaster />
       <div className="p-4 md:p-6 max-w-4xl mx-auto pb-20">
         <div className="mb-6">
@@ -347,7 +347,7 @@ export function ConnectionsView() {
           <p className="text-gray-400 text-sm">Consulta y administra tus conexiones</p>
         </div>
 
-        <div className="bg-[#2f3349] rounded-lg p-6">
+        <div className="bg-card rounded-lg p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <h2 className="text-white font-medium flex items-center gap-2">
               <Link2 className="h-5 w-5" />
@@ -373,7 +373,7 @@ export function ConnectionsView() {
               </TableHeader>
               <TableBody>
                 {connections.map((connection) => (
-                  <TableRow key={connection.id} className="border-gray-700 hover:bg-[#25293c]">
+                  <TableRow key={connection.id} className="border-gray-700 hover:bg-body">
                     <TableCell className="text-white font-medium">{connection.description}</TableCell>
                     <TableCell className="text-gray-300 uppercase">{connection.network_name}</TableCell>
                     <TableCell className="text-gray-300 max-w-[360px] truncate">{connection.phone}</TableCell>
@@ -405,7 +405,7 @@ export function ConnectionsView() {
         </div>
 
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <DialogContent className="bg-[#2f3349] text-white border-gray-700 max-w-lg">
+          <DialogContent className="bg-card text-white border-gray-700 max-w-lg">
             <DialogHeader>
               <DialogTitle>{editingConnectionId ? 'Editar conexión' : 'Agregar conexión'}</DialogTitle>
             </DialogHeader>
@@ -416,7 +416,7 @@ export function ConnectionsView() {
                 <Input
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
-                  className="bg-[#25293c] border-gray-600 text-white"
+                  className="bg-body border-gray-600 text-white"
                   placeholder="Instancia principal"
                   disabled={isSaving}
                 />
@@ -425,7 +425,7 @@ export function ConnectionsView() {
               <div>
                 <Label className="text-gray-300">Network</Label>
                 <Select value={network} onValueChange={setNetwork}>
-                  <SelectTrigger className="bg-[#25293c] border-gray-600 text-white" disabled={isSaving}>
+                  <SelectTrigger className="bg-body border-gray-600 text-white" disabled={isSaving}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -443,7 +443,7 @@ export function ConnectionsView() {
                 <Input
                   value={phone}
                   onChange={(event) => setPhone(event.target.value)}
-                  className="bg-[#25293c] border-gray-600 text-white"
+                  className="bg-body border-gray-600 text-white"
                   placeholder="54911..."
                   disabled={isSaving}
                 />

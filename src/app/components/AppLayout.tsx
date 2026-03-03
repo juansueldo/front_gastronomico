@@ -76,11 +76,11 @@ export function AppLayout({ children }: AppLayoutProps) {
             <div className="flex items-center gap-3">
               <div className="relative">
                 <Avatar className="h-12 w-12">
-                  <AvatarFallback className="bg-primary text-white">
+                  <AvatarFallback className="bg-primary">
                     {getInitials(loggedUser.firstname + ' ' + loggedUser.lastname)}
                   </AvatarFallback>
                 </Avatar>
-                <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#2f3349] ${statusColors[loggedUser.status ?? 'offline']}`} />
+                <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-card ${statusColors[loggedUser.status ?? 'active']}`} />
               </div>
               <div className="hidden lg:block flex-1 min-w-0">
                 <h3 className="text-white font-medium truncate">{loggedUser.firstname} {loggedUser.lastname}</h3>
@@ -101,7 +101,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 onClick={() => navigate(item.path)}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                   active
-                    ? 'bg-primary text-white'
+                    ? 'bg-primary'
                     : 'text-gray-400 hover:bg-gray-700 hover:text-white'
                 }`}
               >
@@ -131,7 +131,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         </div>
 
         {/* Mobile Bottom Navigation */}
-        <div className="md:hidden bg-[#2f3349] border-t border-gray-700 safe-area-bottom">
+        <div className="md:hidden bg-card border-t border-gray-700 safe-area-bottom">
           <div className="grid grid-cols-5 gap-1 px-2 py-3">
             {mobilePrimaryItems.map((item) => {
               const Icon = item.icon;
@@ -166,7 +166,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </button>
               </SheetTrigger>
 
-              <SheetContent side="bottom" className="bg-[#2f3349] border-gray-700 text-white">
+              <SheetContent side="bottom" className="bg-card border-gray-700 text-white">
                 <SheetHeader>
                   <SheetTitle className="text-white">Más opciones</SheetTitle>
                 </SheetHeader>
