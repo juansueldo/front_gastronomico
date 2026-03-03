@@ -40,6 +40,9 @@ interface ContactApiItem {
   label?: number;
   last_message?: string | null;
   last_message_date?: string | null;
+  instance_id?: number | string;
+  instance_description?: string;
+  network?: string;
 }
 
 const API_URL = import.meta.env?.VITE_API_URL;
@@ -52,10 +55,18 @@ const statusByLabel: Record<number, Conversation['status']> = {
   5: 'deleted',
 };
 
-function mapContactToConversation(contact: ContactApiItem): Conversation {
+function mapContactToConversation(
+  contact: ContactApiItem,
+  getInstanceDescription?: (instanceId?: number | string) => string | undefined,
+): Conversation {
   const labelValue = Number(contact.label);
   const mappedStatus = statusByLabel[labelValue] ?? 'draft';
   const parsedDate = contact.last_message_date ? new Date(contact.last_message_date) : new Date();
+  const resolvedInstanceDescription =
+    contact.instance_description ||
+    getInstanceDescription?.(contact.instance_id) ||
+    contact.network ||
+    'whatsapp';
 
   return {
     id: String(contact.id),
@@ -65,14 +76,14 @@ function mapContactToConversation(contact: ContactApiItem): Conversation {
     timestamp: Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate,
     unreadCount: mappedStatus === 'new' ? 1 : 0,
     status: mappedStatus,
-    instance_description: 'whatsapp',
+    instance_description: resolvedInstanceDescription,
   };
 }
 
 const statusFilters = [
   { id: 'all', label: 'Todos', icon: null },
-  { id: 'new', label: 'Nuevos', icon: MessageSquarePlus, count: 3 },
-  { id: 'assigned', label: 'Asignados', icon: Filter, count: 4 },
+  { id: 'new', label: 'Nuevos', icon: MessageSquarePlus  },
+  { id: 'assigned', label: 'Asignados', icon: Filter },
   { id: 'starred', label: 'Destacados', icon: Star },
   { id: 'closed', label: 'Cerrados', icon: Archive },
   { id: 'deleted', label: 'Eliminados', icon: Trash2 },
@@ -202,6 +213,15 @@ export function ConversationList() {
   const [selectedContactId, setSelectedContactId] = useState('');
   const [contactName, setContactName] = useState('');
 
+  const getInstanceDescription = (instanceId?: number | string) => {
+    if (instanceId === undefined || instanceId === null || instanceId === '') {
+      return undefined;
+    }
+
+    const foundInstance = instances.find((instance) => String(instance.id) === String(instanceId));
+    return foundInstance?.description || foundInstance?.network;
+  };
+
   useEffect(() => {
     const handleNewMessage = (event: Event) => {
       const customEvent = event as CustomEvent<AppNewMessageDetail>;
@@ -220,7 +240,7 @@ export function ConversationList() {
             timestamp: Number.isNaN(now.getTime()) ? new Date() : now,
             unreadCount: payload.sender === 'contact' ? 1 : 0,
             status: 'new',
-            channel: payload.channel ?? 'whatsapp',
+            instance_description: payload.channel ?? 'whatsapp',
           };
 
           return [newConversation, ...prev];
@@ -231,7 +251,7 @@ export function ConversationList() {
           lastMessage: payload.content,
           timestamp: Number.isNaN(now.getTime()) ? new Date() : now,
           unreadCount: payload.sender === 'contact' ? existing.unreadCount + 1 : existing.unreadCount,
-          channel: payload.channel ?? existing.channel,
+          instance_description: payload.channel ?? existing.instance_description,
         };
 
         return [updatedConversation, ...prev.filter((conversation) => conversation.id !== existing.id)];
@@ -309,14 +329,14 @@ export function ConversationList() {
 
         const data = await response.json();
         const parsedContacts: ContactApiItem[] = Array.isArray(data) ? data : [];
-        setConversationItems(parsedContacts.map(mapContactToConversation));
+        setConversationItems(parsedContacts.map((contact) => mapContactToConversation(contact, getInstanceDescription)));
       } catch {
         toast.error('No se pudieron cargar los contactos');
       }
     };
 
     void loadContacts();
-  }, []);
+  }, [instances]);
 
   useEffect(() => {
     if (!selectedContactId || selectedContactId === 'none') {
@@ -416,7 +436,7 @@ export function ConversationList() {
         timestamp: new Date(),
         unreadCount: 0,
         status: 'assigned',
-        channel: 'whatsapp',
+        instance_description: getInstanceDescription(selectedInstance) || 'whatsapp',
       };
 
       setConversationItems((prev) => [newConversation, ...prev]);
@@ -731,19 +751,7 @@ export function ConversationList() {
             </div>
           </div>
 
-          <Select value={selectedAgent} onValueChange={setSelectedAgent}>
-            <SelectTrigger className="bg-[#25293c] border-gray-600 text-white">
-              <SelectValue placeholder="Asignar a:" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los agentes</SelectItem>
-              {agents.map((agent) => (
-                <SelectItem key={agent.id} value={agent.name}>
-                  {agent.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+         
         </div>
 
         {/* Conversations list */}

@@ -47,10 +47,6 @@ export interface Conversation {
 }
 
 export const agents: User[] = [
-  { id: '1', name: 'Dweb Widget_ES_F', avatar: '' },
-  { id: '2', name: 'Dweb Widget_PT', avatar: '' },
-  { id: '3', name: 'Ana García', avatar: '' },
-  { id: '4', name: 'Carlos Ruiz', avatar: '' },
 ];
 
 

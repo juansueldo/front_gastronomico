@@ -38,7 +38,7 @@ interface ChatConversation {
   contactName: string;
   contactAvatar: string;
   lastMessage: string;
-  timestamp: Date;
+  created_at: Date;
   unreadCount: number;
   status: 'new' | 'assigned' | 'starred' | 'closed' | 'deleted' | 'draft';
   assignedTo?: string;
@@ -51,7 +51,7 @@ const SEND_MESSAGE_PATH = (import.meta as ChatImportMeta).env?.VITE_SEND_MESSAGE
 interface ApiMessageItem {
   id?: number | string;
   contact_id?: number | string;
-  sender?: string;
+  direction?: 'o' | 'i';
   content?: string;
   message?: string;
   text?: string;
@@ -158,7 +158,8 @@ export function ChatView() {
           return {
             id: String(messageItem.id ?? `${id}-${index}`),
             conversationId: String(messageItem.contact_id ?? id),
-            sender: messageItem.sender === 'agent' || messageItem.sender === 'user' ? 'agent' : 'contact',
+            direction: messageItem.direction,
+            sender: messageItem.direction === 'o' ? 'agent' : 'contact',
             content: messageItem.content ?? messageItem.message ?? messageItem.text ?? '',
             timestamp: normalizedDate,
           };
@@ -200,7 +201,7 @@ export function ChatView() {
         const nextMessage: Message = {
           id: payload.messageId,
           conversationId: payload.conversationId,
-          sender: payload.sender,
+          direction: payload.direction,
           content: payload.content,
           timestamp: normalizedDate,
         };
@@ -253,7 +254,7 @@ export function ChatView() {
     const message: Message = {
       id: messageId,
       conversationId: id || '',
-      sender: 'agent',
+      direction: 'o',
       content: fullContent,
       timestamp: new Date(),
     };
