@@ -72,11 +72,15 @@ function mapContactToConversation(
     id: String(contact.id),
     contactName: contact.name || contact.phone || `Contacto ${contact.id}`,
     contactAvatar: '',
+    phone: contact.phone || '',
     lastMessage: contact.last_message || 'Sin mensajes',
     timestamp: Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate,
     unreadCount: mappedStatus === 'new' ? 1 : 0,
     status: mappedStatus,
     instance_description: resolvedInstanceDescription,
+    instanceId: contact.instance_id !== undefined && contact.instance_id !== null
+      ? String(contact.instance_id)
+      : undefined,
   };
 }
 
@@ -158,9 +162,15 @@ export function ConversationList() {
 
   const handleConversationClick = (conv: Conversation) => {
     if (!contextMenuConv) {
-      navigate(`/chat/${conv.id}`, {
+      const chatPath = conv.instanceId
+        ? `/chat/${conv.id}?instanceId=${encodeURIComponent(conv.instanceId)}`
+        : `/chat/${conv.id}`;
+
+      navigate(chatPath, {
         state: {
           contactName: conv.contactName,
+          phone: conv.phone,
+          instanceId: conv.instanceId,
           //channel: conv.channel,
         },
       });
@@ -367,10 +377,15 @@ export function ConversationList() {
       setPhone('');
       setContactName('');
       setSelectedContactId('none');
-      navigate(`/chat/${selectedConversation.id}`, {
+      const selectedChatPath = selectedConversation.instanceId
+        ? `/chat/${selectedConversation.id}?instanceId=${encodeURIComponent(selectedConversation.instanceId)}`
+        : `/chat/${selectedConversation.id}`;
+
+      navigate(selectedChatPath, {
         state: {
           contactName: selectedConversation.contactName,
-          channel: selectedConversation.channel,
+          phone: selectedConversation.phone,
+          instanceId: selectedConversation.instanceId,
         },
       });
       return;
@@ -432,11 +447,13 @@ export function ConversationList() {
         id: newConversationId,
         contactName: contactName.trim(),
         contactAvatar: '',
+        phone: phone.trim(),
         lastMessage: 'Chat iniciado',
         timestamp: new Date(),
         unreadCount: 0,
         status: 'assigned',
         instance_description: getInstanceDescription(selectedInstance) || 'whatsapp',
+        instanceId: selectedInstance,
       };
 
       setConversationItems((prev) => [newConversation, ...prev]);
@@ -448,10 +465,12 @@ export function ConversationList() {
       if (instances.length > 0) {
         setSelectedInstance(String(instances[0].id));
       }
-      navigate(`/chat/${newConversationId}`, {
+      navigate(`/chat/${newConversationId}?instanceId=${encodeURIComponent(selectedInstance)}`, {
         state: {
           contactName: contactName.trim(),
+          phone: phone.trim(),
           channel: 'whatsapp',
+          instanceId: selectedInstance,
         },
       });
     } catch {

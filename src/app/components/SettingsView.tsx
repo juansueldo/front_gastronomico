@@ -23,6 +23,9 @@ export function SettingsView() {
     desktopNotifications: false,
     soundEnabled: true,
   });
+  const [theme, setTheme] = useState<ThemePreference>('dark');
+  const [language, setLanguage] = useState('es');
+
   useEffect(() => {
     const storedUser = getLoggedUser() as Partial<AuthUser> | null;
     if (storedUser) {
@@ -31,8 +34,6 @@ export function SettingsView() {
 
     setTheme(getThemePreference());
   }, []);
-  const [theme, setTheme] = useState<ThemePreference>('dark');
-  const [language, setLanguage] = useState('es');
 
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -317,11 +318,11 @@ export function SettingsView() {
           {/* Logout Section */}
           <div className="bg-card rounded-lg p-6">
             <Button
-              variant="destructive"
+              variant="danger"
               className="w-full text-white"
               onClick={handleLogout}
             >
-              <LogOut className="h-4 w-4 mr-2 text-white" />
+              <LogOut className="h-4 w-4 mr-2" />
               Cerrar sesión
             </Button>
           </div>

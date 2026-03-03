@@ -37,6 +37,7 @@ export interface Conversation {
   id: string;
   contactName: string;
   contactAvatar: string;
+  phone?: string;
   lastMessage: string;
   timestamp: Date;
   unreadCount: number;
@@ -44,6 +45,7 @@ export interface Conversation {
   assignedTo?: string;
   label?: 'demorado' | 'escalado' | 'cancelado';
   instance_description: string;
+  instanceId?: string;
 }
 
 export const agents: User[] = [

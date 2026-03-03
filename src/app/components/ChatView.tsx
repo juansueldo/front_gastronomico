@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router';
-import { ArrowLeft, Send, Paperclip, Smile, MoreVertical, Star, Archive, Trash2, Check, CheckCheck } from 'lucide-react';
+import { ArrowLeft, Send, Paperclip, Smile, MoreVertical, Star, Archive, Trash2 } from 'lucide-react';
 import { conversations, messages as mockMessages, agents, type Message } from '../data/mockData';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Button } from './ui/button';
@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from './ui/select';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { APP_NEW_MESSAGE_EVENT, type AppNewMessageDetail } from '../pushNotifications';
 import { getAuthSession, getLoggedUser } from '../authStorage';
 import { toast } from 'sonner';
@@ -28,6 +29,7 @@ type ChatImportMeta = ImportMeta & {
   env: {
     VITE_API_URL?: string;
     VITE_SEND_MESSAGE_PATH?: string;
+    VITE_WHATSAPP_CONTACT_PATH?: string;
   };
 };
 
@@ -38,15 +40,19 @@ interface ChatConversation {
   contactName: string;
   contactAvatar: string;
   lastMessage: string;
+  phone?: string;
   created_at: Date;
   unreadCount: number;
   status: 'new' | 'assigned' | 'starred' | 'closed' | 'deleted' | 'draft';
   assignedTo?: string;
   channel: ChatChannel;
+  instanceId?: string;
 }
 
 const API_URL = (import.meta as ChatImportMeta).env?.VITE_API_URL;
 const SEND_MESSAGE_PATH = (import.meta as ChatImportMeta).env?.VITE_SEND_MESSAGE_PATH ?? '/messages/send';
+const WHATSAPP_CONTACT_PATH_TEMPLATE =
+  (import.meta as ChatImportMeta).env?.VITE_WHATSAPP_CONTACT_PATH ?? '/instance/:instanceId/whatsapp/contact/:phone';
 
 interface ApiMessageItem {
   id?: number | string;
@@ -55,7 +61,7 @@ interface ApiMessageItem {
   content?: string;
   message?: string;
   text?: string;
-  created_at?: string;
+  created_at?: Date;
   timestamp?: string;
   date?: string;
 }
@@ -79,6 +85,17 @@ export function ChatView() {
 
   const routeContactName = (location.state as { contactName?: string } | null)?.contactName;
   const routeChannel = (location.state as { channel?: ChatChannel } | null)?.channel;
+  const routePhone = (location.state as { phone?: string } | null)?.phone;
+  const routeInstanceId = (location.state as { instanceId?: string | number } | null)?.instanceId;
+  const queryPhone = new URLSearchParams(location.search).get('phone');
+  const queryInstanceId = new URLSearchParams(location.search).get('instanceId');
+  const storageInstanceId = id ? window.sessionStorage.getItem(`chat:instance:${id}`) : null;
+  const storagePhone = id ? window.sessionStorage.getItem(`chat:phone:${id}`) : null;
+  const resolvedInstanceId =
+    routeInstanceId !== undefined && routeInstanceId !== null
+      ? String(routeInstanceId)
+      : queryInstanceId || storageInstanceId || undefined;
+  const resolvedPhone = routePhone ?? queryPhone ?? storagePhone ?? '';
 
   const mockConversation = conversations.find((c) => c.id === id) as (ChatConversation | undefined);
   const conversation =
@@ -89,23 +106,44 @@ export function ChatView() {
           contactName: routeContactName ?? 'Nuevo contacto',
           contactAvatar: '',
           lastMessage: '',
+          phone: resolvedPhone,
           timestamp: new Date(),
           unreadCount: 0,
           status: 'new' as const,
+          assignedTo: '',
           channel: routeChannel ?? 'whatsapp',
+          instanceId: resolvedInstanceId,
         }
       : undefined);
   const [messages, setMessages] = useState<Message[]>(mockMessages[id || ''] || []);
-  // Simular estado de mensaje: 'sent', 'delivered', 'read'
-  const [messageStatus, setMessageStatus] = useState<Record<string, 'sent' | 'delivered' | 'read'>>({});
   const [newMessage, setNewMessage] = useState('');
   const [assignedAgent, setAssignedAgent] = useState(conversation?.assignedTo || '');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [isLoadingContactData, setIsLoadingContactData] = useState(false);
+  const [isContactDialogOpen, setIsContactDialogOpen] = useState(false);
+  const [contactData, setContactData] = useState<unknown>(null);
+  const [contactPhone, setContactPhone] = useState(conversation?.phone ?? resolvedPhone);
 
   const quickEmojis = ['😀', '😂', '😍', '🙏', '👍', '🎉', '❤️', '🤖'];
+
+  useEffect(() => {
+    if (!id || !resolvedInstanceId) {
+      return;
+    }
+
+    window.sessionStorage.setItem(`chat:instance:${id}`, resolvedInstanceId);
+  }, [id, resolvedInstanceId]);
+
+  useEffect(() => {
+    if (!id || !contactPhone?.trim()) {
+      return;
+    }
+
+    window.sessionStorage.setItem(`chat:phone:${id}`, contactPhone.trim());
+  }, [id, contactPhone]);
 
   useEffect(() => {
     const loadMessages = async () => {
@@ -149,6 +187,9 @@ export function ChatView() {
         }
 
         const data = (await response.json()) as ApiMessagesResponse;
+        if (data?.contact?.phone) {
+          setContactPhone(String(data.contact.phone));
+        }
         const apiMessages = Array.isArray(data.messages) ? data.messages : [];
         const mappedMessages: Message[] = apiMessages.map((messageItem, index) => {
         const rawTimestamp = messageItem.created_at ?? messageItem.timestamp ?? messageItem.date;
@@ -158,7 +199,6 @@ export function ChatView() {
           return {
             id: String(messageItem.id ?? `${id}-${index}`),
             conversationId: String(messageItem.contact_id ?? id),
-            direction: messageItem.direction,
             sender: messageItem.direction === 'o' ? 'agent' : 'contact',
             content: messageItem.content ?? messageItem.message ?? messageItem.text ?? '',
             timestamp: normalizedDate,
@@ -201,7 +241,7 @@ export function ChatView() {
         const nextMessage: Message = {
           id: payload.messageId,
           conversationId: payload.conversationId,
-          direction: payload.direction,
+          sender: payload.sender,
           content: payload.content,
           timestamp: normalizedDate,
         };
@@ -250,18 +290,7 @@ export function ChatView() {
       ? attachedFiles.map((file) => `📎 ${file.name}`).join('\n')
       : '';
     const fullContent = [cleanedMessage, attachmentText].filter(Boolean).join('\n\n');
-    const messageId = `m${Date.now()}`;
-    const message: Message = {
-      id: messageId,
-      conversationId: id || '',
-      direction: 'o',
-      content: fullContent,
-      timestamp: new Date(),
-    };
-
     setIsSending(true);
-    setMessages([...messages, message]);
-    setMessageStatus((prev) => ({ ...prev, [messageId]: 'sent' }));
     setNewMessage('');
     setAttachedFiles([]);
     setShowEmojiPicker(false);
@@ -284,14 +313,8 @@ export function ChatView() {
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
         toast.error(errorData?.detail || 'No se pudo enviar el mensaje');
-        setMessageStatus((prev) => ({ ...prev, [messageId]: 'sent' }));
         return;
       }
-
-      setMessageStatus((prev) => ({ ...prev, [messageId]: 'delivered' }));
-      setTimeout(() => {
-        setMessageStatus((prev) => ({ ...prev, [messageId]: 'read' }));
-      }, 600);
     } catch {
       toast.error('No se pudo conectar al servidor');
     } finally {
@@ -323,6 +346,77 @@ export function ChatView() {
 
   const addEmoji = (emoji: string) => {
     setNewMessage((prev) => `${prev}${emoji}`);
+  };
+
+  const buildWhatsappContactPath = (instanceId: string, phone?: string) => {
+    let nextPath = WHATSAPP_CONTACT_PATH_TEMPLATE;
+    if (nextPath.includes(':instanceId')) {
+      nextPath = nextPath.replace(':instanceId', encodeURIComponent(instanceId));
+    }
+
+    if (nextPath.includes(':phone')) {
+      nextPath = nextPath.replace(':phone', encodeURIComponent(phone ?? ''));
+      return nextPath;
+    }
+
+    if (nextPath !== WHATSAPP_CONTACT_PATH_TEMPLATE) {
+      return nextPath;
+    }
+
+    const normalizedTemplate = WHATSAPP_CONTACT_PATH_TEMPLATE.endsWith('/')
+      ? WHATSAPP_CONTACT_PATH_TEMPLATE.slice(0, -1)
+      : WHATSAPP_CONTACT_PATH_TEMPLATE;
+
+    return `${normalizedTemplate}/${encodeURIComponent(instanceId)}/whatsapp/contact/${encodeURIComponent(phone ?? '')}`;
+  };
+
+  const handleLoadWhatsappContactData = async () => {
+    const instanceId = conversation.instanceId;
+    const phone = contactPhone?.trim() || '';
+    if (!instanceId) {
+      toast.error('No se encontró instanceId para esta conversación');
+      return;
+    }
+
+    if (!phone) {
+      toast.error('No se encontró phone para esta conversación');
+      return;
+    }
+
+    if (!API_URL) {
+      toast.error('VITE_API_URL no está configurada');
+      return;
+    }
+
+    const authToken = getAuthSession()?.accessToken;
+    if (!authToken) {
+      toast.error('Tu sesión expiró. Inicia sesión nuevamente');
+      return;
+    }
+
+    setIsLoadingContactData(true);
+    try {
+      const response = await fetch(`${API_URL}${buildWhatsappContactPath(instanceId, phone)}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        toast.error(data?.error || data?.detail || 'No se pudieron obtener los datos del contacto');
+        return;
+      }
+
+      setContactData(data);
+      setIsContactDialogOpen(true);
+    } catch {
+      toast.error('No se pudo conectar al servidor');
+    } finally {
+      setIsLoadingContactData(false);
+    }
   };
 
   const formatTime = (date: Date) => {
@@ -386,19 +480,29 @@ export function ChatView() {
                 {conversation.contactName}
               </h2>
               <p className="text-xs text-gray-400">
-                {conversation.channel}
+                {conversation.phone}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="text-white">
+              <DropdownMenuTrigger className="inline-flex size-9 items-center justify-center rounded-md text-white hover:bg-accent hover:text-accent-foreground">
+                <span className="sr-only">Abrir menú</span>
+                <span aria-hidden="true">
                   <MoreVertical className="h-5 w-5" />
-                </Button>
+                </span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  disabled={isLoadingContactData}
+                  onSelect={() => {
+                    void handleLoadWhatsappContactData();
+                  }}
+                >
+                  <Star className="mr-2 h-4 w-4" />
+                  {isLoadingContactData ? 'Consultando contacto...' : 'Obtener datos del contacto'}
+                </DropdownMenuItem>
                 <DropdownMenuItem>
                   <Star className="mr-2 h-4 w-4" />
                   Destacar
@@ -439,7 +543,6 @@ export function ChatView() {
             <div className="space-y-3">
               {dateMessages.map((message) => {
                 const isAgent = message.sender === 'agent';
-                const status = isAgent ? messageStatus[message.id] : undefined;
                 return (
                   <div
                     key={message.id}
@@ -457,13 +560,6 @@ export function ChatView() {
                       </div>
                       <div className={`flex items-center gap-1 mt-1 ${isAgent ? 'justify-end' : 'justify-start'}`}>
                         <span className={`text-xs ${isAgent ? 'text-indigo-200' : 'text-gray-400'}`}>{formatTime(message.timestamp)}</span>
-                        {isAgent && (
-                          <span className="ml-1 flex items-center">
-                            {status === 'sent' && <Check className="h-4 w-4 text-indigo-300" />}
-                            {status === 'delivered' && <CheckCheck className="h-4 w-4 text-indigo-300" />}
-                            {status === 'read' && <CheckCheck className="h-4 w-4 text-green-400" />}
-                          </span>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -556,6 +652,24 @@ export function ChatView() {
           </Button>
         </div>
       </div>
+
+      <Dialog open={isContactDialogOpen} onOpenChange={setIsContactDialogOpen}>
+        <DialogContent className="bg-card text-white border-gray-700 max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Datos del contacto</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[55vh] overflow-auto rounded-md border border-gray-700 bg-body p-3">
+            <pre className="text-xs text-gray-200 whitespace-pre-wrap break-all">
+              {contactData ? JSON.stringify(contactData, null, 2) : 'Sin datos'}
+            </pre>
+          </div>
+          <DialogFooter>
+            <Button type="button" onClick={() => setIsContactDialogOpen(false)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

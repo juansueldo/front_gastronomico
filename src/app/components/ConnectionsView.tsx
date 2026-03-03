@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Link2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Link2, LogIn, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -42,10 +42,21 @@ interface InstanceApiItem {
   network_name?: string;
 }
 
+interface LoginInstanceResponse {
+  ok?: boolean;
+  instanceId?: number;
+  whatsapp?: {
+    status?: string;
+    qr?: string | null;
+  };
+  error?: string;
+}
+
 const API_URL = import.meta.env?.VITE_API_URL;
 const CREATE_INSTANCE_PATH = import.meta.env?.VITE_INSTANCE_CREATE_PATH ?? '/instance';
 const LIST_INSTANCES_PATH = import.meta.env?.VITE_INSTANCE_LIST_PATH ?? '/instance';
 const NETWORKS_PATH = import.meta.env?.VITE_NETWORKS_PATH ?? '/neworks';
+const LOGIN_INSTANCE_PATH_TEMPLATE = import.meta.env?.VITE_INSTANCE_LOGIN_PATH ?? '/instance/:instanceId/login';
 
 const defaultConnections: ConnectionItem[] = [];
 const defaultNetworkOptions: NetworkOption[] = [
@@ -65,6 +76,11 @@ export function ConnectionsView() {
   const [network, setNetwork] = useState(defaultNetworkOptions[0]?.value ?? '1');
   const [phone, setPhone] = useState('');
   const [networkOptions, setNetworkOptions] = useState<NetworkOption[]>(defaultNetworkOptions);
+  const [loggingInstanceId, setLoggingInstanceId] = useState<string | null>(null);
+  const [isQrDialogOpen, setIsQrDialogOpen] = useState(false);
+  const [qrValue, setQrValue] = useState<string | null>(null);
+  const [qrStatus, setQrStatus] = useState<string>('unknown');
+  const [qrConnectionName, setQrConnectionName] = useState<string>('');
 
   useEffect(() => {
     const loadInstances = async () => {
@@ -283,10 +299,14 @@ export function ConnectionsView() {
         }
 
         const data = await response.json();
+        const selectedNetworkLabel = String(
+          networkOptions.find((option) => option.value === network)?.label ?? network,
+        );
         const newConnection: ConnectionItem = {
           id: String(data.instanceId ?? crypto.randomUUID()),
           description: normalizedDescription,
           network,
+          network_name: selectedNetworkLabel,
           phone: normalizedPhone,
         };
 
@@ -338,6 +358,89 @@ export function ConnectionsView() {
     toast.success('Conexión eliminada');
   };
 
+  const isWhatsappConnection = (connection: ConnectionItem) => {
+    const networkLabel = String(connection.network_name ?? '').toLowerCase();
+    return networkLabel.includes('whatsapp');
+  };
+
+  const buildLoginPath = (instanceId: string) => {
+    if (LOGIN_INSTANCE_PATH_TEMPLATE.includes(':instanceId')) {
+      return LOGIN_INSTANCE_PATH_TEMPLATE.replace(':instanceId', encodeURIComponent(instanceId));
+    }
+
+    const normalizedTemplate = LOGIN_INSTANCE_PATH_TEMPLATE.endsWith('/')
+      ? LOGIN_INSTANCE_PATH_TEMPLATE.slice(0, -1)
+      : LOGIN_INSTANCE_PATH_TEMPLATE;
+
+    return `${normalizedTemplate}/${encodeURIComponent(instanceId)}/login`;
+  };
+
+  const getQrImageSrc = (qr: string) => {
+    const normalized = qr.trim();
+
+    if (!normalized) {
+      return null;
+    }
+
+    if (normalized.startsWith('data:image/')) {
+      return normalized;
+    }
+
+    const looksLikeBase64 = /^[A-Za-z0-9+/=\r\n]+$/.test(normalized) && normalized.length > 100;
+    if (looksLikeBase64) {
+      return `data:image/png;base64,${normalized.replace(/\s+/g, '')}`;
+    }
+
+    return `https://api.qrserver.com/v1/create-qr-code/?size=512x512&data=${encodeURIComponent(normalized)}`;
+  };
+
+  const handleLoginInstance = async (connection: ConnectionItem) => {
+    if (!API_URL) {
+      toast.error('VITE_API_URL no está configurada');
+      return;
+    }
+
+    const authToken = getAuthSession()?.accessToken;
+    if (!authToken) {
+      toast.error('Tu sesión expiró. Inicia sesión nuevamente');
+      return;
+    }
+
+    setLoggingInstanceId(connection.id);
+    try {
+      const response = await fetch(`${API_URL}${buildLoginPath(connection.id)}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      const data: LoginInstanceResponse | null = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        toast.error(data?.error || 'No se pudo iniciar sesión de la instancia');
+        return;
+      }
+
+      const status = data?.whatsapp?.status ?? 'unknown';
+      const qr = data?.whatsapp?.qr ?? null;
+      const hasQr = Boolean(qr);
+
+      if (qr) {
+        setQrValue(qr);
+        setQrStatus(status);
+        setQrConnectionName(connection.description);
+        setIsQrDialogOpen(true);
+      }
+
+      toast.success(hasQr ? `Login iniciado. Estado: ${status}. QR disponible.` : `Login iniciado. Estado: ${status}.`);
+    } catch {
+      toast.error('No se pudo conectar al servidor');
+    } finally {
+      setLoggingInstanceId(null);
+    }
+  };
+
   return (
     <div className="h-full bg-body overflow-y-auto">
       <Toaster />
@@ -384,17 +487,26 @@ export function ConnectionsView() {
                           onClick={() => openEditModal(connection)}
                           className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
                         >
-                          <Pencil className="h-4 w-4 mr-2" />
-                          Editar
+                          <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="outline"
                           onClick={() => handleDeleteConnection(connection.id)}
                           className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
                         >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Eliminar
+                          <Trash2 className="h-4 w-4" />
                         </Button>
+                        {isWhatsappConnection(connection) ? (
+                          <Button
+                            variant="outline"
+                            onClick={() => handleLoginInstance(connection)}
+                            className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+                            disabled={loggingInstanceId === connection.id}
+                          >
+                            <LogIn className="h-4 w-4" />
+                           
+                          </Button>
+                        ) : null}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -467,6 +579,58 @@ export function ConnectionsView() {
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={isQrDialogOpen}
+          onOpenChange={(open) => {
+            setIsQrDialogOpen(open);
+            if (!open) {
+              setQrValue(null);
+              setQrStatus('unknown');
+              setQrConnectionName('');
+            }
+          }}
+        >
+          <DialogContent className="bg-card text-white border-gray-700 max-w-md">
+            <DialogHeader>
+              <DialogTitle>Escanea el QR de WhatsApp</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <p className="text-sm text-gray-300">
+                Instancia: <span className="font-medium text-white">{qrConnectionName || 'Sin nombre'}</span>
+              </p>
+              <p className="text-sm text-gray-300">
+                Estado: <span className="font-medium text-white uppercase">{qrStatus}</span>
+              </p>
+
+              {qrValue ? (
+                getQrImageSrc(qrValue) ? (
+                  <div className="rounded-md border border-gray-700 bg-white p-3">
+                    <img
+                      src={getQrImageSrc(qrValue) ?? ''}
+                      alt="QR de WhatsApp"
+                      className="w-full h-auto"
+                    />
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-gray-700 bg-body p-3">
+                    <p className="text-xs text-gray-300 mb-2">El backend devolvió un QR en formato texto:</p>
+                    <p className="text-xs break-all text-white">{qrValue}</p>
+                  </div>
+                )
+              ) : (
+                <p className="text-sm text-gray-300">No se recibió QR para esta instancia.</p>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button type="button" onClick={() => setIsQrDialogOpen(false)}>
+                Cerrar
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

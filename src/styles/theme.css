@@ -280,4 +280,12 @@
   .text-gray-200{
     color: var(--color-gray-200) !important;
   }
+  .bg-danger{
+    background: var(--danger) !important;
+    color: #fff !important;
+  }
+  .hover\:bg-danger:hover{
+    opacity: 0.9 !important;
+    cursor: pointer;
+  }
 }
