@@ -143,6 +143,35 @@ export function ConversationList() {
     return labelObj?.color || 'bg-gray-500';
   };
 
+  const avatarFallbackColors = [
+    'bg-label-primary',
+    'bg-label-info',
+    'bg-label-success',
+    'bg-label-danger',
+    'bg-label-warning',
+    'bg-label-secondary',
+  ];
+
+  const getAvatarFallbackClass = (contactId: string) => {
+    let hash = 0;
+
+    for (let i = 0; i < contactId.length; i += 1) {
+      hash = (hash << 5) - hash + contactId.charCodeAt(i);
+      hash |= 0;
+    }
+
+    const index = Math.abs(hash) % avatarFallbackColors.length;
+    return avatarFallbackColors[index];
+  };
+
+  const truncateMessage = (message: string, maxLength = 30) => {
+    if (message.length <= maxLength) {
+      return message;
+    }
+
+    return `${message.slice(0, maxLength)}...`;
+  };
+
   const handleLongPressStart = (conv: Conversation) => {
     longPressTimer.current = setTimeout(() => {
       setContextMenuConv(conv);
@@ -795,7 +824,7 @@ export function ConversationList() {
                 >
                   <div className="flex items-start gap-3">
                     <Avatar className="h-12 w-12">
-                      <AvatarFallback className="bg-primary">
+                      <AvatarFallback className={getAvatarFallbackClass(conv.id)}>
                         {getInitials(conv.contactName)}
                       </AvatarFallback>
                     </Avatar>
@@ -811,7 +840,7 @@ export function ConversationList() {
                       </div>
 
                       <p className="text-sm text-gray-400 truncate mb-2">
-                        {conv.lastMessage}
+                        {truncateMessage(conv.lastMessage)}
                       </p>
 
                       <div className="flex items-center gap-2 flex-wrap">
