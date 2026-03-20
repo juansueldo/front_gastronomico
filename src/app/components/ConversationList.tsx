@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Search, Filter, MessageSquarePlus, Star, Archive, Trash2, Edit, Menu, UserPlus, Tag, X } from 'lucide-react';
+import { Search, Filter, MessageSquarePlus, Star, Archive, Trash2, Edit, Menu, UserPlus, Tag, X, type LucideIcon } from 'lucide-react';
 import { conversations, agents, type Conversation } from '../data/mockData';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Input } from './ui/input';
@@ -24,28 +24,22 @@ import { Label } from './ui/label';
 import { toast } from 'sonner';
 import { Toaster } from './ui/sonner';
 import { APP_NEW_MESSAGE_EVENT, type AppNewMessageDetail } from '../pushNotifications';
-import { getAuthSession, getLoggedUser } from '../authStorage';
+import { getLoggedUser } from '../authStorage';
+import { ApiError, createContact, listContacts, listInstances, type ContactItem } from '../api';
 
 interface InstanceItem {
-  id: number;
+  id: number | string;
   description?: string;
-  network?: string;
+  network?: string | number;
   phone?: string;
 }
 
-interface ContactApiItem {
-  id: number;
-  name?: string;
-  phone?: string;
-  label?: number;
-  last_message?: string | null;
-  last_message_date?: string | null;
-  instance_id?: number | string;
-  instance_description?: string;
-  network?: string;
+interface StatusFilterItem {
+  id: string;
+  label: string;
+  icon: LucideIcon | null;
+  count?: number;
 }
-
-const API_URL = import.meta.env?.VITE_API_URL;
 
 const statusByLabel: Record<number, Conversation['status']> = {
   1: 'new',
@@ -56,7 +50,7 @@ const statusByLabel: Record<number, Conversation['status']> = {
 };
 
 function mapContactToConversation(
-  contact: ContactApiItem,
+  contact: ContactItem,
   getInstanceDescription?: (instanceId?: number | string) => string | undefined,
 ): Conversation {
   const labelValue = Number(contact.label);
@@ -84,7 +78,7 @@ function mapContactToConversation(
   };
 }
 
-const statusFilters = [
+const statusFilters: StatusFilterItem[] = [
   { id: 'all', label: 'Todos', icon: null },
   { id: 'new', label: 'Nuevos', icon: MessageSquarePlus  },
   { id: 'assigned', label: 'Asignados', icon: Filter },
@@ -258,7 +252,15 @@ export function ConversationList() {
     }
 
     const foundInstance = instances.find((instance) => String(instance.id) === String(instanceId));
-    return foundInstance?.description || foundInstance?.network;
+    if (foundInstance?.description) {
+      return String(foundInstance.description);
+    }
+
+    if (foundInstance?.network !== undefined) {
+      return String(foundInstance.network);
+    }
+
+    return undefined;
   };
 
   useEffect(() => {
@@ -305,35 +307,20 @@ export function ConversationList() {
 
   useEffect(() => {
     const loadInstances = async () => {
-      if (!API_URL) {
-        return;
-      }
-
-      const token = getAuthSession()?.accessToken;
-      if (!token) {
-        return;
-      }
-
       try {
-        const response = await fetch(`${API_URL}/instance`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!response.ok) {
-          return;
-        }
-
-        const data = await response.json();
+        const data = await listInstances();
         const parsedInstances = Array.isArray(data) ? data : [];
         setInstances(parsedInstances);
 
         if (parsedInstances.length > 0) {
           setSelectedInstance(String(parsedInstances[0].id));
         }
-      } catch {
-        toast.error('No se pudieron cargar las instancias');
+      } catch (error) {
+        if (error instanceof ApiError) {
+          toast.error(error.message);
+        } else {
+          toast.error('No se pudieron cargar las instancias');
+        }
       }
     };
 
@@ -342,35 +329,15 @@ export function ConversationList() {
 
   useEffect(() => {
     const loadContacts = async () => {
-      if (!API_URL) {
-        return;
-      }
-
-      const token = getAuthSession()?.accessToken;
-      const loggedUser = getLoggedUser() as { customerId?: number; customer_id?: number; id?: number } | null;
-      const customerId = loggedUser?.customerId ?? loggedUser?.customer_id ?? loggedUser?.id;
-
-      if (!token || !customerId) {
-        return;
-      }
-
       try {
-        const response = await fetch(`${API_URL}/contact?customerId=${customerId}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!response.ok) {
+        const data = await listContacts();
+        setConversationItems(data.map((contact) => mapContactToConversation(contact, getInstanceDescription)));
+      } catch (error) {
+        if (error instanceof ApiError) {
+          toast.error(error.message);
+        } else {
           toast.error('No se pudieron cargar los contactos');
-          return;
         }
-
-        const data = await response.json();
-        const parsedContacts: ContactApiItem[] = Array.isArray(data) ? data : [];
-        setConversationItems(parsedContacts.map((contact) => mapContactToConversation(contact, getInstanceDescription)));
-      } catch {
-        toast.error('No se pudieron cargar los contactos');
       }
     };
 
@@ -389,11 +356,6 @@ export function ConversationList() {
   }, [selectedContactId, conversationItems]);
 
   const handleStartChat = async () => {
-    if (!API_URL) {
-      toast.error('VITE_API_URL no está configurada');
-      return;
-    }
-
     if (selectedContactId && selectedContactId !== 'none') {
       const selectedConversation = conversationItems.find((conversation) => conversation.id === selectedContactId);
 
@@ -425,52 +387,28 @@ export function ConversationList() {
       return;
     }
 
-    const token = getAuthSession()?.accessToken;
-    if (!token) {
-      toast.error('Tu sesión expiró. Inicia sesión nuevamente');
-      return;
-    }
-
     const loggedUser = getLoggedUser() as {
       seat_id?: number;
       seatId?: number;
-      customerId?: number;
-      customer_id?: number;
       id?: number;
     } | null;
     const seatId = loggedUser?.seat_id ?? loggedUser?.seatId ?? loggedUser?.id;
-    const customerId = loggedUser?.customerId ?? loggedUser?.customer_id ?? loggedUser?.id;
 
-    if (!seatId || !customerId) {
-      toast.error('No se encontró seat_id/customer_id del usuario logueado');
+    if (!seatId) {
+      toast.error('No se encontró seat_id del usuario logueado');
       return;
     }
 
     setIsCreatingChat(true);
     try {
-      const response = await fetch(`${API_URL}/contact/create`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          customer_id: customerId,
-          instance_id: Number(selectedInstance),
-          phone: phone.trim(),
-          name: contactName.trim(),
-          seat_id: seatId,
-        }),
+      const data = await createContact({
+        instance_id: Number(selectedInstance),
+        phone: phone.trim(),
+        name: contactName.trim(),
+        seat_id: seatId,
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        toast.error(errorData?.detail || 'No se pudo crear el contacto');
-        return;
-      }
-
-      const data = await response.json();
-      const newConversationId = String(data.contactId ?? crypto.randomUUID());
+      const createdContactId = data.contactId ?? data.id ?? data.contact?.id;
+      const newConversationId = String(createdContactId ?? crypto.randomUUID());
 
       const newConversation: Conversation = {
         id: newConversationId,
@@ -502,8 +440,12 @@ export function ConversationList() {
           instanceId: selectedInstance,
         },
       });
-    } catch {
-      toast.error('No se pudo conectar al servidor');
+    } catch (error) {
+      if (error instanceof ApiError) {
+        toast.error(error.message);
+      } else {
+        toast.error('No se pudo conectar al servidor');
+      }
     } finally {
       setIsCreatingChat(false);
     }

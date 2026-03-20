@@ -16,9 +16,18 @@ type ChannelType = 'whatsapp' | 'facebook' | 'instagram' | 'email';
 export interface AppNewMessageDetail {
   conversationId: string;
   messageId: string;
+  msgId?: string;
   content: string;
   sender: SenderType;
   contactName?: string;
+  groupAuthorName?: string;
+  quotedMessageId?: string;
+  quotedMessageContent?: string;
+  quotedMsgId?: string;
+  quotedContent?: string;
+  reactions?: string[] | Record<string, number>;
+  reactionEmoji?: string;
+  reactionTargetMessageId?: string;
   channel?: ChannelType;
   timestamp: string;
 }
@@ -62,7 +71,7 @@ function normalizeChannel(channel: unknown): ChannelType {
 
 function buildMessageDetail(notification: PushNotificationSchema): AppNewMessageDetail | null {
   const data = (notification.data ?? {}) as Record<string, unknown>;
-  const conversationId = String(data.conversationId ?? data.chatId ?? '');
+  const conversationId = String(data.conversationId ?? data.chatId ?? data.contact_id ?? data.contactId ?? '');
 
   if (!conversationId) {
     return null;
@@ -71,16 +80,65 @@ function buildMessageDetail(notification: PushNotificationSchema): AppNewMessage
   const content =
     typeof data.content === 'string'
       ? data.content
+      : typeof data.message === 'string'
+      ? data.message
+      : typeof data.text === 'string'
+      ? data.text
       : typeof notification.body === 'string'
       ? notification.body
-      : 'Nuevo mensaje';
+      : '';
 
   return {
     conversationId,
     messageId: String(data.messageId ?? data.id ?? `push-${Date.now()}`),
+    msgId: String(data.msg_id ?? data.msgId ?? data.messageId ?? data.id ?? `push-${Date.now()}`),
     content,
     sender: normalizeSender(data.sender),
     contactName: typeof data.contactName === 'string' ? data.contactName : undefined,
+    groupAuthorName:
+      typeof data.groupAuthorName === 'string'
+        ? data.groupAuthorName
+        : typeof data.group_author_name === 'string'
+        ? data.group_author_name
+        : typeof data.group_author === 'string'
+        ? data.group_author
+        : typeof data.author_name === 'string'
+        ? data.author_name
+        : undefined,
+    quotedMessageId:
+      data.replyToMessageId !== undefined || data.reply_to_message_id !== undefined
+        ? String(data.replyToMessageId ?? data.reply_to_message_id)
+        : data.quoted_msg_id !== undefined
+        ? String(data.quoted_msg_id)
+        : undefined,
+    quotedMessageContent:
+      typeof data.replyToContent === 'string'
+        ? data.replyToContent
+        : typeof data.reply_to_content === 'string'
+        ? data.reply_to_content
+        : typeof data.quoted_content === 'string'
+        ? data.quoted_content
+        : undefined,
+    quotedMsgId: data.quoted_msg_id !== undefined ? String(data.quoted_msg_id) : undefined,
+    quotedContent: typeof data.quoted_content === 'string' ? data.quoted_content : undefined,
+    reactions:
+      Array.isArray(data.reactions) || (data.reactions && typeof data.reactions === 'object')
+        ? (data.reactions as string[] | Record<string, number>)
+        : undefined,
+    reactionEmoji:
+      typeof data.reactionEmoji === 'string'
+        ? data.reactionEmoji
+        : typeof data.reaction_emoji === 'string'
+        ? data.reaction_emoji
+        : undefined,
+    reactionTargetMessageId:
+      data.reactionTargetMessageId !== undefined || data.reaction_target_msg_id !== undefined
+        ? String(data.reactionTargetMessageId ?? data.reaction_target_msg_id)
+        : data.reaction_target_id !== undefined
+        ? String(data.reaction_target_id)
+        : data.reaction_target_msg_id !== undefined
+        ? String(data.reaction_target_msg_id)
+        : undefined,
     channel: normalizeChannel(data.channel),
     timestamp: typeof data.timestamp === 'string' ? data.timestamp : new Date().toISOString(),
   };

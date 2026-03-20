@@ -13,6 +13,7 @@ import { AuthUser } from '../authStorage';
 import { clearAuthSession, getLoggedUser } from '../authStorage';
 import { useNavigate } from 'react-router';
 import { getThemePreference, setThemePreference, type ThemePreference } from '../theme';
+import { createCustomerSlug, fetchCustomerSlugs, type StoreSlug } from '../slugApi';
 
 export function SettingsView() {
   const navigate = useNavigate();
@@ -25,6 +26,38 @@ export function SettingsView() {
   });
   const [theme, setTheme] = useState<ThemePreference>('dark');
   const [language, setLanguage] = useState('es');
+  const [storeSlugs, setStoreSlugs] = useState<StoreSlug[]>([]);
+  const [slugUrlInput, setSlugUrlInput] = useState('');
+  const [slugStatusId, setSlugStatusId] = useState('1');
+  const [isLoadingSlugs, setIsLoadingSlugs] = useState(false);
+  const [isCreatingSlug, setIsCreatingSlug] = useState(false);
+
+  const normalizeStoreUrl = (rawSlug: string) => {
+    const trimmed = rawSlug.trim();
+
+    if (!trimmed) {
+      return '';
+    }
+
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+
+    return `${window.location.origin.replace(/\/$/, '')}/${trimmed.replace(/^\//, '')}`;
+  };
+
+  const loadStoreSlugs = async () => {
+    setIsLoadingSlugs(true);
+
+    try {
+      const slugs = await fetchCustomerSlugs();
+      setStoreSlugs(slugs);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudieron cargar los slugs');
+    } finally {
+      setIsLoadingSlugs(false);
+    }
+  };
 
   useEffect(() => {
     const storedUser = getLoggedUser() as Partial<AuthUser> | null;
@@ -33,6 +66,7 @@ export function SettingsView() {
     }
 
     setTheme(getThemePreference());
+    void loadStoreSlugs();
   }, []);
 
   const getInitials = (name: string) => {
@@ -57,6 +91,54 @@ export function SettingsView() {
     const nextTheme = value as ThemePreference;
     setTheme(nextTheme);
     setThemePreference(nextTheme);
+  };
+
+  const handleCreateSlug = async () => {
+    const trimmedSlug = slugUrlInput.trim();
+    const parsedStatusId = Number(slugStatusId);
+
+    if (!trimmedSlug) {
+      toast.error('Ingresa un slug o URL publica');
+      return;
+    }
+
+    if (!Number.isInteger(parsedStatusId) || parsedStatusId <= 0) {
+      toast.error('Selecciona un estado valido');
+      return;
+    }
+
+    setIsCreatingSlug(true);
+
+    try {
+      await createCustomerSlug({
+        slugUrl: trimmedSlug,
+        statusId: parsedStatusId,
+      });
+
+      toast.success('Slug creado correctamente');
+      setSlugUrlInput('');
+      await loadStoreSlugs();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo crear el slug');
+    } finally {
+      setIsCreatingSlug(false);
+    }
+  };
+
+  const handleCopyStoreUrl = async (slugUrl: string) => {
+    const normalizedUrl = normalizeStoreUrl(slugUrl);
+
+    if (!normalizedUrl) {
+      toast.error('No hay URL para copiar');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(normalizedUrl);
+      toast.success('URL copiada al portapapeles');
+    } catch {
+      toast.error('No se pudo copiar la URL');
+    }
   };
 
   const statusOptions = [
@@ -312,6 +394,78 @@ export function SettingsView() {
               >
                 Dispositivos conectados
               </Button>
+            </div>
+          </div>
+
+          {/* Storefront Slugs Section */}
+          <div className="bg-card rounded-lg p-6 space-y-4">
+            <h2 className="text-white font-medium">Tienda publica</h2>
+            <p className="text-sm text-gray-400">
+              Crea y gestiona URLs publicas para que tus clientes hagan pedidos.
+            </p>
+
+            <div className="grid md:grid-cols-[1fr_180px_auto] gap-3">
+              <Input
+                value={slugUrlInput}
+                onChange={(event) => setSlugUrlInput(event.target.value)}
+                className="bg-body border-gray-600 text-white"
+                placeholder="Ej: tienda/mi-negocio o https://pedidos.mi-negocio.com"
+              />
+              <Select value={slugStatusId} onValueChange={setSlugStatusId}>
+                <SelectTrigger className="bg-body border-gray-600 text-white">
+                  <SelectValue placeholder="Estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Activo (1)</SelectItem>
+                  <SelectItem value="2">Inactivo (2)</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button onClick={() => void handleCreateSlug()} disabled={isCreatingSlug}>
+                {isCreatingSlug ? 'Creando...' : 'Crear slug'}
+              </Button>
+            </div>
+
+            <div className="rounded-md border border-gray-700 bg-body p-3 space-y-2">
+              {isLoadingSlugs ? (
+                <p className="text-sm text-gray-400">Cargando slugs...</p>
+              ) : null}
+
+              {!isLoadingSlugs && storeSlugs.length === 0 ? (
+                <p className="text-sm text-gray-500">Aun no tienes slugs creados</p>
+              ) : null}
+
+              {!isLoadingSlugs && storeSlugs.map((slug) => {
+                const normalizedUrl = normalizeStoreUrl(slug.slugUrl);
+
+                return (
+                  <div key={slug.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gray-700 p-3">
+                    <div className="min-w-0">
+                      <p className="text-sm text-white truncate">{slug.slugUrl}</p>
+                      <p className="text-xs text-gray-400 truncate">{normalizedUrl}</p>
+                      <p className="text-xs text-gray-500">Estado: {slug.statusId}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+                        onClick={() => void handleCopyStoreUrl(slug.slugUrl)}
+                      >
+                        Copiar URL
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => window.open(normalizedUrl, '_blank', 'noopener,noreferrer')}
+                      >
+                        Abrir
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

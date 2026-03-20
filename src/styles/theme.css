@@ -88,13 +88,13 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(0.269 0 0);
   --sidebar-ring: oklch(0.439 0 0);
-  --success: #25d333;
+  --success: #54fa62;
   --success-foreground: #25d33333;
-  --info: #3b82f6;
-  --info-foreground: #3b82f660;
+  --info: #5294ff;
+  --info-foreground: #3b83f628;
   --warning: #facc15;
   --warning-foreground: #facc1560;
-  --danger: #ef4444;
+  --danger: #f55e5e;
   --danger-foreground: #ef444460;
   --secondary: #b3b3b9;
   --secondary-foreground: #0f0f0f75;
@@ -154,6 +154,37 @@
     @apply bg-background text-foreground;
   }
 
+  html,
+  body,
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary-foreground) var(--card);
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: var(--card);
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--primary-foreground);
+    border: 2px solid var(--card);
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--primary);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: var(--card);
+  }
+
   /**
   * Default typography styles for HTML elements (h1-h4, p, label, button, input).
   * These are in @layer base, so Tailwind utility classes (like text-sm, text-lg) automatically override them.
@@ -202,6 +233,17 @@
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
+  }
+  input::selection,
+  textarea::selection {
+    background: var(--primary) !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff;
+  }
+  input::-moz-selection,
+  textarea::-moz-selection {
+    background: var(--primary) !important;
+    color: #ffffff !important;
   }
   input:focus {
     background: var(--bg-body) !important;
@@ -291,5 +333,20 @@
   .hover\:bg-danger:hover{
     opacity: 0.9 !important;
     cursor: pointer;
+  }
+  .border-left-success{
+    border-left: 3px solid var(--success) !important;
+  }
+  .border-left-primary{
+    border-left: 3px solid var(--primary) !important;
+  }
+  .border-left-info{
+    border-left: 3px solid var(--info) !important;
+  }
+  .border-left-warning{
+    border-left: 3px solid var(--warning) !important;
+  }
+  .border-left-danger{
+    border-left: 3px solid var(--danger) !important;
   }
 }

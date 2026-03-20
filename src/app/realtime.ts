@@ -9,6 +9,16 @@ type RealtimeMode = 'auto' | 'ws' | 'sse';
 type SenderType = 'contact' | 'agent';
 type ChannelType = 'whatsapp' | 'facebook' | 'instagram' | 'email';
 
+export const APP_WHATSAPP_INSTANCE_EVENT = 'app:whatsapp-instance';
+
+export interface AppWhatsappInstanceDetail {
+  instanceId: string;
+  status: string;
+  connected: boolean;
+  eventType: string;
+  payload: Record<string, unknown>;
+}
+
 interface RealtimeEnvelope {
   type?: string;
   event?: string;
@@ -51,8 +61,8 @@ function getRealtimeConfig() {
 
   return {
     mode,
-    wsUrl: `${wsBase}/realtime/ws`,
-    sseUrl: `${api}/realtime/sse`,
+    wsUrl: `${wsBase}/v1/realtime/ws`,
+    sseUrl: `${api}/v1/realtime/sse`,
   };
 }
 
@@ -69,7 +79,7 @@ function normalizeChannel(channel: unknown): ChannelType {
 }
 
 function buildMessageDetail(payload: Record<string, unknown>): AppNewMessageDetail | null {
-  const conversationId = String(payload.conversationId ?? payload.chatId ?? '');
+  const conversationId = String(payload.conversationId ?? payload.chatId ?? payload.contact_id ?? payload.contactId ?? '');
   if (!conversationId) {
     return null;
   }
@@ -77,9 +87,61 @@ function buildMessageDetail(payload: Record<string, unknown>): AppNewMessageDeta
   return {
     conversationId,
     messageId: String(payload.messageId ?? payload.id ?? `rt-${Date.now()}`),
-    content: typeof payload.content === 'string' ? payload.content : 'Nuevo mensaje',
+    msgId: String(payload.msg_id ?? payload.msgId ?? payload.messageId ?? payload.id ?? `rt-${Date.now()}`),
+    content:
+      typeof payload.content === 'string'
+        ? payload.content
+        : typeof payload.message === 'string'
+        ? payload.message
+        : typeof payload.text === 'string'
+        ? payload.text
+        : '',
     sender: normalizeSender(payload.sender),
     contactName: typeof payload.contactName === 'string' ? payload.contactName : undefined,
+    groupAuthorName:
+      typeof payload.groupAuthorName === 'string'
+        ? payload.groupAuthorName
+        : typeof payload.group_author_name === 'string'
+        ? payload.group_author_name
+        : typeof payload.group_author === 'string'
+        ? payload.group_author
+        : typeof payload.author_name === 'string'
+        ? payload.author_name
+        : undefined,
+    quotedMessageId:
+      payload.replyToMessageId !== undefined || payload.reply_to_message_id !== undefined
+        ? String(payload.replyToMessageId ?? payload.reply_to_message_id)
+        : payload.quoted_msg_id !== undefined
+        ? String(payload.quoted_msg_id)
+        : undefined,
+    quotedMessageContent:
+      typeof payload.replyToContent === 'string'
+        ? payload.replyToContent
+        : typeof payload.reply_to_content === 'string'
+        ? payload.reply_to_content
+        : typeof payload.quoted_content === 'string'
+        ? payload.quoted_content
+        : undefined,
+    quotedMsgId: payload.quoted_msg_id !== undefined ? String(payload.quoted_msg_id) : undefined,
+    quotedContent: typeof payload.quoted_content === 'string' ? payload.quoted_content : undefined,
+    reactions:
+      Array.isArray(payload.reactions) || (payload.reactions && typeof payload.reactions === 'object')
+        ? (payload.reactions as string[] | Record<string, number>)
+        : undefined,
+    reactionEmoji:
+      typeof payload.reactionEmoji === 'string'
+        ? payload.reactionEmoji
+        : typeof payload.reaction_emoji === 'string'
+        ? payload.reaction_emoji
+        : undefined,
+    reactionTargetMessageId:
+      payload.reactionTargetMessageId !== undefined || payload.reaction_target_msg_id !== undefined
+        ? String(payload.reactionTargetMessageId ?? payload.reaction_target_msg_id)
+        : payload.reaction_target_id !== undefined
+        ? String(payload.reaction_target_id)
+        : payload.reaction_target_msg_id !== undefined
+        ? String(payload.reaction_target_msg_id)
+        : undefined,
     channel: normalizeChannel(payload.channel),
     timestamp: typeof payload.timestamp === 'string' ? payload.timestamp : new Date().toISOString(),
   };
@@ -102,16 +164,75 @@ function parsePayload(input: string): RealtimeEnvelope | null {
   }
 }
 
+function getStringValue(value: unknown, fallback = '') {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function getInstanceId(payload: Record<string, unknown>) {
+  const raw = payload.instanceId ?? payload.instance_id ?? payload.id;
+  if (raw === undefined || raw === null) {
+    return null;
+  }
+
+  const normalized = String(raw).trim();
+  return normalized || null;
+}
+
+function dispatchWhatsappInstanceEvent(detail: AppWhatsappInstanceDetail) {
+  window.dispatchEvent(new CustomEvent<AppWhatsappInstanceDetail>(APP_WHATSAPP_INSTANCE_EVENT, { detail }));
+}
+
+function handleWhatsappRealtimeEvent(eventType: string, payload: Record<string, unknown>) {
+  if (!eventType.startsWith('whatsapp.')) {
+    return false;
+  }
+
+  const instanceId = getInstanceId(payload);
+  const status = getStringValue(payload.status, eventType.replace('whatsapp.', ''));
+  const connected = payload.connected === true || eventType === 'whatsapp.ready' || eventType === 'whatsapp.login.success';
+
+  if (instanceId) {
+    dispatchWhatsappInstanceEvent({
+      instanceId,
+      status,
+      connected,
+      eventType,
+      payload,
+    });
+  }
+
+  const isLoginSuccessEvent =
+    eventType === 'whatsapp.ready' ||
+    eventType === 'whatsapp.login.success' ||
+    (eventType === 'whatsapp.status' && connected && (status === 'ready' || status === 'authenticated'));
+
+  if (isLoginSuccessEvent) {
+    const phone = getStringValue(payload.phone, 'sin teléfono');
+    dispatchAppNotification({
+      title: 'WhatsApp conectado',
+      body: `La instancia ${instanceId ?? '-'} quedó lista (${phone}).`,
+      data: payload,
+    });
+  }
+
+  return true;
+}
+
 function handleRealtimeEnvelope(envelope: RealtimeEnvelope) {
   const eventType = envelope.type ?? envelope.event ?? 'message';
   const payload = (envelope.payload ?? envelope.data ?? envelope) as Record<string, unknown>;
+  console.log('Received realtime event:', eventType, payload);
+
+  if (handleWhatsappRealtimeEvent(eventType, payload)) {
+    return;
+  }
 
   if (eventType === 'message.created' || eventType === 'chat.message' || payload.conversationId) {
     const message = buildMessageDetail(payload);
     if (message) {
       dispatchAppNewMessage(message);
       dispatchAppNotification({
-        title: 'Nuevo mensaje',
+        title: `Nuevo mensaje de ${payload.sourceName ?? 'desconocido'}`,
         body: message.content,
         data: payload,
       });

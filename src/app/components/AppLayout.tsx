@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { MessageSquare, Calendar, Settings, LogOut, Bot, Link2, Megaphone, Bell, MoreHorizontal } from 'lucide-react';
+import { MessageSquare, Calendar, Settings, LogOut, Bot, Link2, Megaphone, Bell, MoreHorizontal, ClipboardList, LayoutGrid, Wallet, Tags, Package, ChefHat, Puzzle, Boxes } from 'lucide-react';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
 import { toast } from 'sonner';
@@ -31,11 +31,19 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   const navItems = [
     { path: '/', icon: MessageSquare, label: 'Chats' },
+    { path: '/orders', icon: ClipboardList, label: 'Pedidos' },
+    { path: '/kitchen', icon: ChefHat, label: 'Cocina' },
+    { path: '/tables', icon: LayoutGrid, label: 'Mesas' },
+    { path: '/cash-register', icon: Wallet, label: 'Caja' },
+    { path: '/categories', icon: Tags, label: 'Categorías' },
+    { path: '/products', icon: Package, label: 'Productos' },
+    { path: '/inventory', icon: Boxes, label: 'Inventario' },
     { path: '/calendar', icon: Calendar, label: 'Calendario' },
     { path: '/campaigns', icon: Megaphone, label: 'Campañas' },
     { path: '/notifications', icon: Bell, label: 'Notificaciones' },
     { path: '/agent', icon: Bot, label: 'Agente IA' },
     { path: '/connections', icon: Link2, label: 'Conexiones' },
+    { path: '/integrations', icon: Puzzle, label: 'Integraciones' },
     { path: '/settings', icon: Settings, label: 'Configuración' },
   ];
 
@@ -91,7 +99,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path);

@@ -8,6 +8,15 @@ import { AgentConfigView } from './components/AgentConfigView';
 import { ConnectionsView } from './components/ConnectionsView';
 import { CampaignsView } from './components/CampaignsView';
 import { NotificationsView } from './components/NotificationsView';
+import { ActiveOrdersView } from './components/ActiveOrdersView';
+import { TablesView } from './components/TablesView';
+import { CashRegisterView } from './components/CashRegisterView';
+import { CategoriesView } from './components/CategoriesView';
+import { ProductsView } from './components/ProductsView';
+import { InventoryView } from './components/InventoryView';
+import { KitchenOrdersView } from './components/KitchenOrdersView';
+import { IntegrationsView } from './components/IntegrationsView';
+import { PublicStorefrontView } from './components/PublicStorefrontView';
 import { LoginView } from './components/LoginView';
 import { RegisterView } from './components/RegisterView';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -92,6 +101,86 @@ function NotificationsPage() {
   );
 }
 
+function ActiveOrdersPage() {
+  return (
+    <ProtectedRoute>
+      <AppLayout>
+        <ActiveOrdersView />
+      </AppLayout>
+    </ProtectedRoute>
+  );
+}
+
+function TablesPage() {
+  return (
+    <ProtectedRoute>
+      <AppLayout>
+        <TablesView />
+      </AppLayout>
+    </ProtectedRoute>
+  );
+}
+
+function CashRegisterPage() {
+  return (
+    <ProtectedRoute>
+      <AppLayout>
+        <CashRegisterView />
+      </AppLayout>
+    </ProtectedRoute>
+  );
+}
+
+function CategoriesPage() {
+  return (
+    <ProtectedRoute>
+      <AppLayout>
+        <CategoriesView />
+      </AppLayout>
+    </ProtectedRoute>
+  );
+}
+
+function ProductsPage() {
+  return (
+    <ProtectedRoute>
+      <AppLayout>
+        <ProductsView />
+      </AppLayout>
+    </ProtectedRoute>
+  );
+}
+
+function InventoryPage() {
+  return (
+    <ProtectedRoute>
+      <AppLayout>
+        <InventoryView />
+      </AppLayout>
+    </ProtectedRoute>
+  );
+}
+
+function KitchenOrdersPage() {
+  return (
+    <ProtectedRoute>
+      <AppLayout>
+        <KitchenOrdersView />
+      </AppLayout>
+    </ProtectedRoute>
+  );
+}
+
+function IntegrationsPage() {
+  return (
+    <ProtectedRoute>
+      <AppLayout>
+        <IntegrationsView />
+      </AppLayout>
+    </ProtectedRoute>
+  );
+}
+
 export const router = createBrowserRouter([
   {
     path: '/login',
@@ -140,5 +229,41 @@ export const router = createBrowserRouter([
   {
     path: '/notifications',
     Component: NotificationsPage,
+  },
+  {
+    path: '/orders',
+    Component: ActiveOrdersPage,
+  },
+  {
+    path: '/tables',
+    Component: TablesPage,
+  },
+  {
+    path: '/cash-register',
+    Component: CashRegisterPage,
+  },
+  {
+    path: '/categories',
+    Component: CategoriesPage,
+  },
+  {
+    path: '/products',
+    Component: ProductsPage,
+  },
+  {
+    path: '/inventory',
+    Component: InventoryPage,
+  },
+  {
+    path: '/kitchen',
+    Component: KitchenOrdersPage,
+  },
+  {
+    path: '/integrations',
+    Component: IntegrationsPage,
+  },
+  {
+    path: '/tienda/:slug',
+    Component: PublicStorefrontView,
   },
 ]);

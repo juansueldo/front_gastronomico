@@ -1,14 +1,22 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link2, LogIn, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { toast } from 'sonner';
 import { Toaster } from './ui/sonner';
-import { getAuthSession, getLoggedUser } from '../authStorage';
+import { getLoggedUser } from '../authStorage';
+import { ApiError, createInstance, listInstances, listNetworks, loginInstance } from '../api';
+import { APP_WHATSAPP_INSTANCE_EVENT, type AppWhatsappInstanceDetail } from '../realtime';
+import { type DataTableColumn, DataTable } from './ui/data-table';
+import type {
+  ConnectionItem as ApiConnectionItem,
+  LoginInstanceResponse,
+  NetworkOption as ApiNetworkOption,
+} from '../api';
 
 interface ConnectionItem {
   id: string;
@@ -23,40 +31,11 @@ interface NetworkOption {
   label: string;
 }
 
-interface NetworkApiItem {
-  id?: number | string;
-  status?: number;
-  key?: string;
-  code?: string;
-  name?: string;
-  label?: string;
-  description?: string;
-  value?: string;
+interface InstanceStatusItem {
+  status: string;
+  connected: boolean;
+  updatedAt: string;
 }
-
-interface InstanceApiItem {
-  id?: number | string;
-  description?: string;
-  phone?: string;
-  network?: number | string;
-  network_name?: string;
-}
-
-interface LoginInstanceResponse {
-  ok?: boolean;
-  instanceId?: number;
-  whatsapp?: {
-    status?: string;
-    qr?: string | null;
-  };
-  error?: string;
-}
-
-const API_URL = import.meta.env?.VITE_API_URL;
-const CREATE_INSTANCE_PATH = import.meta.env?.VITE_INSTANCE_CREATE_PATH ?? '/instance';
-const LIST_INSTANCES_PATH = import.meta.env?.VITE_INSTANCE_LIST_PATH ?? '/instance';
-const NETWORKS_PATH = import.meta.env?.VITE_NETWORKS_PATH ?? '/neworks';
-const LOGIN_INSTANCE_PATH_TEMPLATE = import.meta.env?.VITE_INSTANCE_LOGIN_PATH ?? '/instance/:instanceId/login';
 
 const defaultConnections: ConnectionItem[] = [];
 const defaultNetworkOptions: NetworkOption[] = [
@@ -78,38 +57,19 @@ export function ConnectionsView() {
   const [networkOptions, setNetworkOptions] = useState<NetworkOption[]>(defaultNetworkOptions);
   const [loggingInstanceId, setLoggingInstanceId] = useState<string | null>(null);
   const [isQrDialogOpen, setIsQrDialogOpen] = useState(false);
+  const [qrInstanceId, setQrInstanceId] = useState<string | null>(null);
   const [qrValue, setQrValue] = useState<string | null>(null);
   const [qrStatus, setQrStatus] = useState<string>('unknown');
   const [qrConnectionName, setQrConnectionName] = useState<string>('');
+  const [instanceStatuses, setInstanceStatuses] = useState<Record<string, InstanceStatusItem>>({});
 
   useEffect(() => {
     const loadInstances = async () => {
-      if (!API_URL) {
-        return;
-      }
-
-      const authToken = getAuthSession()?.accessToken;
-      if (!authToken) {
-        return;
-      }
-
       try {
-        const response = await fetch(`${API_URL}${LIST_INSTANCES_PATH}`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-          },
-        });
-
-        if (!response.ok) {
-          toast.error('No se pudieron cargar las instancias');
-          return;
-        }
-
-        const data = await response.json();
-        const parsedInstances: InstanceApiItem[] = Array.isArray(data) ? data : [];
+        const data = await listInstances();
+        const parsedInstances: ApiConnectionItem[] = Array.isArray(data) ? data : [];
         const mappedConnections: ConnectionItem[] = parsedInstances.map((item) => ({
-          id: String(item.id ?? crypto.randomUUID()),
+          id: String(item.id ?? item.instanceId ?? crypto.randomUUID()),
           description: String(item.description ?? ''),
           network: String(item.network ?? ''),
           network_name: String(item.network_name ?? item.network ?? ''),
@@ -117,8 +77,12 @@ export function ConnectionsView() {
         }));
 
         setConnections(mappedConnections);
-      } catch {
-        toast.error('No se pudieron cargar las instancias');
+      } catch (error) {
+        if (error instanceof ApiError) {
+          toast.error(error.message);
+        } else {
+          toast.error('No se pudieron cargar las instancias');
+        }
       }
     };
 
@@ -147,33 +111,9 @@ export function ConnectionsView() {
 
   useEffect(() => {
     const loadNetworks = async () => {
-      if (!API_URL) {
-        return;
-      }
-
       try {
-        const authToken = getAuthSession()?.accessToken;
-        const headers: Record<string, string> = {};
-
-        if (authToken) {
-          headers.Authorization = `Bearer ${authToken}`;
-        }
-
-        const response = await fetch(`${API_URL}${NETWORKS_PATH}`, {
-          method: 'GET',
-          headers,
-        });
-
-        if (!response.ok) {
-          return;
-        }
-
-        const data = await response.json();
-        const parsedItems: NetworkApiItem[] = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.networks)
-          ? data.networks
-          : [];
+        const data = await listNetworks();
+        const parsedItems: ApiNetworkOption[] = Array.isArray(data) ? data : [];
 
         const mappedOptions: NetworkOption[] = parsedItems
           .filter((item) => item.status === undefined || Number(item.status) === 1)
@@ -213,6 +153,76 @@ export function ConnectionsView() {
     }
   }, [networkOptions, network]);
 
+  useEffect(() => {
+    const handleWhatsappInstanceEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<AppWhatsappInstanceDetail>;
+      const detail = customEvent.detail;
+
+      if (!detail || !detail.instanceId) {
+        return;
+      }
+
+      const normalizedId = String(detail.instanceId);
+      const normalizedStatus = String(detail.status ?? 'unknown').toLowerCase();
+
+      setInstanceStatuses((prev) => ({
+        ...prev,
+        [normalizedId]: {
+          status: normalizedStatus,
+          connected: Boolean(detail.connected),
+          updatedAt: new Date().toISOString(),
+        },
+      }));
+
+      if (!qrInstanceId || normalizedId !== String(qrInstanceId)) {
+        return;
+      }
+
+      const isSuccess = Boolean(detail.connected) || normalizedStatus === 'ready' || normalizedStatus === 'authenticated';
+      if (isSuccess) {
+        setIsQrDialogOpen(false);
+        setQrValue(null);
+        setQrStatus('ready');
+        setQrConnectionName('');
+        setQrInstanceId(null);
+      }
+    };
+
+    window.addEventListener(APP_WHATSAPP_INSTANCE_EVENT, handleWhatsappInstanceEvent);
+    return () => {
+      window.removeEventListener(APP_WHATSAPP_INSTANCE_EVENT, handleWhatsappInstanceEvent);
+    };
+  }, [qrInstanceId]);
+
+  const getStatusBadge = (connection: ConnectionItem) => {
+    if (!isWhatsappConnection(connection)) {
+      return null;
+    }
+
+    const state = instanceStatuses[connection.id];
+    if (!state) {
+      return <Badge className="bg-label-secondary">Sin estado</Badge>;
+    }
+
+    if (state.connected || state.status === 'ready' || state.status === 'authenticated') {
+      return <Badge className="bg-label-success">Conectado</Badge>;
+    }
+
+    if (state.status === 'qr') {
+      return <Badge className="bg-label-warning">Esperando QR</Badge>;
+    }
+
+    if (state.status === 'initializing') {
+      return <Badge className="bg-label-info">Inicializando</Badge>;
+    }
+
+    if (state.status === 'disconnected' || state.status === 'auth_failure' || state.status === 'error') {
+      return <Badge className="bg-label-danger">Desconectado</Badge>;
+    }
+
+    return <Badge className="bg-label-secondary uppercase">{state.status}</Badge>;
+  };
+
   const persistConnections = (updatedConnections: ConnectionItem[]) => {
     setConnections(updatedConnections);
   };
@@ -245,11 +255,6 @@ export function ConnectionsView() {
       return;
     }
 
-    if (!API_URL) {
-      toast.error('VITE_API_URL no está configurada');
-      return;
-    }
-
     const normalizedDescription = description.trim();
     const normalizedPhone = phone.trim();
     const networkId = Number(network);
@@ -261,49 +266,27 @@ export function ConnectionsView() {
 
     if (!editingConnectionId) {
       const loggedUser = getLoggedUser() as { customerId?: number; customer_id?: number; id?: number } | null;
-      const customerId = loggedUser?.customerId ?? loggedUser?.customer_id ?? loggedUser?.id;
+      const customerId = loggedUser?.customerId ?? loggedUser?.customer_id;
 
       if (!customerId) {
         toast.error('No se encontró customer_id del usuario logueado');
         return;
       }
 
-      const authToken = getAuthSession()?.accessToken;
-      if (!authToken) {
-        toast.error('Tu sesión expiró. Inicia sesión nuevamente');
-        return;
-      }
-
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authToken}`,
-      };
-
       setIsSaving(true);
       try {
-        const response = await fetch(`${API_URL}${CREATE_INSTANCE_PATH}`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            customer_id: customerId,
-            phone: normalizedPhone,
-            description: normalizedDescription,
-            network: networkId,
-          }),
+        const data = await createInstance({
+          customer_id: customerId,
+          phone: normalizedPhone,
+          description: normalizedDescription,
+          network: networkId,
         });
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => null);
-          toast.error(errorData?.detail || 'No se pudo crear la conexión en backend');
-          return;
-        }
-
-        const data = await response.json();
         const selectedNetworkLabel = String(
           networkOptions.find((option) => option.value === network)?.label ?? network,
         );
         const newConnection: ConnectionItem = {
-          id: String(data.instanceId ?? crypto.randomUUID()),
+          id: String(data.id ?? data.instanceId ?? crypto.randomUUID()),
           description: normalizedDescription,
           network,
           network_name: selectedNetworkLabel,
@@ -315,8 +298,12 @@ export function ConnectionsView() {
         resetForm();
         toast.success('Conexión registrada');
         return;
-      } catch {
-        toast.error('No se pudo conectar al servidor');
+      } catch (error) {
+        if (error instanceof ApiError) {
+          toast.error(error.message);
+        } else {
+          toast.error('No se pudo conectar al servidor');
+        }
         return;
       } finally {
         setIsSaving(false);
@@ -363,18 +350,6 @@ export function ConnectionsView() {
     return networkLabel.includes('whatsapp');
   };
 
-  const buildLoginPath = (instanceId: string) => {
-    if (LOGIN_INSTANCE_PATH_TEMPLATE.includes(':instanceId')) {
-      return LOGIN_INSTANCE_PATH_TEMPLATE.replace(':instanceId', encodeURIComponent(instanceId));
-    }
-
-    const normalizedTemplate = LOGIN_INSTANCE_PATH_TEMPLATE.endsWith('/')
-      ? LOGIN_INSTANCE_PATH_TEMPLATE.slice(0, -1)
-      : LOGIN_INSTANCE_PATH_TEMPLATE;
-
-    return `${normalizedTemplate}/${encodeURIComponent(instanceId)}/login`;
-  };
-
   const getQrImageSrc = (qr: string) => {
     const normalized = qr.trim();
 
@@ -395,51 +370,107 @@ export function ConnectionsView() {
   };
 
   const handleLoginInstance = async (connection: ConnectionItem) => {
-    if (!API_URL) {
-      toast.error('VITE_API_URL no está configurada');
-      return;
-    }
-
-    const authToken = getAuthSession()?.accessToken;
-    if (!authToken) {
-      toast.error('Tu sesión expiró. Inicia sesión nuevamente');
-      return;
-    }
-
     setLoggingInstanceId(connection.id);
     try {
-      const response = await fetch(`${API_URL}${buildLoginPath(connection.id)}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${authToken}`,
+      const data: LoginInstanceResponse = await loginInstance(connection.id);
+
+      const status = data.snapshot?.status ?? data.status ?? data.whatsapp?.status ?? 'unknown';
+      const qr = data.snapshot?.qrDataUrl ?? data.snapshot?.qr ?? data.qr ?? data.whatsapp?.qr ?? null;
+      const hasQr = Boolean(String(qr ?? '').trim());
+
+      setInstanceStatuses((prev) => ({
+        ...prev,
+        [connection.id]: {
+          status: String(status).toLowerCase(),
+          connected: status === 'ready' || status === 'authenticated',
+          updatedAt: new Date().toISOString(),
         },
-      });
-
-      const data: LoginInstanceResponse | null = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        toast.error(data?.error || 'No se pudo iniciar sesión de la instancia');
-        return;
-      }
-
-      const status = data?.whatsapp?.status ?? 'unknown';
-      const qr = data?.whatsapp?.qr ?? null;
-      const hasQr = Boolean(qr);
+      }));
 
       if (qr) {
         setQrValue(qr);
         setQrStatus(status);
         setQrConnectionName(connection.description);
+        setQrInstanceId(connection.id);
         setIsQrDialogOpen(true);
       }
 
       toast.success(hasQr ? `Login iniciado. Estado: ${status}. QR disponible.` : `Login iniciado. Estado: ${status}.`);
-    } catch {
-      toast.error('No se pudo conectar al servidor');
+    } catch (error) {
+      if (error instanceof ApiError) {
+        toast.error(error.message);
+      } else {
+        toast.error('No se pudo conectar al servidor');
+      }
     } finally {
       setLoggingInstanceId(null);
     }
   };
+
+  const connectionColumns: DataTableColumn<ConnectionItem>[] = [
+    {
+      key: 'description',
+      header: 'Descripción',
+      accessor: (connection) => connection.description,
+      sortable: true,
+      className: 'text-white font-medium',
+    },
+    {
+      key: 'network',
+      header: 'Network',
+      accessor: (connection) => connection.network_name ?? connection.network,
+      sortable: true,
+      className: 'text-gray-300 uppercase',
+      cell: (connection) => (
+        <div className="flex flex-col gap-2 items-start">
+          <span>{connection.network_name}</span>
+          {getStatusBadge(connection)}
+        </div>
+      ),
+    },
+    {
+      key: 'phone',
+      header: 'Phone',
+      accessor: (connection) => connection.phone,
+      sortable: true,
+      className: 'text-gray-300 max-w-[360px] truncate',
+    },
+    {
+      key: 'actions',
+      header: 'Acciones',
+      accessor: () => '',
+      headerClassName: 'text-right',
+      className: 'text-right',
+      cell: (connection) => (
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => openEditModal(connection)}
+            className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => handleDeleteConnection(connection.id)}
+            className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+          {isWhatsappConnection(connection) ? (
+            <Button
+              variant="outline"
+              onClick={() => handleLoginInstance(connection)}
+              className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+              disabled={loggingInstanceId === connection.id}
+            >
+              <LogIn className="h-4 w-4" />
+            </Button>
+          ) : null}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="h-full bg-body overflow-y-auto">
@@ -462,58 +493,15 @@ export function ConnectionsView() {
             </Button>
           </div>
 
-          {connections.length === 0 ? (
-            <p className="text-gray-400 text-sm">Todavía no tienes conexiones registradas.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="border-gray-700 hover:bg-transparent">
-                  <TableHead className="text-gray-300">Descripción</TableHead>
-                  <TableHead className="text-gray-300">Network</TableHead>
-                  <TableHead className="text-gray-300">Phone</TableHead>
-                  <TableHead className="text-gray-300 text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {connections.map((connection) => (
-                  <TableRow key={connection.id} className="border-gray-700 hover:bg-body">
-                    <TableCell className="text-white font-medium">{connection.description}</TableCell>
-                    <TableCell className="text-gray-300 uppercase">{connection.network_name}</TableCell>
-                    <TableCell className="text-gray-300 max-w-[360px] truncate">{connection.phone}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => openEditModal(connection)}
-                          className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => handleDeleteConnection(connection.id)}
-                          className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                        {isWhatsappConnection(connection) ? (
-                          <Button
-                            variant="outline"
-                            onClick={() => handleLoginInstance(connection)}
-                            className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
-                            disabled={loggingInstanceId === connection.id}
-                          >
-                            <LogIn className="h-4 w-4" />
-                           
-                          </Button>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <DataTable
+            data={connections}
+            columns={connectionColumns}
+            getRowId={(connection) => connection.id}
+            emptyMessage="Todavía no tienes conexiones registradas."
+            searchPlaceholder="Buscar por descripción, red o teléfono"
+            defaultPageSize={10}
+            pageSizeOptions={[10, 25, 50]}
+          />
         </div>
 
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
@@ -587,6 +575,7 @@ export function ConnectionsView() {
           onOpenChange={(open) => {
             setIsQrDialogOpen(open);
             if (!open) {
+              setQrInstanceId(null);
               setQrValue(null);
               setQrStatus('unknown');
               setQrConnectionName('');

@@ -1,0 +1,152 @@
+import { useEffect, useMemo, useState } from 'react';
+import { CalendarDays, CreditCard, ExternalLink, Store } from 'lucide-react';
+import { toast } from 'sonner';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Toaster } from './ui/sonner';
+import { getOAuthAuthorizeUrl, listOAuthProviders, type OAuthProvider, type OAuthProviderId } from '../api';
+
+const providerIconMap: Record<OAuthProviderId, typeof CreditCard> = {
+  mercadopago: CreditCard,
+  mercadolibre: Store,
+  google_calendar: CalendarDays,
+};
+
+const providerOrder: OAuthProviderId[] = ['mercadopago', 'mercadolibre', 'google_calendar'];
+
+export function IntegrationsView() {
+  const [providers, setProviders] = useState<OAuthProvider[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [connectingProviderId, setConnectingProviderId] = useState<OAuthProviderId | null>(null);
+
+  useEffect(() => {
+    const loadProviders = async () => {
+      setIsLoading(true);
+      try {
+        const data = await listOAuthProviders();
+        setProviders(data);
+      } catch {
+        toast.error('No se pudieron cargar las integraciones');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadProviders();
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauthStatus = params.get('oauth');
+    const provider = params.get('provider');
+
+    if (!oauthStatus) {
+      return;
+    }
+
+    if (oauthStatus === 'success') {
+      toast.success(`Integracion ${provider ?? ''} vinculada correctamente`.trim());
+    } else if (oauthStatus === 'error') {
+      toast.error(`No se pudo vincular ${provider ?? 'la integracion'}`);
+    }
+
+    params.delete('oauth');
+    params.delete('provider');
+    const query = params.toString();
+    const url = `${window.location.pathname}${query ? `?${query}` : ''}`;
+    window.history.replaceState({}, '', url);
+  }, []);
+
+  const orderedProviders = useMemo(() => {
+    const map = new Map<OAuthProviderId, OAuthProvider>();
+    providers.forEach((provider) => map.set(provider.id, provider));
+    return providerOrder.map((id) => map.get(id)).filter((item): item is OAuthProvider => item !== undefined);
+  }, [providers]);
+
+  const handleConnect = async (provider: OAuthProvider) => {
+    if (!provider.enabled || connectingProviderId) {
+      return;
+    }
+
+    setConnectingProviderId(provider.id);
+
+    try {
+      const url = await getOAuthAuthorizeUrl(provider.id);
+      window.location.assign(url);
+    } catch {
+      toast.error('No se pudo iniciar el flujo OAuth');
+      setConnectingProviderId(null);
+    }
+  };
+
+  return (
+    <div className="h-full bg-body overflow-y-auto">
+      <Toaster />
+      <div className="p-4 md:p-6 max-w-5xl mx-auto pb-20">
+        <div className="mb-6">
+          <h1 className="text-white text-2xl mb-1">Integraciones</h1>
+          <p className="text-gray-400 text-sm">
+            Vincula cuentas externas por OAuth. Puedes empezar con MercadoPago y luego sumar otras plataformas.
+          </p>
+        </div>
+
+        {isLoading ? (
+          <p className="text-gray-400 text-sm">Cargando integraciones...</p>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {orderedProviders.map((provider) => {
+              const Icon = providerIconMap[provider.id] ?? Store;
+              const isConnecting = connectingProviderId === provider.id;
+
+              return (
+                <Card key={provider.id} className="bg-card border-gray-700 text-white">
+                  <CardHeader>
+                    <CardTitle className="flex items-start justify-between gap-3">
+                      <span className="flex items-center gap-2">
+                        <Icon className="h-5 w-5" />
+                        <span>{provider.name}</span>
+                      </span>
+                      {provider.connected ? (
+                        <Badge className="bg-emerald-600 text-white">Conectado</Badge>
+                      ) : provider.enabled ? (
+                        <Badge className="bg-gray-700 text-gray-100">No conectado</Badge>
+                      ) : (
+                        <Badge className="bg-amber-700 text-white">Proximamente</Badge>
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+
+                  <CardContent className="space-y-4">
+                    <p className="text-sm text-gray-300">{provider.description}</p>
+
+                    {provider.accountLabel ? (
+                      <p className="text-xs text-gray-400">Cuenta vinculada: {provider.accountLabel}</p>
+                    ) : null}
+
+                    <Button
+                      onClick={() => {
+                        void handleConnect(provider);
+                      }}
+                      disabled={!provider.enabled || isConnecting}
+                      className="w-full"
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      {isConnecting
+                        ? 'Redirigiendo...'
+                        : provider.connected
+                        ? 'Reconectar'
+                        : provider.enabled
+                        ? 'Conectar con OAuth'
+                        : 'Disponible pronto'}
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
