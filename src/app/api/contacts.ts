@@ -40,6 +40,12 @@ export interface ContactResponse {
   [key: string]: unknown;
 }
 
+export const CONTACT_SECTIONS = [
+  { id: '1', name: 'Nuevo' },
+  { id: '2', name: 'Asignado' },
+  { id: '3', name: 'Destacado' },
+  { id: '4', name: 'Cerrado' },
+]
 /**
  * Crea un contacto
  */
@@ -58,11 +64,33 @@ export async function listContacts(): Promise<ContactItem[]> {
   return Array.isArray(data) ? data : data?.contacts ?? data?.data ?? [];
 }
 
+export async function listContactsBySection(section: string): Promise<ContactItem[]> {
+  const data = await apiClient.get(`${API_VERSION}/contact/section/${section}`, {
+    config: { cache: 'short' },
+  });
+
+  return Array.isArray(data) ? data : data?.contacts ?? data?.data ?? [];
+}
+
+export async function listContactsByLabel(label: number): Promise<ContactItem[]> {
+  const data = await apiClient.get(`${API_VERSION}/contact/label/${label}`, {
+    config: { cache: 'short' },
+  });
+
+  return Array.isArray(data) ? data : data?.contacts ?? data?.data ?? [];
+}
 /**
  * Obtiene un contacto por ID
  */
 export async function getContactById(contactId: number | string): Promise<ContactItem> {
   return apiClient.get(`${API_VERSION}/contact/${contactId}`);
+}
+
+export async function updateContactSection(contactId: number | string, section: string): Promise<ContactResponse> {
+  return apiClient.post(`${API_VERSION}/contact/update-section/${contactId}/section`, { section });
+}
+export async function updateContactLabel(contactId: number | string, label: number): Promise<ContactResponse> {
+  return apiClient.post(`${API_VERSION}/contact/update-label/${contactId}/label`, { label });
 }
 
 /**

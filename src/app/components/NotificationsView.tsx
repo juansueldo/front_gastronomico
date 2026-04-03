@@ -116,7 +116,7 @@ export function NotificationsView() {
   return (
     <div className="h-full bg-body overflow-y-auto">
       <Toaster />
-      <div className="p-4 md:p-6 max-w-4xl mx-auto pb-20">
+      <div className="p-4 md:p-6 space-y-6">
         <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
             <h1 className="text-white text-2xl mb-1">Notificaciones</h1>

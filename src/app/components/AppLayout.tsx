@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { MessageSquare, Calendar, Settings, LogOut, Bot, Link2, Megaphone, Bell, MoreHorizontal, ClipboardList, LayoutGrid, Wallet, Tags, Package, ChefHat, Puzzle, Boxes } from 'lucide-react';
+import { MessageSquare, Calendar, Settings, LogOut, Bot, Link2, Megaphone, Bell, MoreHorizontal, ClipboardList, LayoutGrid, Wallet, Tags, Package, ChefHat, Puzzle, Boxes, ChevronDown, ChevronRight } from 'lucide-react';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
 import { toast } from 'sonner';
@@ -17,6 +17,25 @@ export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [loggedUser, setLoggedUser] = useState<AuthUser | null>(null);
+  // Estado de colapso por categoría (persistente)
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>(() => {
+    try {
+      const stored = localStorage.getItem('collapsedCategories');
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+  // Manejar colapso/expansión de categorías y persistir
+  const toggleCategory = (category: string) => {
+    setCollapsedCategories((prev) => {
+      const updated = { ...prev, [category]: !prev[category] };
+      try {
+        localStorage.setItem('collapsedCategories', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
 
   useEffect(() => {
     const storedUser = getLoggedUser();
@@ -25,31 +44,71 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
   }, []);
 
+  // Persistir sección seleccionada para ConversationList
+  useEffect(() => {
+    const handler = (e: StorageEvent) => {
+      if (e.key === 'selectedSection' && window.location.pathname === '/') {
+        // Forzar recarga si cambia desde otra pestaña
+        window.location.reload();
+      }
+    };
+    window.addEventListener('storage', handler);
+    return () => window.removeEventListener('storage', handler);
+  }, []);
+
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
-  const navItems = [
-    { path: '/', icon: MessageSquare, label: 'Chats' },
-    { path: '/orders', icon: ClipboardList, label: 'Pedidos' },
-    { path: '/kitchen', icon: ChefHat, label: 'Cocina' },
-    { path: '/tables', icon: LayoutGrid, label: 'Mesas' },
-    { path: '/cash-register', icon: Wallet, label: 'Caja' },
-    { path: '/categories', icon: Tags, label: 'Categorías' },
-    { path: '/products', icon: Package, label: 'Productos' },
-    { path: '/inventory', icon: Boxes, label: 'Inventario' },
-    { path: '/calendar', icon: Calendar, label: 'Calendario' },
-    { path: '/campaigns', icon: Megaphone, label: 'Campañas' },
-    { path: '/notifications', icon: Bell, label: 'Notificaciones' },
-    { path: '/agent', icon: Bot, label: 'Agente IA' },
-    { path: '/connections', icon: Link2, label: 'Conexiones' },
-    { path: '/integrations', icon: Puzzle, label: 'Integraciones' },
-    { path: '/settings', icon: Settings, label: 'Configuración' },
+  const navCategories = [
+    {
+      category: 'Operaciones',
+      items: [
+        { path: '/', icon: MessageSquare, label: 'Chats' },
+        { path: '/orders', icon: ClipboardList, label: 'Pedidos' },
+        { path: '/kitchen', icon: ChefHat, label: 'Cocina' },
+        { path: '/tables', icon: LayoutGrid, label: 'Mesas' },
+        { path: '/cash-register', icon: Wallet, label: 'Caja' },
+      ],
+    },
+    {
+      category: 'Catálogo',
+      items: [
+        { path: '/categories', icon: Tags, label: 'Categorías' },
+        { path: '/products', icon: Package, label: 'Productos' },
+        { path: '/inventory', icon: Boxes, label: 'Inventario' },
+      ],
+    },
+    {
+      category: 'Herramientas',
+      items: [
+        { path: '/calendar', icon: Calendar, label: 'Calendario' },
+        { path: '/campaigns', icon: Megaphone, label: 'Campañas' },
+        { path: '/notifications', icon: Bell, label: 'Notificaciones' },
+        { path: '/agent', icon: Bot, label: 'Agente IA' },
+        { path: '/connections', icon: Link2, label: 'Conexiones' },
+        { path: '/integrations', icon: Puzzle, label: 'Integraciones' },
+      ],
+    },
+    {
+      category: 'Configuración',
+      items: [
+        { path: '/settings', icon: Settings, label: 'Configuración' },
+      ],
+    },
   ];
 
+  // Adaptar para categorías en móvil
   const mobilePrimaryPaths = ['/', '/calendar', '/campaigns', '/notifications'];
-  const mobilePrimaryItems = navItems.filter((item) => mobilePrimaryPaths.includes(item.path));
-  const mobileMoreItems = navItems.filter((item) => !mobilePrimaryPaths.includes(item.path));
+  // Aplanar navCategories para buscar por path
+  const allNavItems = navCategories.flatMap(cat => cat.items);
+  const mobilePrimaryItems = allNavItems.filter((item) => mobilePrimaryPaths.includes(item.path));
+  const mobileMoreItemsByCategory = navCategories
+    .map(cat => ({
+      category: cat.category,
+      items: cat.items.filter(item => !mobilePrimaryPaths.includes(item.path)),
+    }))
+    .filter(cat => cat.items.length > 0);
 
   const isActive = (path: string) => {
     if (path === '/') {
@@ -99,25 +158,44 @@ export function AppLayout({ children }: AppLayoutProps) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const active = isActive(item.path);
-            return (
+        <nav className="flex-1 p-4 space-y-4 overflow-y-auto">
+          {navCategories.map((cat) => (
+            <div key={cat.category}>
               <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                  active
-                    ? 'bg-primary'
-                    : 'text-gray-400 hover:bg-gray-700 hover:text-white'
-                }`}
+                type="button"
+                className="flex items-center w-full px-2 mb-2 gap-2 group"
+                onClick={() => toggleCategory(cat.category)}
+                tabIndex={-1}
               >
-                <Icon className="h-5 w-5 shrink-0" />
-                <span className="hidden lg:block">{item.label}</span>
+                <span className="hidden lg:inline-block">
+                  {collapsedCategories[cat.category] ? <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-white transition-colors" /> : <ChevronDown className="h-4 w-4 text-gray-400 group-hover:text-white transition-colors" />}
+                </span>
+                <span className="text-xs text-gray-500 font-semibold uppercase tracking-wider hidden lg:block">{cat.category}</span>
               </button>
-            );
-          })}
+              {!collapsedCategories[cat.category] && (
+                <div className="space-y-2">
+                  {cat.items.map((item) => {
+                    const Icon = item.icon;
+                    const active = isActive(item.path);
+                    return (
+                      <button
+                        key={item.path}
+                        onClick={() => navigate(item.path)}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                          active
+                            ? 'bg-primary'
+                            : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+                        }`}
+                      >
+                        <Icon className="h-5 w-5 shrink-0" />
+                        <span className="hidden lg:block">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ))}
         </nav>
 
         {/* Logout */}
@@ -164,7 +242,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <SheetTrigger asChild>
                 <button
                   className={`flex flex-col items-center gap-1 px-2 py-2 rounded-lg transition-colors ${
-                    mobileMoreItems.some((item) => isActive(item.path))
+                    mobileMoreItemsByCategory.some(cat => cat.items.some(item => isActive(item.path)))
                       ? 'text-primary'
                       : 'text-gray-400'
                   }`}
@@ -178,28 +256,35 @@ export function AppLayout({ children }: AppLayoutProps) {
                 <SheetHeader>
                   <SheetTitle className="text-white">Más opciones</SheetTitle>
                 </SheetHeader>
-                <div className="p-4 pt-0 space-y-2">
-                  {mobileMoreItems.map((item) => {
-                    const Icon = item.icon;
-                    const active = isActive(item.path);
-                    return (
-                      <button
-                        key={item.path}
-                        onClick={() => {
-                          navigate(item.path);
-                          setIsMobileMenuOpen(false);
-                        }}
-                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                          active
-                            ? 'bg-primary text-white'
-                            : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-                        }`}
-                      >
-                        <Icon className="h-5 w-5 shrink-0" />
-                        <span>{item.label}</span>
-                      </button>
-                    );
-                  })}
+                <div className="p-4 pt-0 space-y-4">
+                  {mobileMoreItemsByCategory.map(cat => (
+                    <div key={cat.category}>
+                      <div className="text-xs text-gray-500 font-semibold uppercase px-2 mb-2 tracking-wider">{cat.category}</div>
+                      <div className="space-y-2">
+                        {cat.items.map((item) => {
+                          const Icon = item.icon;
+                          const active = isActive(item.path);
+                          return (
+                            <button
+                              key={item.path}
+                              onClick={() => {
+                                navigate(item.path);
+                                setIsMobileMenuOpen(false);
+                              }}
+                              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                                active
+                                  ? 'bg-primary text-white'
+                                  : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                              }`}
+                            >
+                              <Icon className="h-5 w-5 shrink-0" />
+                              <span>{item.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </SheetContent>
             </Sheet>

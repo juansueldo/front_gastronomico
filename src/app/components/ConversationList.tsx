@@ -108,6 +108,18 @@ export function ConversationList() {
   const [tempAssignedAgent, setTempAssignedAgent] = useState('');
   const [tempLabel, setTempLabel] = useState('');
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [selectedSection, setSelectedSection] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('selectedSection') || '1';
+    }
+    return '1';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('selectedSection', selectedSection);
+    } catch {}
+  }, [selectedSection]);
 
   const filteredConversations = conversationItems.filter((conv) => {
     const matchesFilter = selectedFilter === 'all' || conv.status === selectedFilter;

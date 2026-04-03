@@ -83,7 +83,7 @@ export function IntegrationsView() {
   return (
     <div className="h-full bg-body overflow-y-auto">
       <Toaster />
-      <div className="p-4 md:p-6 max-w-5xl mx-auto pb-20">
+      <div className="p-4 md:p-6 space-y-6">
         <div className="mb-6">
           <h1 className="text-white text-2xl mb-1">Integraciones</h1>
           <p className="text-gray-400 text-sm">
@@ -137,7 +137,7 @@ export function IntegrationsView() {
                         : provider.connected
                         ? 'Reconectar'
                         : provider.enabled
-                        ? 'Conectar con OAuth'
+                        ? `Conectar con ${provider.name}`
                         : 'Disponible pronto'}
                     </Button>
                   </CardContent>

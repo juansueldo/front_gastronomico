@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import EmojiPicker from 'emoji-picker-react';
 import { useParams, useNavigate, useLocation } from 'react-router';
 import {
   ArrowLeft,
@@ -299,6 +300,7 @@ export function ChatView() {
   const [quotedMessage, setQuotedMessage] = useState<Pick<ChatMessage, 'id' | 'msgId' | 'content' | 'groupAuthorName'> | null>(null);
   const [localMessageReactions, setLocalMessageReactions] = useState<Record<string, string | undefined>>({});
   const [messageActionsMessage, setMessageActionsMessage] = useState<ChatMessage | null>(null);
+  const [showReactionPickerFor, setShowReactionPickerFor] = useState<string | null>(null);
 
   const quickEmojis = ['😀', '😂', '😍', '🙏', '👍', '🎉', '❤️', '🤖'];
   const currencyFormatter = new Intl.NumberFormat('es-AR', {
@@ -1338,18 +1340,50 @@ export function ChatView() {
                         {message.content ? (
                           <p className="text-sm px-2 break-words">{message.content}</p>
                         ) : null}
-
                       </div>
-                        {reactionEntries.length > 0 ? (
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {reactionEntries.map(([emoji, count]) => (
-                              <span key={`${message.id}-${emoji}`} className="inline-flex items-center gap-1 rounded-full bg-black/20 px-2 py-0.5 text-xs text-white">
-                                <span>{emoji}</span>
-                                <span>{count}</span>
-                              </span>
-                            ))}
+                      {/* Reactions below message */}
+                      {reactionEntries.length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {reactionEntries.map(([emoji, count]) => (
+                            <span key={`${message.id}-${emoji}`} className="inline-flex items-center gap-1 rounded-full bg-black/20 px-2 py-0.5 text-xs text-white">
+                              <span>{emoji}</span>
+                              <span>{count}</span>
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                      {/* Reaction button and picker */}
+                      <div className="flex items-center gap-2 mt-1 relative">
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          className="text-gray-400 hover:text-white px-1 py-0 h-6"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowReactionPickerFor(message.id);
+                          }}
+                          type="button"
+                          aria-label="Reaccionar"
+                        >
+                          <Smile className="h-4 w-4" />
+                        </Button>
+                        {showReactionPickerFor === message.id && (
+                          <div className="absolute left-0 top-8 z-50">
+                            <EmojiPicker
+                              onEmojiClick={(emojiData) => {
+                                void handleToggleReaction(message, emojiData.emoji);
+                                setShowReactionPickerFor(null);
+                              }}
+                              theme="dark"
+                              height={350}
+                              width={300}
+                            />
+                            <div className="flex justify-end mt-1">
+                              <Button size="xs" variant="ghost" onClick={() => setShowReactionPickerFor(null)}>Cerrar</Button>
+                            </div>
                           </div>
-                        ) : null}
+                        )}
+                      </div>
                       <div className={`flex items-center gap-1 mt-1 ${isAgent ? 'justify-end' : 'justify-start'}`}>
                         <span className={`text-xs ${isAgent ? 'text-indigo-200' : 'text-gray-400'}`}>{formatTime(message.timestamp)}</span>
                         {isAgent && ackIndicator ? (
@@ -1390,18 +1424,23 @@ export function ChatView() {
           </div>
         ) : null}
 
+        {/* Emoji picker modal para input */}
         {showEmojiPicker && (
-          <div className="mb-3 bg-body border border-gray-600 rounded-lg p-2 grid grid-cols-8 gap-2">
-            {quickEmojis.map((emoji) => (
-              <button
-                key={emoji}
-                onClick={() => addEmoji(emoji)}
-                className="text-xl hover:bg-gray-700 rounded-md py-1"
-                type="button"
-              >
-                {emoji}
-              </button>
-            ))}
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-card rounded-lg p-2 border border-gray-700 shadow-lg">
+              <EmojiPicker
+                onEmojiClick={(emojiData) => {
+                  addEmoji(emojiData.emoji);
+                  setShowEmojiPicker(false);
+                }}
+                theme="dark"
+                height={400}
+                width={350}
+              />
+              <div className="flex justify-end mt-2">
+                <Button size="sm" variant="ghost" onClick={() => setShowEmojiPicker(false)}>Cerrar</Button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1453,8 +1492,9 @@ export function ChatView() {
             variant="ghost"
             size="icon"
             className="text-gray-400 hover:text-white shrink-0"
-            onClick={() => setShowEmojiPicker((prev) => !prev)}
+            onClick={() => setShowEmojiPicker(true)}
             type="button"
+            aria-label="Abrir selector de emoji"
           >
             <Smile className="h-5 w-5" />
           </Button>

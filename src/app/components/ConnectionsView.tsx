@@ -475,7 +475,7 @@ export function ConnectionsView() {
   return (
     <div className="h-full bg-body overflow-y-auto">
       <Toaster />
-      <div className="p-4 md:p-6 max-w-4xl mx-auto pb-20">
+      <div className="p-4 md:p-6 space-y-6">
         <div className="mb-6">
           <h1 className="text-white text-2xl mb-1">Conexiones</h1>
           <p className="text-gray-400 text-sm">Consulta y administra tus conexiones</p>
