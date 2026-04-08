@@ -9,6 +9,16 @@ export interface AuthUser {
   status?: 'active' | 'away' | 'busy' | 'offline';
   [key: string]: unknown;
 }
+
+// Extrae el storeId del JWT si no viene en el usuario
+export function getStoreIdFromToken(token: string): number | null {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.storeId || null;
+  } catch {
+    return null;
+  }
+}
 export const AUTH_CHANGED_EVENT = 'app:auth-changed';
 
 interface SaveAuthSessionInput {
@@ -237,11 +247,23 @@ export function saveAuthSession({ username, user, accessToken, rememberMe = fals
     return;
   }
 
-  clearAuthSession();
+  // ⚠️ Limpiar sin emitir el evento — evita que startRealtimeChannel
+  // se llame antes de que la sesión esté guardada
+  removeAuthKeys(webStorage.local);
+  removeAuthKeys(webStorage.session);
+  void saveCapacitorSession(null);
+
+  let userWithStoreId = user;
+  if (accessToken && user && !('storeId' in user)) {
+    const storeId = getStoreIdFromToken(accessToken);
+    if (storeId) {
+      userWithStoreId = { ...user, storeId };
+    }
+  }
 
   const session: AuthSession = {
     userEmail: username,
-    user,
+    user: userWithStoreId,
     accessToken,
     rememberMe,
     expiresAt: rememberMe ? Date.now() + THIRTY_DAYS_IN_MS : undefined,
@@ -250,7 +272,7 @@ export function saveAuthSession({ username, user, accessToken, rememberMe = fals
   const targetStorage = rememberMe ? webStorage.local : webStorage.session;
   writeSessionToStorage(targetStorage, session);
   void saveCapacitorSession(session);
-  emitAuthChanged();
+  emitAuthChanged(); // ✅ Se emite una sola vez, con la sesión ya guardada
 }
 
 export function getAuthSession(): AuthSession | null {
@@ -261,11 +283,13 @@ export function getAuthSession(): AuthSession | null {
 
   const localSession = readSessionFromStorage(webStorage.local);
   if (localSession) {
+    console.log(localSession, 'session local');
     return localSession;
   }
 
   const sessionSession = readSessionFromStorage(webStorage.session);
   if (sessionSession) {
+    console.log(localSession, 'session local');
     return sessionSession;
   }
 

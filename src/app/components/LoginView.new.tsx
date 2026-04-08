@@ -42,7 +42,7 @@ export function LoginView() {
       saveAuthSession({
         username,
         user: data.user,
-        accessToken: data.accessToken ?? data.token,
+        accessToken: data.accessToken ?? data.user.token,
         rememberMe,
       });
       toast.success('Inicio de sesión exitoso');

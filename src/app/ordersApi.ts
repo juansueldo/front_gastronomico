@@ -32,7 +32,7 @@ export interface BackendOrderItem {
   contactId: number;
 }
 
-const getAuthToken = () => getAuthSession()?.accessToken;
+const getAuthToken = () => getAuthSession()?.user.token;
 
 const buildAuthHeaders = () => {
   const authToken = getAuthToken();

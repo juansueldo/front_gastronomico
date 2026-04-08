@@ -74,7 +74,7 @@ const resolvePathWithId = (pathTemplate: string, id: string) => {
   return `${pathTemplate.replace(/\/$/, '')}/${encodeURIComponent(id)}`;
 };
 
-const getAuthToken = () => getAuthSession()?.accessToken;
+const getAuthToken = () => getAuthSession()?.user.token;
 
 const buildAuthHeaders = () => {
   const authToken = getAuthToken();

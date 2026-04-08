@@ -151,7 +151,7 @@ async function registerTokenInBackend(token: string) {
   }
 
   const session = getAuthSession();
-  const authToken = session?.accessToken;
+  const authToken = session?.user.token;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

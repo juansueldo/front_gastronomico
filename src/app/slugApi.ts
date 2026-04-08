@@ -40,7 +40,7 @@ const ensureApiUrl = () => {
   return API_URL;
 };
 
-const getAuthToken = () => getAuthSession()?.accessToken;
+const getAuthToken = () => getAuthSession()?.user.token;
 
 const buildAuthHeaders = () => {
   const authToken = getAuthToken();

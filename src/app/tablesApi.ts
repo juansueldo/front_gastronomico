@@ -26,7 +26,7 @@ const API_URL = (import.meta as TablesImportMeta).env?.VITE_API_URL;
 const TABLES_LIST_PATH = (import.meta as TablesImportMeta).env?.VITE_TABLES_LIST_PATH ?? '/v1/dining-tables/list';
 const TABLES_CREATE_PATH = (import.meta as TablesImportMeta).env?.VITE_TABLES_CREATE_PATH ?? '/v1/dining-tables/create';
 
-const getAuthToken = () => getAuthSession()?.accessToken;
+const getAuthToken = () => getAuthSession()?.user.token;
 
 const buildAuthHeaders = () => {
   const authToken = getAuthToken();

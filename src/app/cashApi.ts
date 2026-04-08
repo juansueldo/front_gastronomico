@@ -37,7 +37,7 @@ const CASH_MOVEMENTS_LIST_PATH = (import.meta as CashImportMeta).env?.VITE_CASH_
 const CASH_MOVEMENTS_CREATE_PATH = (import.meta as CashImportMeta).env?.VITE_CASH_MOVEMENTS_CREATE_PATH ?? '/v1/cash-movements';
 const CASH_MOVEMENTS_CLOSE_DAILY_PATH = (import.meta as CashImportMeta).env?.VITE_CASH_MOVEMENTS_CLOSE_DAILY_PATH ?? '/v1/cash-movements/close-daily';
 
-const getAuthToken = () => getAuthSession()?.accessToken;
+const getAuthToken = () => getAuthSession()?.user.token;
 
 const buildAuthHeaders = () => {
   const authToken = getAuthToken();
