@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { MessageSquare, Calendar, Settings, LogOut, Bot, Link2, Megaphone, Bell, MoreHorizontal, ClipboardList, LayoutGrid, Wallet, Tags, Package, ChefHat, Puzzle, Boxes, ChevronDown, ChevronRight } from 'lucide-react';
+import { MessageSquare, Calendar, Settings, LogOut, Bot, Link2, Megaphone, Bell, MoreHorizontal, ClipboardList, LayoutGrid, Wallet, Tags, Package, ChefHat, Puzzle, Boxes, ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
 import { toast } from 'sonner';
@@ -17,6 +17,27 @@ export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [loggedUser, setLoggedUser] = useState<AuthUser | null>(null);
+
+  // Estado de colapso del sidebar completo (persistente)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem('isSidebarCollapsed');
+      return stored ? JSON.parse(stored) : false;
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => {
+      const updated = !prev;
+      try {
+        localStorage.setItem('isSidebarCollapsed', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
   // Estado de colapso por categoría (persistente)
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>(() => {
     try {
@@ -26,7 +47,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       return {};
     }
   });
-  // Manejar colapso/expansión de categorías y persistir
+
   const toggleCategory = (category: string) => {
     setCollapsedCategories((prev) => {
       const updated = { ...prev, [category]: !prev[category] };
@@ -44,11 +65,9 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
   }, []);
 
-  // Persistir sección seleccionada para ConversationList
   useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.key === 'selectedSection' && window.location.pathname === '/') {
-        // Forzar recarga si cambia desde otra pestaña
         window.location.reload();
       }
     };
@@ -98,9 +117,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     },
   ];
 
-  // Adaptar para categorías en móvil
   const mobilePrimaryPaths = ['/', '/calendar', '/campaigns', '/notifications'];
-  // Aplanar navCategories para buscar por path
   const allNavItems = navCategories.flatMap(cat => cat.items);
   const mobilePrimaryItems = allNavItems.filter((item) => mobilePrimaryPaths.includes(item.path));
   const mobileMoreItemsByCategory = navCategories
@@ -130,29 +147,37 @@ export function AppLayout({ children }: AppLayoutProps) {
     navigate('/login');
   };
 
+  // Cuando el sidebar está colapsado, se comporta como el modo "md" (solo íconos, ancho w-20)
+  const sidebarWidth = isSidebarCollapsed ? 'lg:w-20' : 'lg:w-64';
+  const showLabels = !isSidebarCollapsed;
+
   return (
     <div className="flex h-screen bg-body">
       <Toaster />
+
       {/* Desktop Sidebar */}
-      <div className="hidden md:flex md:w-20 lg:w-64 flex-col bg-card border-r border-gray-700">
+      <div className={`hidden md:flex md:w-20 ${sidebarWidth} flex-col bg-card border-r border-gray-700 transition-all duration-300`}>
+
         {/* User Profile */}
         <div className="p-4 border-b border-gray-700">
           {!loggedUser ? (
-            <div className="text-gray-400">Cargando usuario...</div>
+            <div className="text-gray-400 text-sm">Cargando...</div>
           ) : (
             <div className="flex items-center gap-3">
-              <div className="relative">
-                <Avatar className="h-12 w-12">
-                  <AvatarFallback className="bg-primary">
+              <div className="relative shrink-0">
+                <Avatar className="h-10 w-10">
+                  <AvatarFallback className="bg-primary text-sm">
                     {getInitials(loggedUser.firstname + ' ' + loggedUser.lastname)}
                   </AvatarFallback>
                 </Avatar>
                 <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-card ${statusColors[loggedUser.status ?? 'active']}`} />
               </div>
-              <div className="hidden lg:block flex-1 min-w-0">
-                <h3 className="text-white font-medium truncate">{loggedUser.firstname} {loggedUser.lastname}</h3>
-                <p className="text-xs text-gray-400 truncate">{loggedUser.role}</p>
-              </div>
+              {showLabels && (
+                <div className="hidden lg:block flex-1 min-w-0">
+                  <h3 className="text-white font-medium truncate">{loggedUser.firstname} {loggedUser.lastname}</h3>
+                  <p className="text-xs text-gray-400 truncate">{loggedUser.role}</p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -161,19 +186,28 @@ export function AppLayout({ children }: AppLayoutProps) {
         <nav className="flex-1 p-4 space-y-4 overflow-y-auto">
           {navCategories.map((cat) => (
             <div key={cat.category}>
-              <button
-                type="button"
-                className="flex items-center w-full px-2 mb-2 gap-2 group"
-                onClick={() => toggleCategory(cat.category)}
-                tabIndex={-1}
-              >
-                <span className="hidden lg:inline-block">
-                  {collapsedCategories[cat.category] ? <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-white transition-colors" /> : <ChevronDown className="h-4 w-4 text-gray-400 group-hover:text-white transition-colors" />}
-                </span>
-                <span className="text-xs text-gray-500 font-semibold uppercase tracking-wider hidden lg:block">{cat.category}</span>
-              </button>
-              {!collapsedCategories[cat.category] && (
-                <div className="space-y-2">
+              {/* Category header — only shown when labels are visible */}
+              {showLabels && (
+                <button
+                  type="button"
+                  className="flex items-center w-full px-2 mb-2 gap-2 group"
+                  onClick={() => toggleCategory(cat.category)}
+                  tabIndex={-1}
+                >
+                  <span className="hidden lg:inline-block">
+                    {collapsedCategories[cat.category]
+                      ? <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-white transition-colors" />
+                      : <ChevronDown className="h-4 w-4 text-gray-400 group-hover:text-white transition-colors" />}
+                  </span>
+                  <span className="text-xs text-gray-500 font-semibold uppercase tracking-wider hidden lg:block">
+                    {cat.category}
+                  </span>
+                </button>
+              )}
+
+              {/* Items: always show when sidebar collapsed (icon-only), respect category collapse otherwise */}
+              {(isSidebarCollapsed || !collapsedCategories[cat.category]) && (
+                <div className="space-y-1">
                   {cat.items.map((item) => {
                     const Icon = item.icon;
                     const active = isActive(item.path);
@@ -181,14 +215,15 @@ export function AppLayout({ children }: AppLayoutProps) {
                       <button
                         key={item.path}
                         onClick={() => navigate(item.path)}
+                        title={isSidebarCollapsed ? item.label : undefined}
                         className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                           active
-                            ? 'bg-primary'
+                            ? 'bg-primary text-white'
                             : 'text-gray-400 hover:bg-gray-700 hover:text-white'
                         }`}
                       >
                         <Icon className="h-5 w-5 shrink-0" />
-                        <span className="hidden lg:block">{item.label}</span>
+                        {showLabels && <span className="hidden lg:block">{item.label}</span>}
                       </button>
                     );
                   })}
@@ -198,14 +233,26 @@ export function AppLayout({ children }: AppLayoutProps) {
           ))}
         </nav>
 
-        {/* Logout */}
-        <div className="p-4 border-t border-gray-700">
+        {/* Bottom actions: collapse toggle + logout */}
+        <div className="p-4 border-t border-gray-700 space-y-1">
+          {/* Toggle sidebar collapse — only visible on lg+ */}
+          <button
+            onClick={toggleSidebar}
+            title={isSidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'}
+            className="w-full hidden lg:flex items-center gap-3 px-4 py-3 text-gray-400 hover:bg-gray-700 hover:text-white rounded-lg transition-colors"
+          >
+            {isSidebarCollapsed
+              ? <PanelLeftOpen className="h-5 w-5 shrink-0" />
+              : <PanelLeftClose className="h-5 w-5 shrink-0" />}
+            {showLabels && <span className="hidden lg:block">Colapsar menú</span>}
+          </button>
+
           <button
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-4 py-3 text-gray-400 hover:bg-gray-700 hover:text-white rounded-lg transition-colors"
           >
             <LogOut className="h-5 w-5 shrink-0" />
-            <span className="hidden lg:block">Cerrar sesión</span>
+            {showLabels && <span className="hidden lg:block">Cerrar sesión</span>}
           </button>
         </div>
       </div>
@@ -227,9 +274,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   key={item.path}
                   onClick={() => navigate(item.path)}
                   className={`flex flex-col items-center gap-1 px-2 py-2 rounded-lg transition-colors ${
-                    active
-                      ? 'text-primary'
-                      : 'text-gray-400'
+                    active ? 'text-primary' : 'text-gray-400'
                   }`}
                 >
                   <Icon className="h-6 w-6" />
@@ -259,7 +304,9 @@ export function AppLayout({ children }: AppLayoutProps) {
                 <div className="p-4 pt-0 space-y-4">
                   {mobileMoreItemsByCategory.map(cat => (
                     <div key={cat.category}>
-                      <div className="text-xs text-gray-500 font-semibold uppercase px-2 mb-2 tracking-wider">{cat.category}</div>
+                      <div className="text-xs text-gray-500 font-semibold uppercase px-2 mb-2 tracking-wider">
+                        {cat.category}
+                      </div>
                       <div className="space-y-2">
                         {cat.items.map((item) => {
                           const Icon = item.icon;
