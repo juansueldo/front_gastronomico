@@ -53,11 +53,11 @@ interface BackendProduct {
 }
 
 const API_URL = (import.meta as CatalogImportMeta).env?.VITE_API_URL;
-const CATEGORIES_LIST_PATH = (import.meta as CatalogImportMeta).env?.VITE_CATEGORIES_LIST_PATH ?? '/v1/category/list';
-const CATEGORIES_CREATE_PATH = (import.meta as CatalogImportMeta).env?.VITE_CATEGORIES_CREATE_PATH ?? '/v1/category/create';
-const CATEGORIES_UPDATE_PATH = (import.meta as CatalogImportMeta).env?.VITE_CATEGORIES_UPDATE_PATH ?? '/v1/category/update/:id';
+const CATEGORIES_LIST_PATH = (import.meta as CatalogImportMeta).env?.VITE_CATEGORIES_LIST_PATH ?? '/v1/category';
+const CATEGORIES_CREATE_PATH = (import.meta as CatalogImportMeta).env?.VITE_CATEGORIES_CREATE_PATH ?? '/v1/category';
+const CATEGORIES_UPDATE_PATH = (import.meta as CatalogImportMeta).env?.VITE_CATEGORIES_UPDATE_PATH ?? '/v1/category/:id';
 const CATEGORIES_DELETE_PATH = (import.meta as CatalogImportMeta).env?.VITE_CATEGORIES_DELETE_PATH ?? '/v1/category/:id';
-const PRODUCTS_LIST_PATH = (import.meta as CatalogImportMeta).env?.VITE_PRODUCTS_LIST_PATH ?? '/v1/product/list';
+const PRODUCTS_LIST_PATH = (import.meta as CatalogImportMeta).env?.VITE_PRODUCTS_LIST_PATH ?? '/v1/product';
 const PRODUCTS_CREATE_PATH = (import.meta as CatalogImportMeta).env?.VITE_PRODUCTS_CREATE_PATH ?? '/v1/product/create';
 const PRODUCTS_UPDATE_PATH = (import.meta as CatalogImportMeta).env?.VITE_PRODUCTS_UPDATE_PATH ?? '/v1/product/update/:id';
 const PRODUCTS_DELETE_PATH = (import.meta as CatalogImportMeta).env?.VITE_PRODUCTS_DELETE_PATH ?? '/v1/product/:id';
@@ -151,8 +151,7 @@ export const fetchProductCategories = async (): Promise<ProductCategory[]> => {
     data?: BackendCategory[];
   };
 
-  const categories = data.categories ?? data.data ?? [];
-  return Array.isArray(categories) ? categories.map(normalizeCategory) : [];
+  return data;
 };
 
 interface UpsertProductCategoryInput {
@@ -201,7 +200,6 @@ export const updateProductCategory = async (categoryId: string, input: UpsertPro
       name: input.name,
       description: input.description,
       icon: input.icon,
-      icon_name: input.icon,
     }),
   });
 

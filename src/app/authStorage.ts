@@ -283,13 +283,11 @@ export function getAuthSession(): AuthSession | null {
 
   const localSession = readSessionFromStorage(webStorage.local);
   if (localSession) {
-    console.log(localSession, 'session local');
     return localSession;
   }
 
   const sessionSession = readSessionFromStorage(webStorage.session);
   if (sessionSession) {
-    console.log(localSession, 'session local');
     return sessionSession;
   }
 

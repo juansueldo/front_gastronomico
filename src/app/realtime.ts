@@ -247,12 +247,10 @@ export function startRealtimeChannel() {
   registerEventHandlers(globalSocket);
 
   globalSocket.on('connect', () => {
-    console.log('[WS] Conectado. Socket ID:', globalSocket?.id);
 
     // Suscribirse a todos los canales DESPUÉS de conectar
     ALL_CHANNELS.forEach((channel) => {
       globalSocket!.emit('subscribe', { channel });
-      console.log('[WS] Suscribiendo a canal:', channel);
     });
   });
 

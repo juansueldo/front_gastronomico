@@ -2,6 +2,7 @@ export interface ProductCategory {
   id: string;
   name: string;
   description?: string;
+  icon?: string;
   createdAt: string;
 }
 
@@ -18,6 +19,7 @@ export interface ProductItem {
 interface AddCategoryInput {
   name: string;
   description?: string;
+  icon?: string;
 }
 
 interface AddProductInput {
@@ -145,13 +147,14 @@ const initProducts = () => {
 export const getProductCategories = () => initCategories();
 export const getProducts = () => initProducts();
 
-export const addProductCategory = ({ name, description }: AddCategoryInput) => {
+export const addProductCategory = ({ name, description, icon }: AddCategoryInput) => {
   const categories = getProductCategories();
 
   const nextCategory: ProductCategory = {
     id: `cat-${Date.now()}`,
     name,
     description,
+    icon,
     createdAt: new Date().toISOString(),
   };
 

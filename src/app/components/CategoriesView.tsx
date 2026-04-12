@@ -10,6 +10,14 @@ import {
 } from './ui/dialog';
 import { toast } from 'sonner';
 import {
+  // Food & Drink
+  Pizza, Coffee, Beer, Wine, Soup, Salad, Sandwich, Cookie,
+  IceCream2, Cake, Candy, Apple, Banana, Carrot, Fish, Egg,
+  FlameKindling, ChefHat, UtensilsCrossed, Utensils, CupSoda,
+  Milk, Beef, Wheat, Croissant, BaggageClaim,
+  type LucideIcon,
+} from 'lucide-react';
+import {
   createProductCategory,
   deleteProductCategory,
   fetchProductCategories,
@@ -19,28 +27,77 @@ import {
 } from '../catalogApi';
 import { type DataTableColumn, DataTable } from './ui/data-table';
 
-const CATEGORY_ICON_OPTIONS = [
-  { value: '🍕', label: 'pizza' },
-  { value: '🍔', label: 'hamburguesa' },
-  { value: '🌭', label: 'pancho' },
-  { value: '🍟', label: 'papas fritas' },
-  { value: '🥪', label: 'sandwich' },
-  { value: '🌮', label: 'taco' },
-  { value: '🥟', label: 'empanada' },
-  { value: '🍝', label: 'pasta' },
-  { value: '🍲', label: 'guiso' },
-  { value: '🥗', label: 'ensalada' },
-  { value: '🍰', label: 'torta' },
-  { value: '🧁', label: 'cupcake' },
-  { value: '🍩', label: 'dona' },
-  { value: '🍦', label: 'helado' },
-  { value: '☕', label: 'cafe' },
-  { value: '🧉', label: 'mate' },
-  { value: '🥤', label: 'bebida' },
-  { value: '🍺', label: 'cerveza' },
-  { value: '🍷', label: 'vino' },
-  { value: '🍹', label: 'coctel' },
-] as const;
+// Mapa nombre → componente Lucide
+const ICON_MAP: Record<string, LucideIcon> = {
+  // Comida
+  Pizza, Coffee, Beer, Wine, Soup, Salad, Sandwich, Cookie,
+  IceCream2, Cake, Candy, Apple, Banana, Carrot, Fish, Egg,
+  FlameKindling, ChefHat, UtensilsCrossed, Utensils, CupSoda,
+  Milk, Beef, Wheat, Croissant, BaggageClaim,
+};
+
+// Labels en español para búsqueda
+const ICON_LABELS: Record<string, string[]> = {
+  Pizza: ['pizza', 'comida'],
+  Coffee: ['cafe', 'coffee', 'bebida caliente'],
+  Beer: ['cerveza', 'bebida'],
+  Wine: ['vino', 'bebida'],
+  Soup: ['sopa', 'caldo', 'guiso'],
+  Salad: ['ensalada', 'vegetariano'],
+  Sandwich: ['sandwich', 'bocadillo'],
+  Cookie: ['galleta', 'postre'],
+  IceCream2: ['helado', 'postre'],
+  Cake: ['torta', 'pastel', 'postre'],
+  Candy: ['dulce', 'caramelo'],
+  Apple: ['manzana', 'fruta'],
+  Banana: ['banana', 'fruta'],
+  Carrot: ['zanahoria', 'verdura'],
+  Fish: ['pescado', 'mariscos'],
+  Egg: ['huevo', 'desayuno'],
+  FlameKindling: ['fuego', 'caliente', 'picante'],
+  ChefHat: ['chef', 'cocina'],
+  UtensilsCrossed: ['cubiertos', 'restaurante'],
+  Utensils: ['tenedor', 'cubiertos'],
+  CupSoda: ['refresco', 'gaseosa', 'bebida'],
+  Milk: ['leche', 'lacteo'],
+  Beef: ['carne', 'ternera'],
+  Wheat: ['trigo', 'harina', 'panaderia'],
+  Croissant: ['croissant', 'medialuna', 'panaderia'],
+  BaggageClaim: ['bolsa', 'para llevar'],
+  Tag: ['etiqueta', 'tag', 'categoria'],
+  Tags: ['etiquetas', 'tags', 'categorias'],
+  Layers: ['capas', 'niveles'],
+  Grid3x3: ['grilla', 'menu'],
+  LayoutGrid: ['layout', 'cuadricula'],
+  Star: ['estrella', 'favorito', 'destacado'],
+  Bookmark: ['marcador', 'guardado'],
+  Heart: ['corazon', 'favorito'],
+  ThumbsUp: ['like', 'recomendado'],
+  Flame: ['fuego', 'popular', 'picante'],
+  Zap: ['rapido', 'electrico'],
+  Trophy: ['trofeo', 'premio'],
+  Crown: ['corona', 'premium'],
+  Sparkles: ['brillante', 'especial', 'novedad'],
+  Leaf: ['hoja', 'vegano', 'natural'],
+  Trees: ['arbol', 'organico'],
+  Flower2: ['flor', 'primavera'],
+  Package: ['paquete', 'producto'],
+  Box: ['caja', 'producto'],
+  ShoppingCart: ['carrito', 'compra'],
+  ShoppingBag: ['bolsa', 'compra'],
+  Store: ['tienda', 'local'],
+  Gift: ['regalo', 'promo'],
+  Percent: ['descuento', 'oferta', 'promo'],
+
+};
+
+/** Renderiza un ícono Lucide a partir de su nombre guardado */
+export function renderCategoryIcon(iconName: string | null | undefined, props?: { size?: number; className?: string }) {
+  if (!iconName) return null;
+  const IconComponent = ICON_MAP[iconName];
+  if (!IconComponent) return null;
+  return <IconComponent size={props?.size ?? 16} className={props?.className} />;
+}
 
 export function CategoriesView() {
   const [categories, setCategories] = useState<ProductCategory[]>([]);
@@ -49,19 +106,24 @@ export function CategoriesView() {
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [icon, setIcon] = useState('');
+  const [icon, setIcon] = useState(''); // ahora guarda el nombre, ej: "Pizza"
   const [iconQuery, setIconQuery] = useState('');
 
-  const filteredIconOptions = CATEGORY_ICON_OPTIONS.filter((option) => (
-    option.label.toLowerCase().includes(iconQuery.trim().toLowerCase())
-  ));
+  const filteredIconEntries = Object.entries(ICON_MAP).filter(([iconName]) => {
+    const q = iconQuery.trim().toLowerCase();
+    if (!q) return true;
+    const labels = ICON_LABELS[iconName] ?? [];
+    return (
+      iconName.toLowerCase().includes(q) ||
+      labels.some((label) => label.includes(q))
+    );
+  });
 
   const loadCatalog = async () => {
     const [backendCategories, backendProducts] = await Promise.all([
       fetchProductCategories(),
       fetchProducts(),
     ]);
-
     setCategories(backendCategories);
 
     const nextCountByCategory: Record<string, number> = {};
@@ -74,15 +136,13 @@ export function CategoriesView() {
   };
 
   useEffect(() => {
-    const loadInitialCatalog = async () => {
+    void (async () => {
       try {
         await loadCatalog();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'No se pudo cargar el catálogo');
       }
-    };
-
-    void loadInitialCatalog();
+    })();
   }, []);
 
   const openCreateDialog = () => {
@@ -106,18 +166,17 @@ export function CategoriesView() {
   const handleSaveCategory = async () => {
     const trimmedName = name.trim();
     const trimmedDescription = description.trim();
-    const trimmedIcon = icon.trim();
 
     if (!trimmedName) {
       toast.error('Ingresá el nombre de la categoría');
       return;
     }
 
-    const duplicated = categories.some((category) => (
-      category.id !== editingCategoryId
-      &&
-      category.name.toLowerCase() === trimmedName.toLowerCase()
-    ));
+    const duplicated = categories.some(
+      (category) =>
+        category.id !== editingCategoryId &&
+        category.name.toLowerCase() === trimmedName.toLowerCase(),
+    );
 
     if (duplicated) {
       toast.error('Ya existe una categoría con ese nombre');
@@ -125,19 +184,17 @@ export function CategoriesView() {
     }
 
     try {
+      const payload = {
+        name: trimmedName,
+        description: trimmedDescription || undefined,
+        icon: icon || undefined, // guarda "Pizza", "Coffee", etc.
+      };
+
       if (editingCategoryId) {
-        await updateProductCategory(editingCategoryId, {
-          name: trimmedName,
-          description: trimmedDescription || undefined,
-          icon: trimmedIcon || undefined,
-        });
+        await updateProductCategory(editingCategoryId, payload);
         toast.success('Categoría actualizada');
       } else {
-        await createProductCategory({
-          name: trimmedName,
-          description: trimmedDescription || undefined,
-          icon: trimmedIcon || undefined,
-        });
+        await createProductCategory(payload);
         toast.success('Categoría creada');
       }
 
@@ -156,11 +213,8 @@ export function CategoriesView() {
   };
 
   const handleDeleteCategory = async (category: ProductCategory) => {
-    const confirmed = window.confirm(`¿Eliminar la categoría \"${category.name}\"?`);
-
-    if (!confirmed) {
-      return;
-    }
+    const confirmed = window.confirm(`¿Eliminar la categoría "${category.name}"?`);
+    if (!confirmed) return;
 
     try {
       await deleteProductCategory(category.id);
@@ -179,14 +233,14 @@ export function CategoriesView() {
       sortable: true,
       className: 'text-white',
       cell: (category) => (
-        <div className="min-w-0">
-          <p className="text-sm text-white font-medium truncate">
-            {category.icon ? `${category.icon} ` : ''}
-            {category.name}
-          </p>
-          {category.description ? (
-            <p className="text-xs text-gray-400 mt-1 break-words">{category.description}</p>
-          ) : null}
+        <div className="min-w-0 flex items-center gap-2">
+          {renderCategoryIcon(category.icon, { size: 18, className: 'text-gray-300 shrink-0' })}
+          <div>
+            <p className="text-sm text-white font-medium truncate">{category.name}</p>
+            {category.description ? (
+              <p className="text-xs text-gray-400 mt-1 break-words">{category.description}</p>
+            ) : null}
+          </div>
         </div>
       ),
     },
@@ -246,54 +300,82 @@ export function CategoriesView() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="bg-card border-gray-700 text-white">
           <DialogHeader>
-            <DialogTitle>{editingCategoryId ? 'Editar categoría' : 'Nueva categoría'}</DialogTitle>
+            <DialogTitle>
+              {editingCategoryId ? 'Editar categoría' : 'Nueva categoría'}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-3">
+            {/* Selector de ícono */}
             <div className="space-y-2 rounded-md border border-gray-700 bg-body p-3">
-              <p className="text-sm text-gray-300">Ícono (opcional)</p>
-              <Input
-                placeholder="Buscar ícono por nombre"
-                value={iconQuery}
-                onChange={(event) => setIconQuery(event.target.value)}
-              />
-              <div className="max-h-40 overflow-y-auto grid grid-cols-2 gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={icon === '' ? 'secondary' : 'outline'}
-                  className="justify-start"
-                  onClick={() => setIcon('')}
-                >
-                  Sin ícono
-                </Button>
-                {filteredIconOptions.map((option) => (
-                  <Button
-                    key={option.label}
-                    type="button"
-                    size="sm"
-                    variant={icon === option.value ? 'secondary' : 'outline'}
-                    className="justify-start"
-                    onClick={() => setIcon(option.value)}
-                  >
-                    <span>{option.value}</span>
-                    <span className="text-xs text-gray-300">{option.label}</span>
-                  </Button>
-                ))}
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-300">Ícono (opcional)</p>
+                {icon && (
+                  <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                    {renderCategoryIcon(icon, { size: 14 })}
+                    <span>{icon}</span>
+                  </div>
+                )}
               </div>
-              {filteredIconOptions.length === 0 ? (
-                <p className="text-xs text-gray-500">No hay íconos que coincidan con la búsqueda</p>
-              ) : null}
+              <Input
+                placeholder="Buscar ícono (ej: cafe, pizza, oferta…)"
+                value={iconQuery}
+                onChange={(e) => setIconQuery(e.target.value)}
+              />
+              <div className="max-h-48 overflow-y-auto">
+                <div className="grid grid-cols-6 gap-1.5">
+                  {/* Opción "Sin ícono" */}
+                  <button
+                    type="button"
+                    title="Sin ícono"
+                    onClick={() => setIcon('')}
+                    className={`
+                      flex flex-col items-center justify-center gap-1 rounded-md p-2 text-xs transition-colors
+                      ${icon === ''
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'}
+                    `}
+                  >
+                    <span className="text-base leading-none">—</span>
+                    <span className="truncate w-full text-center leading-tight">ninguno</span>
+                  </button>
+
+                  {filteredIconEntries.map(([iconName, IconComponent]) => (
+                    <button
+                      key={iconName}
+                      type="button"
+                      title={iconName}
+                      onClick={() => setIcon(iconName)}
+                      className={`
+                        flex flex-col items-center justify-center gap-1 rounded-md p-2 text-xs transition-colors
+                        ${icon === iconName
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'}
+                      `}
+                    >
+                      <IconComponent size={18} className="shrink-0" />
+                      <span className="truncate w-full text-center leading-tight">{iconName}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {filteredIconEntries.length === 0 && (
+                  <p className="text-xs text-gray-500 py-2 text-center">
+                    No hay íconos que coincidan
+                  </p>
+                )}
+              </div>
             </div>
+
             <Input
               placeholder="Nombre"
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(e) => setName(e.target.value)}
             />
             <Input
               placeholder="Descripción (opcional)"
               value={description}
-              onChange={(event) => setDescription(event.target.value)}
+              onChange={(e) => setDescription(e.target.value)}
             />
             <Button className="w-full" onClick={handleSaveCategory}>
               {editingCategoryId ? 'Guardar cambios' : 'Crear categoría'}
