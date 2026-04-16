@@ -43,7 +43,7 @@ export function RegisterView() {
       <div className="w-full max-w-sm mx-auto">
         {/* Logo */}
         <div className='mb-4'>
-          <img src="/logoTomatina.png" alt="Tomatina" className="h-12 mb-2" />
+          <img src="" alt="" className="h-12 mb-2" />
         </div>
         <form onSubmit={handleSubmit} className="space-y-5 bg-transparent">
           <div className="grid grid-cols-2 gap-3">
