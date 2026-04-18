@@ -1119,7 +1119,7 @@ export function ChatView() {
   return (
     <div className="flex flex-col h-screen bg-body">
       {/* Header */}
-      <div className="bg-card p-4 border-b border-gray-700">
+      <div className="bg-card p-4 border-b border-orange-700">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <Button
@@ -1260,7 +1260,7 @@ export function ChatView() {
                         ) : null}
 
                         {quotedPreview ? (
-                          <div className={`bg-body border-left-success mb-2 rounded-md border px-2 py-1 text-xs ${isAgent ? 'border-indigo-300/40 bg-indigo-300/10 text-indigo-100' : 'border-gray-600 bg-black/20 text-gray-300'}`}>
+                          <div className={`bg-body border-left-success mb-2 rounded-md border px-2 py-1 text-xs ${isAgent ? 'border-indigo-300/40 bg-indigo-300/10 text-indigo-100' : 'border-orange-600 bg-black/20 text-gray-300'}`}>
                             <p className="line-clamp-2">{quotedPreview}</p>
                           </div>
                         ) : null}
@@ -1403,7 +1403,7 @@ export function ChatView() {
       </div>
 
       {/* Input */}
-      <div className="bg-card p-4 border-t border-gray-700">
+      <div className="bg-card p-4 border-t border-orange-700">
         {quotedMessage ? (
           <div className="mb-3 rounded-md border border-indigo-400/40 bg-indigo-500/10 px-3 py-2">
             <div className="flex items-start justify-between gap-2">
@@ -1427,7 +1427,7 @@ export function ChatView() {
         {/* Emoji picker modal para input */}
         {showEmojiPicker && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div className="bg-card rounded-lg p-2 border border-gray-700 shadow-lg">
+            <div className="bg-card rounded-lg p-2 border border-orange-700 shadow-lg">
               <EmojiPicker
                 onEmojiClick={(emojiData) => {
                   addEmoji(emojiData.emoji);
@@ -1450,7 +1450,7 @@ export function ChatView() {
               <button
                 key={`${file.name}-${index}`}
                 onClick={() => removeAttachedFile(index)}
-                className="text-xs px-2 py-1 rounded-full bg-body border border-gray-600 text-gray-300 hover:bg-gray-700"
+                className="text-xs px-2 py-1 rounded-full bg-body border border-orange-600 text-gray-300 hover:bg-gray-700"
                 type="button"
               >
                 {file.name} ×
@@ -1478,7 +1478,7 @@ export function ChatView() {
             onChange={handleAttachFiles}
           />
 
-          <div className="flex-1 bg-body rounded-lg border border-gray-600 p-0">
+          <div className="flex-1 bg-body rounded-lg border border-orange-600 p-0">
             <Input
               placeholder="Escribe un mensaje..."
               value={newMessage}
@@ -1511,14 +1511,14 @@ export function ChatView() {
       </div>
 
       <Dialog open={!!messageActionsMessage} onOpenChange={() => setMessageActionsMessage(null)}>
-        <DialogContent className="bg-card text-white border-gray-700 max-w-sm">
+        <DialogContent className="bg-card text-white border-orange-700 max-w-sm">
           <DialogHeader>
             <DialogTitle>Acciones del mensaje</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-3">
             {messageActionsMessage ? (
-              <div className="rounded-md border border-gray-700 bg-body p-2">
+              <div className="rounded-md border border-orange-700 bg-body p-2">
                 <p className="text-xs text-gray-400">Mensaje seleccionado</p>
                 <p className="text-sm text-white break-words line-clamp-3">
                   {messageActionsMessage.content || '[Adjunto]'}
@@ -1566,11 +1566,11 @@ export function ChatView() {
       </Dialog>
 
       <Dialog open={isContactDialogOpen} onOpenChange={setIsContactDialogOpen}>
-        <DialogContent className="bg-card text-white border-gray-700 max-w-lg">
+        <DialogContent className="bg-card text-white border-orange-700 max-w-lg">
           <DialogHeader>
             <DialogTitle>Datos del contacto</DialogTitle>
           </DialogHeader>
-          <div className="max-h-[55vh] overflow-auto rounded-md border border-gray-700 bg-body p-3">
+          <div className="max-h-[55vh] overflow-auto rounded-md border border-orange-700 bg-body p-3">
             <pre className="text-xs text-gray-200 whitespace-pre-wrap break-all">
               {contactData ? JSON.stringify(contactData, null, 2) : 'Sin datos'}
             </pre>
@@ -1584,7 +1584,7 @@ export function ChatView() {
       </Dialog>
 
       <Dialog open={isScheduleOrderDialogOpen} onOpenChange={setIsScheduleOrderDialogOpen}>
-        <DialogContent className="bg-card text-white border-gray-700 max-w-lg">
+        <DialogContent className="bg-card text-white border-orange-700 max-w-lg">
           <DialogHeader>
             <DialogTitle>Agendar orden para {conversation.contactName}</DialogTitle>
           </DialogHeader>
@@ -1614,7 +1614,7 @@ export function ChatView() {
               onChange={(event) => setScheduledOrderDetail(event.target.value)}
             />
 
-            <div className="space-y-2 rounded-md border border-gray-700 bg-body p-3">
+            <div className="space-y-2 rounded-md border border-orange-700 bg-body p-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-gray-300">Productos</p>
                 <span className="text-xs text-gray-400">Total: {currencyFormatter.format(scheduledOrderTotal)}</span>
@@ -1677,7 +1677,7 @@ export function ChatView() {
                                   className={`w-full rounded-md border px-3 py-2 text-left transition ${
                                     isSelected
                                       ? 'border-emerald-500 bg-emerald-500/10'
-                                      : 'border-gray-700 bg-card hover:border-gray-500'
+                                      : 'border-orange-700 bg-card hover:border-orange-500'
                                   }`}
                                 >
                                   <div className="flex items-start justify-between gap-2">
@@ -1701,8 +1701,8 @@ export function ChatView() {
                             );
                           })}
                         </CarouselContent>
-                        <CarouselPrevious className="-left-1 h-7 w-7 border-gray-600 bg-body text-white hover:bg-card" />
-                        <CarouselNext className="-right-1 h-7 w-7 border-gray-600 bg-body text-white hover:bg-card" />
+                        <CarouselPrevious className="-left-1 h-7 w-7 border-orange-600 bg-body text-white hover:bg-card" />
+                        <CarouselNext className="-right-1 h-7 w-7 border-orange-600 bg-body text-white hover:bg-card" />
                       </Carousel>
                     </div>
                   ))}

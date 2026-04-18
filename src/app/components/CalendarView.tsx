@@ -141,33 +141,33 @@ export function CalendarView() {
                 Nuevo Evento
               </Button>
             </DialogTrigger>
-            <DialogContent className="bg-card text-white border-gray-700">
+            <DialogContent className="bg-card text-white border-orange-700">
               <DialogHeader>
                 <DialogTitle>Crear Nuevo Evento</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div>
                   <Label>Título</Label>
-                  <Input placeholder="Título del evento" className="bg-body border-gray-600" />
+                  <Input placeholder="Título del evento" className="bg-body border-orange-600" />
                 </div>
                 <div>
                   <Label>Descripción</Label>
-                  <Textarea placeholder="Descripción del evento" className="bg-body border-gray-600" />
+                  <Textarea placeholder="Descripción del evento" className="bg-body border-orange-600" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Hora inicio</Label>
-                    <Input type="time" className="bg-body border-gray-600" />
+                    <Input type="time" className="bg-body border-orange-600" />
                   </div>
                   <div>
                     <Label>Hora fin</Label>
-                    <Input type="time" className="bg-body border-gray-600" />
+                    <Input type="time" className="bg-body border-orange-600" />
                   </div>
                 </div>
                 <div>
                   <Label>Tipo</Label>
                   <Select>
-                    <SelectTrigger className="bg-body border-gray-600">
+                    <SelectTrigger className="bg-body border-orange-600">
                       <SelectValue placeholder="Selecciona tipo" />
                     </SelectTrigger>
                     <SelectContent>
@@ -300,7 +300,7 @@ export function CalendarView() {
                         return (
                           <div
                             key={i}
-                            className="min-h-[60px] bg-body rounded p-1 border border-gray-700"
+                            className="min-h-[60px] bg-body rounded p-1 border border-orange-700"
                           >
                             {events.map((event) => (
                               <div
@@ -329,7 +329,7 @@ export function CalendarView() {
                 return (
                   <div key={hour} className="flex gap-4">
                     <div className="w-20 text-gray-400 text-sm py-2">{hour}</div>
-                    <div className="flex-1 min-h-[80px] bg-body rounded-lg p-3 border border-gray-700">
+                    <div className="flex-1 min-h-[80px] bg-body rounded-lg p-3 border border-orange-700">
                       {events.map((event) => (
                         <div
                           key={event.id}

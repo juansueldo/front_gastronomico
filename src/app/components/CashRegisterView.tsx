@@ -151,15 +151,15 @@ export function CashRegisterView() {
         </div>
 
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-          <div className="p-3 rounded-lg border border-gray-700 bg-card">
+          <div className="p-3 rounded-lg border border-orange-700 bg-card">
             <p className="text-xs text-gray-400">Ventas</p>
             <p className="text-lg font-semibold text-white">{currencyFormatter.format(totalSales)}</p>
           </div>
-          <div className="p-3 rounded-lg border border-gray-700 bg-card">
+          <div className="p-3 rounded-lg border border-orange-700 bg-card">
             <p className="text-xs text-gray-400">Ingresos</p>
             <p className="text-lg font-semibold text-white">{currencyFormatter.format(totalIncomes)}</p>
           </div>
-          <div className="p-3 rounded-lg border border-gray-700 bg-card">
+          <div className="p-3 rounded-lg border border-orange-700 bg-card">
             <p className="text-xs text-gray-400">Egresos</p>
             <p className="text-lg font-semibold text-white">{currencyFormatter.format(totalExpenses)}</p>
           </div>
@@ -169,8 +169,8 @@ export function CashRegisterView() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-gray-700 bg-card">
-          <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+        <div className="rounded-lg border border-orange-700 bg-card">
+          <div className="px-4 py-3 border-b border-orange-700 flex items-center justify-between">
             <h2 className="text-sm font-medium text-white">Movimientos del turno</h2>
             <Badge variant="secondary" className="bg-label-secondary text-white text-xs">
               {movements.length} movimientos
@@ -200,7 +200,7 @@ export function CashRegisterView() {
         </div>
 
         <Dialog open={isManualDialogOpen} onOpenChange={setIsManualDialogOpen}>
-          <DialogContent className="bg-card border-gray-700 text-white">
+          <DialogContent className="bg-card border-orange-700 text-white">
             <DialogHeader>
               <DialogTitle>Registrar ingreso/egreso</DialogTitle>
             </DialogHeader>

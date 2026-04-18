@@ -2,18 +2,18 @@
 
 :root {
   --font-size: 16px;
-  --background: #f8f7fa;
+  --background: #e0dee2;
   --foreground: oklch(0.145 0 0);
-  --card: #fff;
+  --card: #e6e0e0;
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: #7367f0;
-  --primary-foreground: #7267f036;
+  --primary: #da7b10;
+  --primary-foreground: #f0834436;
   --secondary: oklch(0.95 0.0058 264.53);
   --secondary-foreground: #030213;
   --muted: #ececf0;
-  --muted-foreground: #717182;
+  --muted-foreground: #e29562;
   --accent: #e9ebef;
   --accent-foreground: #030213;
   --destructive: #d4183d;
@@ -36,7 +36,7 @@
   --sidebar-primary: #030213;
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-accent-foreground: oklch(20.463% 0.00002 271.152);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
   --success: #318f39;
@@ -56,21 +56,21 @@
 }
 
 .dark {
-  --background: #25293c;
+  --background: #1b1b1b;
   --foreground: oklch(0.985 0 0);
-  --card: #2f3349;
+  --card: #1c1c1c;
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.145 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: #7367f0;
-  --primary-foreground: #7267f036;
+  --primary: #da7b10;
+  --primary-foreground: #f0a56736;
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.396 0.141 25.723);
   --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
+  --border: oklch(65.342% 0.12261 52.563);
   --input: oklch(0.269 0 0);
   --ring: oklch(0.439 0 0);
   --font-weight-medium: 500;
@@ -82,7 +82,7 @@
   --chart-5: oklch(0.645 0.246 16.439);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary: oklch(71.705% 0.15737 64.278);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
@@ -265,6 +265,9 @@
     background: var(--bg-body) !important;
     border-color: var(--primary) !important;
     box-shadow: 0 0 0 1px var(--primary) !important;
+  }
+  input:checked{
+    accent-color: var(--primary);
   }
   .bg-primary{
     background: var(--primary) !important;

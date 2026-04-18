@@ -1156,7 +1156,7 @@ export function ActiveOrdersView() {
       return 'border-green-500/70 bg-green-500/10';
     }
 
-    return 'border-gray-700 bg-card';
+    return 'border-orange-700 bg-card';
   };
 
   const getPriorityBadgeClass = (order: ActiveOrderItem) => {
@@ -1267,7 +1267,7 @@ export function ActiveOrdersView() {
             </div>
             <div className="space-y-2">
               {deliveryOrders.length === 0 ? (
-                <div className="p-4 rounded-lg border border-gray-700 bg-card text-sm text-gray-400">
+                <div className="p-4 rounded-lg border border-orange-700 bg-card text-sm text-gray-400">
                   Sin pedidos de delivery
                 </div>
               ) : (
@@ -1285,7 +1285,7 @@ export function ActiveOrdersView() {
             </div>
             <div className="space-y-2">
               {salonOrders.length === 0 ? (
-                <div className="p-4 rounded-lg border border-gray-700 bg-card text-sm text-gray-400">
+                <div className="p-4 rounded-lg border border-orange-700 bg-card text-sm text-gray-400">
                   Sin pedidos en salón
                 </div>
               ) : (
@@ -1297,7 +1297,7 @@ export function ActiveOrdersView() {
       </div>
 
       <Dialog open={!!detailOrder} onOpenChange={() => setDetailOrder(null)}>
-        <DialogContent className="bg-card border-gray-700 text-white">
+        <DialogContent className="bg-card border-orange-700 text-white">
           <DialogHeader>
             <DialogTitle>Detalle del pedido {detailOrder?.id}</DialogTitle>
           </DialogHeader>
@@ -1348,11 +1348,11 @@ export function ActiveOrdersView() {
                   <p>{detailOrder.notes}</p>
                 </div>
               )}
-              <div className="flex items-center justify-between pt-2 border-t border-gray-700">
+              <div className="flex items-center justify-between pt-2 border-t border-orange-700">
                 <span className="text-gray-400">Total</span>
                 <span className="font-medium">{detailOrder.total}</span>
               </div>
-              <div className="space-y-2 pt-2 border-t border-gray-700">
+              <div className="space-y-2 pt-2 border-t border-orange-700">
                 <p className="text-gray-400">Finalizar orden</p>
                 <Select
                   value={finalizePaymentMethod}
@@ -1377,7 +1377,7 @@ export function ActiveOrdersView() {
       </Dialog>
 
       <Dialog open={!!statusOrder} onOpenChange={() => setStatusOrder(null)}>
-        <DialogContent className="bg-card border-gray-700 text-white">
+        <DialogContent className="bg-card border-orange-700 text-white">
           <DialogHeader>
             <DialogTitle>Cambiar estado {statusOrder ? `(${statusOrder.id})` : ''}</DialogTitle>
           </DialogHeader>
@@ -1407,7 +1407,7 @@ export function ActiveOrdersView() {
           setIsCreateOrderDialogOpen(true);
         }}
       >
-        <DialogContent className="bg-card border-gray-700 text-white">
+        <DialogContent className="bg-card border-orange-700 text-white">
           <DialogHeader>
             <DialogTitle>Nueva orden</DialogTitle>
           </DialogHeader>
@@ -1458,7 +1458,7 @@ export function ActiveOrdersView() {
               onChange={(event) => setNewOrderDetail(event.target.value)}
             />
 
-            <div className="space-y-2 rounded-md border border-gray-700 bg-body p-3">
+            <div className="space-y-2 rounded-md border border-orange-700 bg-body p-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-gray-300">Productos</p>
                 <div className="flex items-center gap-2">
@@ -1529,7 +1529,7 @@ export function ActiveOrdersView() {
 
                             return (
                               <CarouselItem key={product.id} className="pl-2 basis-[82%] sm:basis-1/2">
-                                <div className="w-full rounded-md border border-gray-700 bg-card px-3 py-2">
+                                <div className="w-full rounded-md border border-orange-700 bg-card px-3 py-2">
                                   <div className="min-w-0">
                                     <p className="truncate text-sm text-white">{product.name}</p>
                                     {product.description ? (
@@ -1566,8 +1566,8 @@ export function ActiveOrdersView() {
                             );
                           })}
                         </CarouselContent>
-                        <CarouselPrevious className="-left-1 h-7 w-7 border-gray-600 bg-body text-white hover:bg-card" />
-                        <CarouselNext className="-right-1 h-7 w-7 border-gray-600 bg-body text-white hover:bg-card" />
+                        <CarouselPrevious className="-left-1 h-7 w-7 border-orange-600 bg-body text-white hover:bg-card" />
+                        <CarouselNext className="-right-1 h-7 w-7 border-orange-600 bg-body text-white hover:bg-card" />
                       </Carousel>
                     </div>
                   ))}

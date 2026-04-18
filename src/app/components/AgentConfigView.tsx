@@ -78,7 +78,7 @@ export function AgentConfigView() {
               type="password"
               value={config.geminiApiKey}
               onChange={(event) => setConfig({ ...config, geminiApiKey: event.target.value })}
-              className="bg-body border-gray-600 text-white"
+              className="bg-body border-orange-600 text-white"
               disabled={loading}
             />
           </div>
@@ -88,7 +88,7 @@ export function AgentConfigView() {
             <Input
               value={config.context}
               onChange={(event) => setConfig({ ...config, context: event.target.value })}
-              className="bg-body border-gray-600 text-white"
+              className="bg-body border-orange-600 text-white"
               disabled={loading}
             />
           </div>

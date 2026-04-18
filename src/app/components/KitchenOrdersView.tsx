@@ -144,7 +144,7 @@ const statusCardClass: Record<KitchenOrderStatus, string> = {
   'En preparación': 'border-amber-500/60 bg-amber-500/10',
   'Listo para servir': 'border-emerald-500/60 bg-emerald-500/10',
   'En camino': 'border-sky-500/60 bg-sky-500/10',
-  Entregado: 'border-gray-700 bg-card',
+  Entregado: 'border-orange-700 bg-card',
 };
 
 const statusBadgeClass: Record<KitchenOrderStatus, string> = {
@@ -365,7 +365,7 @@ export function KitchenOrdersView() {
           const columnOrders = ordersByStatus[column.key] ?? [];
 
           return (
-            <section key={column.key} className="rounded-lg border border-gray-700 bg-card p-3">
+            <section key={column.key} className="rounded-lg border border-orange-700 bg-card p-3">
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-sm font-medium text-gray-200">{column.label}</h2>
                 <Badge variant="secondary" className="bg-gray-700 text-white text-xs">
@@ -375,7 +375,7 @@ export function KitchenOrdersView() {
 
               <div className="space-y-3">
                 {columnOrders.length === 0 ? (
-                  <div className="rounded-md border border-dashed border-gray-700 p-4 text-center text-xs text-gray-500">
+                  <div className="rounded-md border border-dashed border-orange-700 p-4 text-center text-xs text-gray-500">
                     Sin pedidos
                   </div>
                 ) : (

@@ -1,5 +1,5 @@
 {
-  "appId": "com.tomatina.app",
-  "appName": "Tomatina",
+  "appId": "com.cloudcook.app",
+  "appName": "Cloud Cook",
   "webDir": "dist"
 }

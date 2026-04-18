@@ -498,7 +498,7 @@ export function ConversationList() {
           })}
         </div>
 
-        <div className="pt-4 border-t border-gray-600">
+        <div className="pt-4 border-t border-orange-600">
           <p className="text-xs text-gray-400 mb-2 px-3">ETIQUETAS</p>
           <div className="space-y-1">
             {labels.map((label) => (
@@ -514,7 +514,7 @@ export function ConversationList() {
         </div>
         {/* Nuevo Chat Modal */}
         <Dialog open={showNewChatModal} onOpenChange={setShowNewChatModal}>
-          <DialogContent className="bg-card border-gray-700 max-w-md">
+          <DialogContent className="bg-card border-orange-700 max-w-md">
             <DialogHeader>
               <DialogTitle>Nuevo Chat</DialogTitle>
             </DialogHeader>
@@ -522,7 +522,7 @@ export function ConversationList() {
               <div>
                 <Label className="text-gray-300">Instancia</Label>
                 <Select value={selectedInstance} onValueChange={setSelectedInstance}>
-                  <SelectTrigger className="bg-body border-gray-600 text-white mt-2">
+                  <SelectTrigger className="bg-body border-orange-600 text-white mt-2">
                     <SelectValue placeholder="Selecciona una instancia" />
                   </SelectTrigger>
                   <SelectContent>
@@ -541,7 +541,7 @@ export function ConversationList() {
                   placeholder="Ej: Juan Pérez"
                   value={contactName}
                   onChange={(e) => setContactName(e.target.value)}
-                  className="bg-body border-gray-600 text-white mt-2"
+                  className="bg-body border-orange-600 text-white mt-2"
                 />
               </div>
               <div>
@@ -551,13 +551,13 @@ export function ConversationList() {
                   placeholder="Ej: +54 9 11 1234-5678"
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
-                  className="bg-body border-gray-600 text-white mt-2"
+                  className="bg-body border-orange-600 text-white mt-2"
                 />
               </div>
               <div>
                 <Label className="text-gray-300">O seleccionar contacto existente</Label>
                 <Select value={selectedContactId} onValueChange={setSelectedContactId}>
-                  <SelectTrigger className="bg-body border-gray-600 text-white mt-2">
+                  <SelectTrigger className="bg-body border-orange-600 text-white mt-2">
                     <SelectValue placeholder="Selecciona un contacto" />
                   </SelectTrigger>
                   <SelectContent>
@@ -584,7 +584,7 @@ export function ConversationList() {
 
       {/* Context Menu Dialog */}
       <Dialog open={!!contextMenuConv} onOpenChange={() => setContextMenuConv(null)}>
-        <DialogContent className="bg-card border-gray-700">
+        <DialogContent className="bg-card border-orange-700">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>Opciones de conversación</span>
@@ -629,7 +629,7 @@ export function ConversationList() {
 
       {/* Assign User Dialog */}
       <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
-        <DialogContent className="bg-card border-gray-700">
+        <DialogContent className="bg-card border-orange-700">
           <DialogHeader>
             <DialogTitle>Asignar conversación</DialogTitle>
           </DialogHeader>
@@ -637,7 +637,7 @@ export function ConversationList() {
             <div>
               <Label className="text-gray-300">Selecciona un agente</Label>
               <Select value={tempAssignedAgent} onValueChange={setTempAssignedAgent}>
-                <SelectTrigger className="bg-body border-gray-600  mt-2">
+                <SelectTrigger className="bg-body border-orange-600  mt-2">
                   <SelectValue placeholder="Selecciona un agente" />
                 </SelectTrigger>
                 <SelectContent>
@@ -652,7 +652,7 @@ export function ConversationList() {
             <div className="flex gap-2">
               <Button
                 variant="outline"
-                className="flex-1 bg-transparent border-gray-600 text-white hover:bg-gray-700"
+                className="flex-1 bg-transparent border-orange-600 text-white hover:bg-gray-700"
                 onClick={() => {
                   setShowAssignDialog(false);
                   setTempAssignedAgent('');
@@ -674,7 +674,7 @@ export function ConversationList() {
 
       {/* Add Label Dialog */}
       <Dialog open={showLabelDialog} onOpenChange={setShowLabelDialog}>
-        <DialogContent className="bg-card border-gray-700">
+        <DialogContent className="bg-card border-orange-700">
           <DialogHeader>
             <DialogTitle>Agregar etiqueta</DialogTitle>
           </DialogHeader>
@@ -682,7 +682,7 @@ export function ConversationList() {
             <div>
               <Label className="text-gray-300">Selecciona una etiqueta</Label>
               <Select value={tempLabel} onValueChange={setTempLabel}>
-                <SelectTrigger className="bg-body border-gray-600 text-white mt-2">
+                <SelectTrigger className="bg-body border-orange-600 text-white mt-2">
                   <SelectValue placeholder="Selecciona una etiqueta" />
                 </SelectTrigger>
                 <SelectContent>
@@ -700,7 +700,7 @@ export function ConversationList() {
             <div className="flex gap-2">
               <Button
                 variant="outline"
-                className="flex-1 bg-transparent border-gray-600 text-white hover:bg-gray-700"
+                className="flex-1 bg-transparent border-orange-600 text-white hover:bg-gray-700"
                 onClick={() => {
                   setShowLabelDialog(false);
                   setTempLabel('');
@@ -721,7 +721,7 @@ export function ConversationList() {
       </Dialog>
 
       {/* Sidebar for desktop */}
-      <div className="hidden md:block w-64 border-r border-gray-700">
+      <div className="hidden md:block w-64 border-r border-orange-700">
         {renderSidebar()}
       </div>
 
@@ -748,7 +748,7 @@ export function ConversationList() {
                 placeholder="Buscar chat"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 bg-body border-gray-600 text-white placeholder:text-gray-400"
+                className="pl-10 bg-body border-orange-600 text-white placeholder:text-gray-400"
               />
             </div>
           </div>

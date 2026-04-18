@@ -165,7 +165,7 @@ export function DataTable<T>({
               setPageSize(Number(event.target.value));
               setPage(1);
             }}
-            className="h-8 rounded-md border border-gray-600 bg-body px-2 text-xs text-white outline-none"
+            className="h-8 rounded-md border border-orange-600 bg-body px-2 text-xs text-white outline-none"
           >
             {pageSizeOptions.map((option) => (
               <option key={option} value={option}>
@@ -177,14 +177,14 @@ export function DataTable<T>({
       </div>
 
       {sortedData.length === 0 ? (
-        <div className="rounded-lg border border-gray-700 bg-card p-4 text-sm text-gray-400">
+        <div className="rounded-lg border border-orange-700 bg-card p-4 text-sm text-gray-400">
           {emptyMessage}
         </div>
       ) : (
         <>
           <Table>
             <TableHeader>
-              <TableRow className="border-gray-700 hover:bg-transparent">
+              <TableRow className="border-orange-700 hover:bg-transparent">
                 {columns.map((column) => (
                   <TableHead
                     key={column.key}
@@ -204,7 +204,7 @@ export function DataTable<T>({
             </TableHeader>
             <TableBody>
               {paginatedData.map((row, index) => (
-                <TableRow key={getRowId ? getRowId(row, index) : String(index)} className="border-gray-700 hover:bg-body">
+                <TableRow key={getRowId ? getRowId(row, index) : String(index)} className="border-orange-700 hover:bg-body">
                   {columns.map((column) => (
                     <TableCell key={column.key} className={column.className}>
                       {column.cell ? column.cell(row) : normalizeValue(column.accessor(row))}
@@ -225,7 +225,7 @@ export function DataTable<T>({
                 variant="outline"
                 onClick={() => setPage((prev) => Math.max(1, prev - 1))}
                 disabled={currentPage <= 1}
-                className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+                className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
               >
                 Anterior
               </Button>
@@ -237,7 +237,7 @@ export function DataTable<T>({
                 variant="outline"
                 onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
                 disabled={currentPage >= totalPages}
-                className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+                className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
               >
                 Siguiente
               </Button>

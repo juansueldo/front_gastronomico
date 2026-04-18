@@ -22,10 +22,19 @@ import { RegisterView } from './components/RegisterView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { PublicRoute } from './components/PublicRoute';
 
+import { DashboardView } from './components/DashboardView';
+
 // Wrapper components
+function DashboardPage() {
+  return (
+    <ProtectedRoute allowedRoles={["admin", "manager", "user"]}>
+      <DashboardView />
+    </ProtectedRoute>
+  );
+}
 function ConversationListPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={["admin", "manager", "user"]}>
       <AppLayout>
         <ConversationList />
       </AppLayout>
@@ -35,7 +44,7 @@ function ConversationListPage() {
 
 function ChatViewPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={["admin", "manager", "user"]}>
       <ChatView />
     </ProtectedRoute>
   );
@@ -43,7 +52,7 @@ function ChatViewPage() {
 
 function CalendarPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={["admin", "manager", "user"]}>
       <AppLayout>
         <CalendarView />
       </AppLayout>
@@ -53,7 +62,7 @@ function CalendarPage() {
 
 function SettingsPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={["admin", "manager", "user"]}>
       <AppLayout>
         <SettingsView />
       </AppLayout>
@@ -63,7 +72,7 @@ function SettingsPage() {
 
 function AgentConfigPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={["admin"]}>
       <AppLayout>
         <AgentConfigView />
       </AppLayout>
@@ -73,7 +82,7 @@ function AgentConfigPage() {
 
 function ConnectionsPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={["admin"]}>
       <AppLayout>
         <ConnectionsView />
       </AppLayout>
@@ -83,7 +92,7 @@ function ConnectionsPage() {
 
 function CampaignsPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={["admin", "manager"]}>
       <AppLayout>
         <CampaignsView />
       </AppLayout>
@@ -93,7 +102,7 @@ function CampaignsPage() {
 
 function NotificationsPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={["admin", "manager", "user"]}>
       <AppLayout>
         <NotificationsView />
       </AppLayout>
@@ -103,7 +112,7 @@ function NotificationsPage() {
 
 function ActiveOrdersPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={["admin", "manager", "user"]}>
       <AppLayout>
         <ActiveOrdersView />
       </AppLayout>
@@ -113,7 +122,7 @@ function ActiveOrdersPage() {
 
 function TablesPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={["admin", "manager"]}>
       <AppLayout>
         <TablesView />
       </AppLayout>
@@ -123,7 +132,7 @@ function TablesPage() {
 
 function CashRegisterPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={["admin"]}>
       <AppLayout>
         <CashRegisterView />
       </AppLayout>
@@ -133,7 +142,7 @@ function CashRegisterPage() {
 
 function CategoriesPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={["admin", "manager"]}>
       <AppLayout>
         <CategoriesView />
       </AppLayout>
@@ -143,7 +152,7 @@ function CategoriesPage() {
 
 function ProductsPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={["admin", "manager"]}>
       <AppLayout>
         <ProductsView />
       </AppLayout>
@@ -153,7 +162,7 @@ function ProductsPage() {
 
 function InventoryPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={["admin", "manager"]}>
       <AppLayout>
         <InventoryView />
       </AppLayout>
@@ -163,7 +172,7 @@ function InventoryPage() {
 
 function KitchenOrdersPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={["admin", "manager"]}>
       <AppLayout>
         <KitchenOrdersView />
       </AppLayout>
@@ -173,15 +182,28 @@ function KitchenOrdersPage() {
 
 function IntegrationsPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={["admin"]}>
       <AppLayout>
         <IntegrationsView />
       </AppLayout>
     </ProtectedRoute>
   );
 }
+// Página de acceso no autorizado
+function UnauthorizedPage() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+      <h1 style={{ fontSize: 32, color: '#e53e3e', marginBottom: 16 }}>Acceso no autorizado</h1>
+      <p style={{ fontSize: 18 }}>No tienes permisos para acceder a esta página.</p>
+    </div>
+  );
+}
 
 export const router = createBrowserRouter([
+    {
+      path: '/unauthorized',
+      Component: UnauthorizedPage,
+    },
   {
     path: '/login',
     Component: () => (
@@ -200,6 +222,11 @@ export const router = createBrowserRouter([
   },
   {
     path: '/',
+    Component: DashboardPage,
+  },
+  {
+    
+    path: '/chats',
     Component: ConversationListPage,
   },
   {

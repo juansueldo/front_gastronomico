@@ -24,6 +24,10 @@ export interface RegisterRequest {
   email?: string;
   firstname?: string;
   lastname?: string;
+  storename?: string;
+  slug?: string;
+  timezone?: string;
+  location?: string;
 }
 
 /**

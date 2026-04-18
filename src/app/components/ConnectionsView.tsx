@@ -446,14 +446,14 @@ export function ConnectionsView() {
           <Button
             variant="outline"
             onClick={() => openEditModal(connection)}
-            className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+            className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
           >
             <Pencil className="h-4 w-4" />
           </Button>
           <Button
             variant="outline"
             onClick={() => handleDeleteConnection(connection.id)}
-            className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+            className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -461,7 +461,7 @@ export function ConnectionsView() {
             <Button
               variant="outline"
               onClick={() => handleLoginInstance(connection)}
-              className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+              className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
               disabled={loggingInstanceId === connection.id}
             >
               <LogIn className="h-4 w-4" />
@@ -505,7 +505,7 @@ export function ConnectionsView() {
         </div>
 
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <DialogContent className="bg-card text-white border-gray-700 max-w-lg">
+          <DialogContent className="bg-card text-white border-orange-700 max-w-lg">
             <DialogHeader>
               <DialogTitle>{editingConnectionId ? 'Editar conexión' : 'Agregar conexión'}</DialogTitle>
             </DialogHeader>
@@ -516,7 +516,7 @@ export function ConnectionsView() {
                 <Input
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
-                  className="bg-body border-gray-600 text-white"
+                  className="bg-body border-orange-600 text-white"
                   placeholder="Instancia principal"
                   disabled={isSaving}
                 />
@@ -525,7 +525,7 @@ export function ConnectionsView() {
               <div>
                 <Label className="text-gray-300">Network</Label>
                 <Select value={network} onValueChange={setNetwork}>
-                  <SelectTrigger className="bg-body border-gray-600 text-white" disabled={isSaving}>
+                  <SelectTrigger className="bg-body border-orange-600 text-white" disabled={isSaving}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -543,7 +543,7 @@ export function ConnectionsView() {
                 <Input
                   value={phone}
                   onChange={(event) => setPhone(event.target.value)}
-                  className="bg-body border-gray-600 text-white"
+                  className="bg-body border-orange-600 text-white"
                   placeholder="54911..."
                   disabled={isSaving}
                 />
@@ -557,7 +557,7 @@ export function ConnectionsView() {
                     setIsModalOpen(false);
                     resetForm();
                   }}
-                  className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+                  className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
                   disabled={isSaving}
                 >
                   Cancelar
@@ -582,7 +582,7 @@ export function ConnectionsView() {
             }
           }}
         >
-          <DialogContent className="bg-card text-white border-gray-700 max-w-md">
+          <DialogContent className="bg-card text-white border-orange-700 max-w-md">
             <DialogHeader>
               <DialogTitle>Escanea el QR de WhatsApp</DialogTitle>
             </DialogHeader>
@@ -597,7 +597,7 @@ export function ConnectionsView() {
 
               {qrValue ? (
                 getQrImageSrc(qrValue) ? (
-                  <div className="rounded-md border border-gray-700 bg-white p-3">
+                  <div className="rounded-md border border-orange-700 bg-white p-3">
                     <img
                       src={getQrImageSrc(qrValue) ?? ''}
                       alt="QR de WhatsApp"
@@ -605,7 +605,7 @@ export function ConnectionsView() {
                     />
                   </div>
                 ) : (
-                  <div className="rounded-md border border-gray-700 bg-body p-3">
+                  <div className="rounded-md border border-orange-700 bg-body p-3">
                     <p className="text-xs text-gray-300 mb-2">El backend devolvió un QR en formato texto:</p>
                     <p className="text-xs break-all text-white">{qrValue}</p>
                   </div>

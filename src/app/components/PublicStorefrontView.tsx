@@ -163,7 +163,7 @@ export function PublicStorefrontView() {
   return (
     <div className="min-h-screen bg-body text-white">
       <div className="max-w-5xl mx-auto p-4 md:p-6 space-y-6">
-        <header className="rounded-lg border border-gray-700 bg-card p-4 md:p-6">
+        <header className="rounded-lg border border-orange-700 bg-card p-4 md:p-6">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
               <h1 className="text-2xl font-semibold">{store?.name ?? 'Tienda'}</h1>
@@ -176,25 +176,25 @@ export function PublicStorefrontView() {
         </header>
 
         {isLoading ? (
-          <div className="rounded-lg border border-gray-700 bg-card p-4 text-sm text-gray-400">
+          <div className="rounded-lg border border-orange-700 bg-card p-4 text-sm text-gray-400">
             Cargando tienda...
           </div>
         ) : null}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <section className="lg:col-span-2 rounded-lg border border-gray-700 bg-card p-4 space-y-3">
+          <section className="lg:col-span-2 rounded-lg border border-orange-700 bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-medium text-gray-300">Catalogo</h2>
             </div>
 
             {products.length === 0 ? (
-              <div className="rounded-lg border border-gray-700 bg-body p-4 text-sm text-gray-400">
+              <div className="rounded-lg border border-orange-700 bg-body p-4 text-sm text-gray-400">
                 No hay productos disponibles.
               </div>
             ) : (
               <div className="space-y-2">
                 {products.map((product) => (
-                  <div key={product.id} className="rounded-lg border border-gray-700 bg-body p-3 flex items-center justify-between gap-3">
+                  <div key={product.id} className="rounded-lg border border-orange-700 bg-body p-3 flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{product.name}</p>
                       {product.description ? (
@@ -228,7 +228,7 @@ export function PublicStorefrontView() {
             )}
           </section>
 
-          <section className="rounded-lg border border-gray-700 bg-card p-4 space-y-3">
+          <section className="rounded-lg border border-orange-700 bg-card p-4 space-y-3">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-medium text-gray-300">Tu compra</h2>
               <Button
@@ -260,7 +260,7 @@ export function PublicStorefrontView() {
               )}
             </div>
 
-            <div className="space-y-2 pt-2 border-t border-gray-700">
+            <div className="space-y-2 pt-2 border-t border-orange-700">
               <Input
                 placeholder="Tu nombre"
                 value={customerName}

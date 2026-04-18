@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { MessageSquare, Calendar, Settings, LogOut, Bot, Link2, Megaphone, Bell, MoreHorizontal, ClipboardList, LayoutGrid, Wallet, Tags, Package, ChefHat, Puzzle, Boxes, ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Calendar, Settings, LogOut, Bot, Link2, Megaphone, Bell, MoreHorizontal, ClipboardList, LayoutGrid, Wallet, Tags, Package, ChefHat, Puzzle, Boxes, ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
 import { toast } from 'sonner';
@@ -79,48 +79,57 @@ export function AppLayout({ children }: AppLayoutProps) {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
+  // Define los roles permitidos para cada ruta aquí
   const navCategories = [
     {
       category: 'Operaciones',
       items: [
-        { path: '/', icon: MessageSquare, label: 'Chats' },
-        { path: '/orders', icon: ClipboardList, label: 'Pedidos' },
-        { path: '/kitchen', icon: ChefHat, label: 'Cocina' },
-        { path: '/tables', icon: LayoutGrid, label: 'Mesas' },
-        { path: '/cash-register', icon: Wallet, label: 'Caja' },
+        { path: '/', icon: LayoutDashboard, label: 'Dashboard', allowedRoles: ['admin', 'manager', 'user'] },
+        { path: '/chats', icon: MessageSquare, label: 'Chats', allowedRoles: ['admin', 'manager', 'user'] },
+        { path: '/orders', icon: ClipboardList, label: 'Pedidos', allowedRoles: ['admin', 'manager', 'user'] },
+        { path: '/kitchen', icon: ChefHat, label: 'Cocina', allowedRoles: ['admin', 'manager'] },
+        { path: '/tables', icon: LayoutGrid, label: 'Mesas', allowedRoles: ['admin', 'manager'] },
+        { path: '/cash-register', icon: Wallet, label: 'Caja', allowedRoles: ['admin'] },
       ],
     },
     {
       category: 'Catálogo',
       items: [
-        { path: '/categories', icon: Tags, label: 'Categorías' },
-        { path: '/products', icon: Package, label: 'Productos' },
-        { path: '/inventory', icon: Boxes, label: 'Inventario' },
+        { path: '/categories', icon: Tags, label: 'Categorías', allowedRoles: ['admin', 'manager'] },
+        { path: '/products', icon: Package, label: 'Productos', allowedRoles: ['admin', 'manager'] },
+        { path: '/inventory', icon: Boxes, label: 'Inventario', allowedRoles: ['admin', 'manager'] },
       ],
     },
     {
       category: 'Herramientas',
       items: [
-        { path: '/calendar', icon: Calendar, label: 'Calendario' },
-        { path: '/campaigns', icon: Megaphone, label: 'Campañas' },
-        { path: '/notifications', icon: Bell, label: 'Notificaciones' },
-        { path: '/agent', icon: Bot, label: 'Agente IA' },
-        { path: '/connections', icon: Link2, label: 'Conexiones' },
-        { path: '/integrations', icon: Puzzle, label: 'Integraciones' },
+        { path: '/calendar', icon: Calendar, label: 'Calendario', allowedRoles: ['admin', 'manager', 'user'] },
+        { path: '/campaigns', icon: Megaphone, label: 'Campañas', allowedRoles: ['admin', 'manager'] },
+        { path: '/notifications', icon: Bell, label: 'Notificaciones', allowedRoles: ['admin', 'manager', 'user'] },
+        { path: '/agent', icon: Bot, label: 'Agente IA', allowedRoles: ['admin'] },
+        { path: '/connections', icon: Link2, label: 'Conexiones', allowedRoles: ['admin'] },
+        { path: '/integrations', icon: Puzzle, label: 'Integraciones', allowedRoles: ['admin'] },
       ],
     },
     {
       category: 'Configuración',
       items: [
-        { path: '/settings', icon: Settings, label: 'Configuración' },
+        { path: '/settings', icon: Settings, label: 'Configuración', allowedRoles: ['admin', 'manager', 'user'] },
       ],
     },
   ];
 
   const mobilePrimaryPaths = ['/', '/calendar', '/campaigns', '/notifications'];
-  const allNavItems = navCategories.flatMap(cat => cat.items);
+  // Filtrar items según el rol del usuario logueado
+  const userRole = loggedUser?.role;
+  const filteredNavCategories = navCategories.map(cat => ({
+    ...cat,
+    items: cat.items.filter(item => !item.allowedRoles || item.allowedRoles.includes(userRole)),
+  })).filter(cat => cat.items.length > 0);
+
+  const allNavItems = filteredNavCategories.flatMap(cat => cat.items);
   const mobilePrimaryItems = allNavItems.filter((item) => mobilePrimaryPaths.includes(item.path));
-  const mobileMoreItemsByCategory = navCategories
+  const mobileMoreItemsByCategory = filteredNavCategories
     .map(cat => ({
       category: cat.category,
       items: cat.items.filter(item => !mobilePrimaryPaths.includes(item.path)),
@@ -129,7 +138,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   const isActive = (path: string) => {
     if (path === '/') {
-      return location.pathname === '/' || location.pathname.startsWith('/chat');
+      return location.pathname === '/' ;
     }
     return location.pathname === path;
   };
@@ -156,10 +165,10 @@ export function AppLayout({ children }: AppLayoutProps) {
       <Toaster />
 
       {/* Desktop Sidebar */}
-      <div className={`hidden md:flex md:w-20 ${sidebarWidth} flex-col bg-card border-r border-gray-700 transition-all duration-300`}>
+      <div className={`hidden md:flex md:w-20 ${sidebarWidth} flex-col bg-card border-r border-orange-700 transition-all duration-300`}>
 
         {/* User Profile */}
-        <div className="p-4 border-b border-gray-700">
+        <div className="p-4 border-b border-orange-700">
           {!loggedUser ? (
             <div className="text-gray-400 text-sm">Cargando...</div>
           ) : (
@@ -184,7 +193,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
         {/* Navigation */}
         <nav className="flex-1 p-4 space-y-4 overflow-y-auto">
-          {navCategories.map((cat) => (
+          {filteredNavCategories.map((cat) => (
             <div key={cat.category}>
               {/* Category header — only shown when labels are visible */}
               {showLabels && (
@@ -218,8 +227,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                         title={isSidebarCollapsed ? item.label : undefined}
                         className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                           active
-                            ? 'bg-primary text-white'
-                            : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+                            ? 'bg-primary text-white-700'
+                            : 'text-gray-400 hover:bg-orange-700 hover:text-white'
                         }`}
                       >
                         <Icon className="h-5 w-5 shrink-0" />
@@ -234,12 +243,12 @@ export function AppLayout({ children }: AppLayoutProps) {
         </nav>
 
         {/* Bottom actions: collapse toggle + logout */}
-        <div className="p-4 border-t border-gray-700 space-y-1">
+        <div className="p-4 border-t border-orange-700 space-y-1">
           {/* Toggle sidebar collapse — only visible on lg+ */}
           <button
             onClick={toggleSidebar}
             title={isSidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'}
-            className="w-full hidden lg:flex items-center gap-3 px-4 py-3 text-gray-400 hover:bg-gray-700 hover:text-white rounded-lg transition-colors"
+            className="w-full hidden lg:flex items-center gap-3 px-4 py-3 text-gray-400 hover:bg-orange-700 hover:text-white rounded-lg transition-colors"
           >
             {isSidebarCollapsed
               ? <PanelLeftOpen className="h-5 w-5 shrink-0" />
@@ -249,7 +258,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 text-gray-400 hover:bg-gray-700 hover:text-white rounded-lg transition-colors"
+            className="w-full flex items-center gap-3 px-4 py-3 text-gray-400 hover:bg-orange-700 hover:text-white rounded-lg transition-colors"
           >
             <LogOut className="h-5 w-5 shrink-0" />
             {showLabels && <span className="hidden lg:block">Cerrar sesión</span>}
@@ -264,7 +273,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         </div>
 
         {/* Mobile Bottom Navigation */}
-        <div className="md:hidden bg-card border-t border-gray-700 safe-area-bottom">
+        <div className="md:hidden bg-card border-t border-orange-700 safe-area-bottom">
           <div className="grid grid-cols-5 gap-1 px-2 py-3">
             {mobilePrimaryItems.map((item) => {
               const Icon = item.icon;
@@ -274,7 +283,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   key={item.path}
                   onClick={() => navigate(item.path)}
                   className={`flex flex-col items-center gap-1 px-2 py-2 rounded-lg transition-colors ${
-                    active ? 'text-primary' : 'text-gray-400'
+                    active ? 'text-primary' : 'text-white'
                   }`}
                 >
                   <Icon className="h-6 w-6" />
@@ -289,7 +298,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   className={`flex flex-col items-center gap-1 px-2 py-2 rounded-lg transition-colors ${
                     mobileMoreItemsByCategory.some(cat => cat.items.some(item => isActive(item.path)))
                       ? 'text-primary'
-                      : 'text-gray-400'
+                      : 'text-white'
                   }`}
                 >
                   <MoreHorizontal className="h-6 w-6" />
@@ -297,7 +306,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </button>
               </SheetTrigger>
 
-              <SheetContent side="bottom" className="bg-card border-gray-700 text-white">
+              <SheetContent side="bottom" className="bg-card border-orange-700 text-white">
                 <SheetHeader>
                   <SheetTitle className="text-white">Más opciones</SheetTitle>
                 </SheetHeader>
@@ -321,7 +330,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                                 active
                                   ? 'bg-primary text-white'
-                                  : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                                  : 'text-white hover:bg-orange-700 hover:text-white'
                               }`}
                             >
                               <Icon className="h-5 w-5 shrink-0" />

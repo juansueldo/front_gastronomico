@@ -9,6 +9,8 @@ export interface ProductItem {
   id: string;
   name: string;
   description?: string;
+  image?: string;
+  categoryId: string;
   price: number;
   categoryIds?: string[];
   category_ids?: string[];

@@ -555,7 +555,7 @@ export function InventoryView() {
           <div className="flex items-center justify-end gap-2">
             <Button
               size="sm"
-              className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+              className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
               onClick={() => {
                 if (row.type === 'ingredient' && row.ingredient) {
                   openIngredientAdjustDialog(row.ingredient);
@@ -572,7 +572,7 @@ export function InventoryView() {
             {row.type === 'direct' && directProduct ? (
               <Button
                 size="sm"
-                className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+                className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
                 onClick={() => openConsumeDialog({ type: 'product', productId: directProduct.productId, productName: directProduct.productName })}
               >
                 Consumir
@@ -596,7 +596,7 @@ export function InventoryView() {
           <div className="flex items-center gap-2">
             <Button
               size="sm"
-              className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+              className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
               onClick={() => setIsCreateIngredientDialogOpen(true)}
             >
               <Plus className="h-4 w-4 mr-1" />
@@ -604,7 +604,7 @@ export function InventoryView() {
             </Button>
             <Button
               size="sm"
-              className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+              className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
               onClick={() => setIsConsumeOrderDialogOpen(true)}
             >
               <ShoppingCart className="h-4 w-4 mr-1" />
@@ -644,7 +644,7 @@ export function InventoryView() {
           }
         }}
       >
-        <DialogContent className="bg-card border-gray-700 text-white max-w-md">
+        <DialogContent className="bg-card border-orange-700 text-white max-w-md">
           <DialogHeader>
             <DialogTitle>
               <span className="inline-flex items-center gap-2">
@@ -655,7 +655,7 @@ export function InventoryView() {
           </DialogHeader>
 
           <div className="space-y-3">
-            <div className="rounded-md border border-gray-700 bg-body p-3 text-sm text-gray-300">
+            <div className="rounded-md border border-orange-700 bg-body p-3 text-sm text-gray-300">
               {adjustTarget?.type === 'ingredient'
                 ? `${adjustTarget.name} (${adjustTarget.unit})`
                 : adjustTarget?.productName ?? 'Item'}
@@ -698,7 +698,7 @@ export function InventoryView() {
           }
         }}
       >
-        <DialogContent className="bg-card border-gray-700 text-white max-w-md">
+        <DialogContent className="bg-card border-orange-700 text-white max-w-md">
           <DialogHeader>
             <DialogTitle>Crear ingrediente</DialogTitle>
           </DialogHeader>
@@ -751,13 +751,13 @@ export function InventoryView() {
           }
         }}
       >
-        <DialogContent className="bg-card border-gray-700 text-white max-w-md">
+        <DialogContent className="bg-card border-orange-700 text-white max-w-md">
           <DialogHeader>
             <DialogTitle>Registrar consumo</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-3">
-            <div className="rounded-md border border-gray-700 bg-body p-3 text-sm text-gray-300">
+            <div className="rounded-md border border-orange-700 bg-body p-3 text-sm text-gray-300">
               {consumeTarget?.productName ?? 'Producto'}
             </div>
 
@@ -786,7 +786,7 @@ export function InventoryView() {
           }
         }}
       >
-        <DialogContent className="bg-card border-gray-700 text-white max-w-xl">
+        <DialogContent className="bg-card border-orange-700 text-white max-w-xl">
           <DialogHeader>
             <DialogTitle>Consumir inventario por pedido</DialogTitle>
           </DialogHeader>
@@ -795,7 +795,7 @@ export function InventoryView() {
             {consumeOrderLines.map((line) => (
               <div key={line.id} className="grid grid-cols-1 md:grid-cols-[1fr_120px_92px] gap-2">
                 <select
-                  className="h-10 rounded-md border border-gray-700 bg-body px-3 text-sm text-white"
+                  className="h-10 rounded-md border border-orange-700 bg-body px-3 text-sm text-white"
                   value={line.productId}
                   onChange={(event) => updateConsumeOrderLine(line.id, 'productId', event.target.value)}
                 >
@@ -813,7 +813,7 @@ export function InventoryView() {
                   onChange={(event) => updateConsumeOrderLine(line.id, 'quantity', event.target.value)}
                 />
                 <Button
-                  className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+                  className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
                   onClick={() => removeConsumeOrderLine(line.id)}
                 >
                   Quitar
@@ -823,7 +823,7 @@ export function InventoryView() {
 
             <div className="flex items-center justify-between gap-2">
               <Button
-                className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+                className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
                 onClick={addConsumeOrderLine}
               >
                 Agregar línea

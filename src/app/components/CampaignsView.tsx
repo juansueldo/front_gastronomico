@@ -96,7 +96,7 @@ export function CampaignsView() {
                 <Input
                   value={name}
                   onChange={(event) => setName(event.target.value)}
-                  className="bg-body border-gray-600 text-white"
+                  className="bg-body border-orange-600 text-white"
                   placeholder="Promoción de verano"
                 />
               </div>
@@ -104,7 +104,7 @@ export function CampaignsView() {
               <div>
                 <Label className="text-gray-300">Canal</Label>
                 <Select value={channel} onValueChange={setChannel}>
-                  <SelectTrigger className="bg-body border-gray-600 text-white">
+                  <SelectTrigger className="bg-body border-orange-600 text-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -122,7 +122,7 @@ export function CampaignsView() {
               <Textarea
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
-                className="bg-body border-gray-600 text-white min-h-28"
+                className="bg-body border-orange-600 text-white min-h-28"
                 placeholder="Escribe el mensaje que se enviará a los contactos..."
               />
             </div>
@@ -145,7 +145,7 @@ export function CampaignsView() {
           ) : (
             <div className="space-y-3">
               {campaigns.map((campaign) => (
-                <div key={campaign.id} className="bg-body border border-gray-700 rounded-lg p-4">
+                <div key={campaign.id} className="bg-body border border-orange-700 rounded-lg p-4">
                   <div className="flex items-center justify-between gap-3 mb-2">
                     <p className="text-white font-medium truncate">{campaign.name}</p>
                     <Badge variant="secondary" className="bg-indigo-600 text-white uppercase">

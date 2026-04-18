@@ -58,7 +58,7 @@ const statusLabels: Record<TableItem['status'], string> = {
 };
 
 const statusCardClasses: Record<TableItem['status'], string> = {
-  libre: 'border-gray-700 bg-card',
+  libre: 'border-orange-700 bg-card',
   ocupada: 'border-green-500/70 bg-green-500/10',
   'por-cerrar': 'border-yellow-500/70 bg-yellow-500/10',
   reservada: 'border-blue-500/70 bg-blue-500/10',
@@ -454,7 +454,7 @@ export function TablesView() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <div className="p-2 rounded-lg bg-card border border-gray-700 text-center">
+          <div className="p-2 rounded-lg bg-card border border-orange-700 text-center">
             <p className="text-xs text-gray-400">Libres</p>
             <p className="text-sm text-white font-medium">{freeCount}</p>
           </div>
@@ -516,7 +516,7 @@ export function TablesView() {
                 </div>
               </div>
 
-              <div className="mt-2 pt-2 border-t border-gray-700 flex items-center justify-between">
+              <div className="mt-2 pt-2 border-t border-orange-700 flex items-center justify-between">
                 <span className="text-xs text-gray-400">Total</span>
                 <span className="text-sm text-white font-medium">{formatCurrency(getTableTotalAmount(table))}</span>
               </div>
@@ -526,7 +526,7 @@ export function TablesView() {
       </div>
 
       <Dialog open={!!detailTable} onOpenChange={() => setDetailTable(null)}>
-        <DialogContent className="bg-card border-gray-700 text-white">
+        <DialogContent className="bg-card border-orange-700 text-white">
           <DialogHeader>
             <DialogTitle>Detalle de Mesa {detailTable?.number}</DialogTitle>
           </DialogHeader>
@@ -554,7 +554,7 @@ export function TablesView() {
                 <span className="text-gray-400">Hora apertura</span>
                 <span>{detailTable.openedAt ?? '--:--'}</span>
               </div>
-              <div className="flex items-center justify-between pt-2 border-t border-gray-700">
+              <div className="flex items-center justify-between pt-2 border-t border-orange-700">
                 <span className="text-gray-400">Total</span>
                 <span className="font-medium">{formatCurrency(getTableTotalAmount(detailTable))}</span>
               </div>
@@ -567,7 +567,7 @@ export function TablesView() {
       </Dialog>
 
       <Dialog open={!!actionTable} onOpenChange={() => setActionTable(null)}>
-        <DialogContent className="bg-card border-gray-700 text-white">
+        <DialogContent className="bg-card border-orange-700 text-white">
           <DialogHeader>
             <DialogTitle>Acciones Mesa {actionTable?.number}</DialogTitle>
           </DialogHeader>
@@ -575,7 +575,7 @@ export function TablesView() {
             <Button className="w-full" onClick={handleOpenBill}>
               Abrir cuenta
             </Button>
-            <div className="space-y-2 pt-2 border-t border-gray-700">
+            <div className="space-y-2 pt-2 border-t border-orange-700">
               <p className="text-sm text-gray-300">Sumar producto a la mesa</p>
               {availableProducts.length === 0 ? (
                 <p className="text-xs text-gray-500">No hay productos cargados</p>
@@ -597,7 +597,7 @@ export function TablesView() {
                 Sumar producto
               </Button>
             </div>
-            <div className="space-y-2 pt-2 border-t border-gray-700">
+            <div className="space-y-2 pt-2 border-t border-orange-700">
               <p className="text-sm text-gray-300">Cobrar mesa</p>
               <Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as PaymentMethod)}>
                 <SelectTrigger>
@@ -624,7 +624,7 @@ export function TablesView() {
       </Dialog>
 
       <Dialog open={isCreateTableDialogOpen} onOpenChange={setIsCreateTableDialogOpen}>
-        <DialogContent className="bg-card border-gray-700 text-white">
+        <DialogContent className="bg-card border-orange-700 text-white">
           <DialogHeader>
             <DialogTitle>Nueva mesa</DialogTitle>
           </DialogHeader>
@@ -660,7 +660,7 @@ export function TablesView() {
       </Dialog>
 
       <Dialog open={isMoveTableDialogOpen} onOpenChange={setIsMoveTableDialogOpen}>
-        <DialogContent className="bg-card border-gray-700 text-white">
+        <DialogContent className="bg-card border-orange-700 text-white">
           <DialogHeader>
             <DialogTitle>Mover Mesa {actionTable?.number}</DialogTitle>
           </DialogHeader>

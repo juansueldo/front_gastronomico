@@ -298,7 +298,7 @@ export function CategoriesView() {
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="bg-card border-gray-700 text-white">
+        <DialogContent className="bg-card border-orange-700 text-white">
           <DialogHeader>
             <DialogTitle>
               {editingCategoryId ? 'Editar categoría' : 'Nueva categoría'}
@@ -307,7 +307,7 @@ export function CategoriesView() {
 
           <div className="space-y-3">
             {/* Selector de ícono */}
-            <div className="space-y-2 rounded-md border border-gray-700 bg-body p-3">
+            <div className="space-y-2 rounded-md border border-orange-700 bg-body p-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-gray-300">Ícono (opcional)</p>
                 {icon && (

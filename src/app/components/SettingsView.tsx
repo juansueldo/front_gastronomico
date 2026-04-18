@@ -178,7 +178,7 @@ export function SettingsView() {
                   variant="outline"
                   size="sm"
                   onClick={handlePhotoUpload}
-                  className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+                  className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
                 >
                   <Camera className="h-4 w-4 mr-2" />
                   Cambiar foto
@@ -192,7 +192,7 @@ export function SettingsView() {
                     <Label className="text-gray-300">Nombre</Label>
                     <Input
                       value={loggedUser?.firstname ?? ''}
-                      className="bg-body border-gray-600 text-white"
+                      className="bg-body border-orange-600 text-white"
                     />
                   </div>
                   <div>
@@ -201,7 +201,7 @@ export function SettingsView() {
                       type="text"
                       value={loggedUser?.lastname ?? ''}
                       //onChange={(e) => setLoggedUser({ ...loggedUser, lastname: e.target.value })}
-                      className="bg-body border-gray-600 text-white"
+                      className="bg-body border-orange-600 text-white"
                     />
                   </div>
                 </div>
@@ -213,7 +213,7 @@ export function SettingsView() {
                       type="email"
                       value={loggedUser?.email ?? ''}
                       //onChange={(e) => setLoggedUser({ ...loggedUser, email: e.target.value })}
-                      className="bg-body border-gray-600 text-white"
+                      className="bg-body border-orange-600 text-white"
                     />
                   </div>
                   <div>
@@ -221,7 +221,7 @@ export function SettingsView() {
                     <Input
                       value={loggedUser?.role ?? ''}
                       //onChange={(e) => setLoggedUser({ ...loggedUser, role: e.target.value })}
-                      className="bg-body border-gray-600 text-white"
+                      className="bg-body border-orange-600 text-white"
                     />
                   </div>
                 </div>
@@ -232,7 +232,7 @@ export function SettingsView() {
                     //value={loggedUser.status}
                     //onValueChange={(value: any) => setLoggedUser({ ...loggedUser, status: value })}
                   >
-                    <SelectTrigger className="bg-body border-gray-600 text-white">
+                    <SelectTrigger className="bg-body border-orange-600 text-white">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -338,7 +338,7 @@ export function SettingsView() {
               <div>
                 <Label className="text-gray-300">Tema</Label>
                 <Select value={theme} onValueChange={handleThemeChange}>
-                  <SelectTrigger className="bg-body border-gray-600 text-white">
+                  <SelectTrigger className="bg-body border-orange-600 text-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -355,7 +355,7 @@ export function SettingsView() {
                   Idioma
                 </Label>
                 <Select value={language} onValueChange={setLanguage}>
-                  <SelectTrigger className="bg-body border-gray-600 text-white">
+                  <SelectTrigger className="bg-body border-orange-600 text-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -378,19 +378,19 @@ export function SettingsView() {
             <div className="space-y-3">
               <Button
                 variant="outline"
-                className="w-full justify-start bg-transparent border-gray-600 text-white hover:bg-gray-700"
+                className="w-full justify-start bg-transparent border-orange-600 text-white hover:bg-gray-700"
               >
                 Cambiar contraseña
               </Button>
               <Button
                 variant="outline"
-                className="w-full justify-start bg-transparent border-gray-600 text-white hover:bg-gray-700"
+                className="w-full justify-start bg-transparent border-orange-600 text-white hover:bg-gray-700"
               >
                 Autenticación de dos factores
               </Button>
               <Button
                 variant="outline"
-                className="w-full justify-start bg-transparent border-gray-600 text-white hover:bg-gray-700"
+                className="w-full justify-start bg-transparent border-orange-600 text-white hover:bg-gray-700"
               >
                 Dispositivos conectados
               </Button>
@@ -408,11 +408,11 @@ export function SettingsView() {
               <Input
                 value={slugUrlInput}
                 onChange={(event) => setSlugUrlInput(event.target.value)}
-                className="bg-body border-gray-600 text-white"
+                className="bg-body border-orange-600 text-white"
                 placeholder="Ej: tienda/mi-negocio o https://pedidos.mi-negocio.com"
               />
               <Select value={slugStatusId} onValueChange={setSlugStatusId}>
-                <SelectTrigger className="bg-body border-gray-600 text-white">
+                <SelectTrigger className="bg-body border-orange-600 text-white">
                   <SelectValue placeholder="Estado" />
                 </SelectTrigger>
                 <SelectContent>
@@ -425,7 +425,7 @@ export function SettingsView() {
               </Button>
             </div>
 
-            <div className="rounded-md border border-gray-700 bg-body p-3 space-y-2">
+            <div className="rounded-md border border-orange-700 bg-body p-3 space-y-2">
               {isLoadingSlugs ? (
                 <p className="text-sm text-gray-400">Cargando slugs...</p>
               ) : null}
@@ -438,7 +438,7 @@ export function SettingsView() {
                 const normalizedUrl = normalizeStoreUrl(slug.slugUrl);
 
                 return (
-                  <div key={slug.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gray-700 p-3">
+                  <div key={slug.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-orange-700 p-3">
                     <div className="min-w-0">
                       <p className="text-sm text-white truncate">{slug.slugUrl}</p>
                       <p className="text-xs text-gray-400 truncate">{normalizedUrl}</p>
@@ -449,7 +449,7 @@ export function SettingsView() {
                         type="button"
                         size="sm"
                         variant="outline"
-                        className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+                        className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
                         onClick={() => void handleCopyStoreUrl(slug.slugUrl)}
                       >
                         Copiar URL

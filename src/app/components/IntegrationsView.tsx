@@ -100,7 +100,7 @@ export function IntegrationsView() {
               const isConnecting = connectingProviderId === provider.id;
 
               return (
-                <Card key={provider.id} className="bg-card border-gray-700 text-white">
+                <Card key={provider.id} className="bg-card border-orange-700 text-white">
                   <CardHeader>
                     <CardTitle className="flex items-start justify-between gap-3">
                       <span className="flex items-center gap-2">

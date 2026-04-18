@@ -213,7 +213,7 @@ export function DeliveryZoneMap({
       className={
         `${isFullscreen
           ? 'fixed inset-0 z-50 bg-black/80 flex flex-col justify-center items-center p-0 m-0 w-screen h-screen'
-          : 'rounded-lg border border-gray-700 bg-card p-4 space-y-3'} transition-all duration-300`
+          : 'rounded-lg border border-orange-700 bg-card p-4 space-y-3'} transition-all duration-300`
       }
       style={isFullscreen ? { borderRadius: 0, padding: 0 } : {}}
     >
@@ -244,7 +244,7 @@ export function DeliveryZoneMap({
       <div className={
         isFullscreen
           ? 'relative flex-1 w-full h-full min-h-[400px] bg-body border-none rounded-none'
-          : 'relative h-72 rounded-lg border border-gray-700 bg-body overflow-hidden'
+          : 'relative h-72 rounded-lg border border-orange-700 bg-body overflow-hidden'
       }>
         {isFullscreen && (
           <button
@@ -273,18 +273,18 @@ export function DeliveryZoneMap({
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {!isEditingDeliveryZone ? (
-          <Button size="sm" variant="outline" className="bg-transparent border-gray-600 text-white hover:bg-gray-700" onClick={startDeliveryZoneEdition}>
+          <Button size="sm" variant="outline" className="bg-transparent border-orange-600 text-white hover:bg-gray-700" onClick={startDeliveryZoneEdition}>
             Dibujar zona de entrega
           </Button>
         ) : (
           <>
-            <Button size="sm" variant="outline" className="bg-transparent border-gray-600 text-white hover:bg-gray-700" onClick={undoDeliveryZonePoint} disabled={draftDeliveryZonePoints.length === 0}>
+            <Button size="sm" variant="outline" className="bg-transparent border-orange-600 text-white hover:bg-gray-700" onClick={undoDeliveryZonePoint} disabled={draftDeliveryZonePoints.length === 0}>
               Deshacer punto
             </Button>
             <Button size="sm" variant="secondary" onClick={saveDeliveryZonePolygon} disabled={draftDeliveryZonePoints.length < 3}>
               Guardar zona
             </Button>
-            <Button size="sm" variant="outline" className="bg-transparent border-gray-600 text-white hover:bg-gray-700" onClick={cancelDeliveryZoneEdition}>
+            <Button size="sm" variant="outline" className="bg-transparent border-orange-600 text-white hover:bg-gray-700" onClick={cancelDeliveryZoneEdition}>
               Cancelar edición
             </Button>
           </>
@@ -297,7 +297,7 @@ export function DeliveryZoneMap({
         ) : null}
       </div>
       {deliveryOrders.length === 0 ? (
-        <div className="p-3 rounded-lg border border-gray-700 bg-body text-xs text-gray-400">
+        <div className="p-3 rounded-lg border border-orange-700 bg-body text-xs text-gray-400">
           Sin pedidos de delivery activos. Podés configurar la zona igualmente.
         </div>
       ) : null}

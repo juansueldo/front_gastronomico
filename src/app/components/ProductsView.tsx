@@ -330,13 +330,13 @@ export function ProductsView() {
       className: 'text-right',
       cell: (product) => (
         <div className="flex items-center justify-end gap-2">
-          <Button size="sm" className="bg-transparent border-gray-600 text-white hover:bg-gray-700" onClick={() => { void openRecipeDialog(product); }}>
+          <Button size="sm" className="bg-transparent border-orange-600 text-white hover:bg-gray-700" onClick={() => { void openRecipeDialog(product); }}>
             <BookOpenText className="h-4 w-4" />
           </Button>
-          <Button size="sm" className="bg-transparent border-gray-600 text-white hover:bg-gray-700" onClick={() => openEditDialog(product)}>
+          <Button size="sm" className="bg-transparent border-orange-600 text-white hover:bg-gray-700" onClick={() => openEditDialog(product)}>
             <Pencil className="h-4 w-4" />
           </Button>
-          <Button size="sm" className="bg-transparent border-gray-600 text-white hover:bg-gray-700" onClick={() => handleDeleteProduct(product)}>
+          <Button size="sm" className="bg-transparent border-orange-600 text-white hover:bg-gray-700" onClick={() => handleDeleteProduct(product)}>
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
@@ -371,7 +371,7 @@ export function ProductsView() {
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="bg-card border-gray-700 text-white">
+        <DialogContent className="bg-card border-orange-700 text-white">
           <DialogHeader>
             <DialogTitle>{editingProductId ? 'Editar producto' : 'Nuevo producto'}</DialogTitle>
           </DialogHeader>
@@ -396,7 +396,7 @@ export function ProductsView() {
               onChange={(event) => setPrice(event.target.value)}
             />
 
-            <div className="space-y-2 rounded-md border border-gray-700 bg-body p-3">
+            <div className="space-y-2 rounded-md border border-orange-700 bg-body p-3">
               <p className="text-sm text-gray-300">Categorías</p>
               {categories.length === 0 ? (
                 <p className="text-xs text-gray-500">Primero creá categorías</p>
@@ -431,7 +431,7 @@ export function ProductsView() {
           }
         }}
       >
-        <DialogContent className="bg-card border-gray-700 text-white max-w-2xl">
+        <DialogContent className="bg-card border-orange-700 text-white max-w-2xl">
           <DialogHeader>
             <DialogTitle>Receta de {recipeProduct?.name ?? 'producto'}</DialogTitle>
           </DialogHeader>
@@ -446,11 +446,11 @@ export function ProductsView() {
             </label>
 
             {!recipeUsesIngredients ? (
-              <div className="rounded-md border border-gray-700 bg-body p-3 text-sm text-gray-300">
+              <div className="rounded-md border border-orange-700 bg-body p-3 text-sm text-gray-300">
                 Este producto se controla por stock directo (sin receta de ingredientes).
               </div>
             ) : (
-              <div className="space-y-3 rounded-md border border-gray-700 bg-body p-3">
+              <div className="space-y-3 rounded-md border border-orange-700 bg-body p-3">
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-gray-300">Ingredientes por unidad de producto</p>
                   <Button type="button" size="sm" variant="secondary" onClick={addRecipeIngredientRow}>

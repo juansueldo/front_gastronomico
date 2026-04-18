@@ -128,7 +128,7 @@ export function NotificationsView() {
               void markAllAsRead();
             }}
             variant="outline"
-            className="bg-transparent border-gray-600 text-white hover:bg-gray-700"
+            className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
             disabled={isMarkingAll || unreadCount === 0}
           >
             <CheckCheck className="h-4 w-4 mr-2" />
@@ -161,7 +161,7 @@ export function NotificationsView() {
                   }}
                   className={`border rounded-lg p-4 ${
                     notification.read
-                      ? 'bg-body border-gray-700'
+                      ? 'bg-body border-orange-700'
                       : 'bg-indigo-900/20 border-indigo-700'
                   } ${notification.read ? '' : 'cursor-pointer'}`}
                 >

@@ -102,7 +102,7 @@ export function LoginView() {
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
               <button
                 type="button"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-indigo-400"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-orange-400"
                 tabIndex={-1}
                 onClick={() => setShowPassword((prev) => !prev)}
               >
@@ -110,7 +110,7 @@ export function LoginView() {
               </button>
             </div>
             <div className="flex justify-end mt-1">
-              <button type="button" className="text-xs text-indigo-400 hover:text-indigo-300">¿Olvidaste la contraseña?</button>
+              <button type="button" className="text-xs text-orange-400 hover:text-orange-300">¿Olvidaste la contraseña?</button>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -119,7 +119,7 @@ export function LoginView() {
               id="remember"
               checked={rememberMe}
               onChange={(event) => setRememberMe(event.target.checked)}
-              className="w-4 h-4 rounded border-gray-600 bg-body text-indigo-600 focus:ring-indigo-600"
+              className="w-4 h-4 rounded border-orange-600 bg-body text-orange-600 focus:ring-indigo-600"
             />
             <label htmlFor="remember" className="text-sm text-gray-400">Recuérdame por 30 días</label>
           </div>
@@ -129,7 +129,7 @@ export function LoginView() {
         </form>
         <div className="text-center mt-6">
           <span className="text-gray-400 text-sm">¿Nuevo en nuestra plataforma? </span>
-          <a href="/register" className="text-indigo-400 hover:text-indigo-300 text-sm font-medium">Crear una cuenta</a>
+          <a href="/register" className="text-orange-400 hover:text-orange-300 text-sm font-medium">Crear una cuenta</a>
         </div>
       </div>
     </div>
