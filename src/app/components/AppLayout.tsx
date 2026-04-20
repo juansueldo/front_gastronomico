@@ -165,10 +165,10 @@ export function AppLayout({ children }: AppLayoutProps) {
       <Toaster />
 
       {/* Desktop Sidebar */}
-      <div className={`hidden md:flex md:w-20 ${sidebarWidth} flex-col bg-card border-r border-orange-700 transition-all duration-300`}>
+      <div className={`hidden md:flex md:w-20 ${sidebarWidth} flex-col bg-card border-r border-gray-600 transition-all duration-300`}>
 
         {/* User Profile */}
-        <div className="p-4 border-b border-orange-700">
+        <div className="p-4 border-b border-gray-600">
           {!loggedUser ? (
             <div className="text-gray-400 text-sm">Cargando...</div>
           ) : (
@@ -243,7 +243,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         </nav>
 
         {/* Bottom actions: collapse toggle + logout */}
-        <div className="p-4 border-t border-orange-700 space-y-1">
+        <div className="p-4 border-t border-gray-600 space-y-1">
           {/* Toggle sidebar collapse — only visible on lg+ */}
           <button
             onClick={toggleSidebar}
