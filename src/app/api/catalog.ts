@@ -2,7 +2,7 @@
  * API de Catálogo - Products y Categories endpoints
  */
 
-import { apiClient } from './client';
+import { apiConnection } from './apiConnection';
 import { API_VERSION } from './types';
 
 export interface ProductCategory {
@@ -41,31 +41,34 @@ export interface CreateProductRequest {
  * Obtiene todas las categorías
  */
 export async function fetchProductCategories(): Promise<ProductCategory[]> {
-  const data = await apiClient.get(`${API_VERSION}/category/list`, {
+  const data: any = await apiConnection.get(`${API_VERSION}/category/list`, {
     config: { cache: 'long' },
   });
-  return Array.isArray(data) ? data : data?.categories ?? data?.data ?? [];
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.categories)) return data.categories;
+  if (data && Array.isArray(data.data)) return data.data;
+  return [];
 }
 
 /**
  * Obtiene una categoría específica
  */
 export async function getCategory(categoryId: string): Promise<ProductCategory> {
-  return apiClient.get(`${API_VERSION}/category/${categoryId}`);
+  return apiConnection.get(`${API_VERSION}/category/${categoryId}`);
 }
 
 /**
  * Crea una nueva categoría
  */
 export async function createCategory(categoryData: CreateCategoryRequest): Promise<any> {
-  return apiClient.post(`${API_VERSION}/category/create`, categoryData);
+  return apiConnection.post(`${API_VERSION}/category/create`, categoryData);
 }
 
 /**
  * Actualiza una categoría
  */
 export async function updateCategory(categoryId: string, data: CreateCategoryRequest): Promise<any> {
-  return apiClient.post(`${API_VERSION}/category/update/${categoryId}`, {
+  return apiConnection.post(`${API_VERSION}/category/update/${categoryId}`, {
     id: categoryId,
     ...data,
   });
@@ -75,38 +78,41 @@ export async function updateCategory(categoryId: string, data: CreateCategoryReq
  * Elimina una categoría
  */
 export async function deleteCategory(categoryId: string): Promise<any> {
-  return apiClient.delete(`${API_VERSION}/category/${categoryId}`);
+  return apiConnection.delete(`${API_VERSION}/category/${categoryId}`);
 }
 
 /**
  * Obtiene todos los productos
  */
 export async function fetchProducts(): Promise<ProductItem[]> {
-  const data = await apiClient.get(`${API_VERSION}/product/list`, {
+  const data: any = await apiConnection.get(`${API_VERSION}/product/list`, {
     config: { cache: 'long' },
   });
-  return Array.isArray(data) ? data : data?.products ?? data?.data ?? [];
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.products)) return data.products;
+  if (data && Array.isArray(data.data)) return data.data;
+  return [];
 }
 
 /**
  * Obtiene un producto específico
  */
 export async function getProduct(productId: string): Promise<ProductItem> {
-  return apiClient.get(`${API_VERSION}/product/${productId}`);
+  return apiConnection.get(`${API_VERSION}/product/${productId}`);
 }
 
 /**
  * Crea un nuevo producto
  */
 export async function createProduct(productData: CreateProductRequest): Promise<any> {
-  return apiClient.post(`${API_VERSION}/product/create`, productData);
+  return apiConnection.post(`${API_VERSION}/product/create`, productData);
 }
 
 /**
  * Actualiza un producto
  */
 export async function updateProduct(productId: string, data: CreateProductRequest): Promise<any> {
-  return apiClient.post(`${API_VERSION}/product/update/${productId}`, {
+  return apiConnection.post(`${API_VERSION}/product/update/${productId}`, {
     id: productId,
     ...data,
   });
@@ -116,5 +122,5 @@ export async function updateProduct(productId: string, data: CreateProductReques
  * Elimina un producto
  */
 export async function deleteProduct(productId: string): Promise<any> {
-  return apiClient.delete(`${API_VERSION}/product/${productId}`);
+  return apiConnection.delete(`${API_VERSION}/product/${productId}`);
 }

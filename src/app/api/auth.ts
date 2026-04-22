@@ -2,7 +2,7 @@
  * API de Autenticación - Auth endpoints
  */
 
-import { apiClient } from './client';
+import { apiConnection } from './apiConnection';
 import { API_VERSION, type ApiResponse } from './types';
 import type { AuthUser } from '../authStorage';
 
@@ -34,7 +34,7 @@ export interface RegisterRequest {
  * Inicia sesión con credenciales
  */
 export async function login(credentials: LoginRequest): Promise<LoginResponse> {
-  return apiClient.post(`${API_VERSION}/auth/login`, credentials, {
+  return apiConnection.post(`${API_VERSION}/auth/login`, credentials, {
     config: { isPublic: true },
   });
 }
@@ -43,7 +43,7 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
  * Registra un nuevo usuario
  */
 export async function register(data: RegisterRequest): Promise<ApiResponse> {
-  return apiClient.post(`${API_VERSION}/auth/register`, data, {
+  return apiConnection.post(`${API_VERSION}/auth/register`, data, {
     config: { isPublic: true },
   });
 }
@@ -52,7 +52,7 @@ export async function register(data: RegisterRequest): Promise<ApiResponse> {
  * Valida el token actual
  */
 export async function validateToken(): Promise<AuthUser> {
-  return apiClient.get(`${API_VERSION}/auth/validate`, {
+  return apiConnection.get(`${API_VERSION}/auth/validate`, {
     config: { cache: 'short' },
   });
 }

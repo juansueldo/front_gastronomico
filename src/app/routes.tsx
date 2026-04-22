@@ -20,6 +20,7 @@ import { PublicStorefrontView } from './components/PublicStorefrontView';
 import { LoginView } from './components/LoginView';
 import { RegisterView } from './components/RegisterView';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { HeadquartersView } from './components/HeadquartersView';
 import { PublicRoute } from './components/PublicRoute';
 
 import { DashboardView } from './components/DashboardView';
@@ -179,6 +180,16 @@ function KitchenOrdersPage() {
     </ProtectedRoute>
   );
 }
+function HeadquarterPage() {
+  return (
+    <ProtectedRoute allowedRoles={["admin", "manager"]}>
+      <AppLayout>
+        <HeadquartersView />
+      </AppLayout>
+    </ProtectedRoute>
+  );
+}
+
 
 function IntegrationsPage() {
   return (
@@ -292,5 +303,9 @@ export const router = createBrowserRouter([
   {
     path: '/tienda/:slug',
     Component: PublicStorefrontView,
+  },
+  {
+    path: '/headquarters',
+    Component: HeadquarterPage,
   },
 ]);

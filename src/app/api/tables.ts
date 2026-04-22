@@ -26,7 +26,7 @@ export interface CreateTableRequest {
  * Obtiene todas las mesas
  */
 export async function fetchTables(): Promise<TableItem[]> {
-  const data = await apiClient.get(`${API_VERSION}/dining-tables`, {
+  const data = await apiClient.get(`${API_VERSION}/table`, {
     config: { cache: 'short' },
   });
   return Array.isArray(data) ? data : data?.tables ?? [];
@@ -36,7 +36,7 @@ export async function fetchTables(): Promise<TableItem[]> {
  * Lista todas las mesas con paginación
  */
 export async function listTables(params?: any): Promise<TableItem[]> {
-  const data = await apiClient.get(`${API_VERSION}/dining-tables/list`, { params });
+  const data = await apiClient.get(`${API_VERSION}/table`, { params });
   return Array.isArray(data) ? data : data?.data ?? [];
 }
 
@@ -44,21 +44,21 @@ export async function listTables(params?: any): Promise<TableItem[]> {
  * Obtiene una mesa específica
  */
 export async function getTable(tableId: string): Promise<TableItem> {
-  return apiClient.get(`${API_VERSION}/dining-tables/${tableId}`);
+  return apiClient.get(`${API_VERSION}/table/${tableId}`);
 }
 
 /**
  * Crea una nueva mesa
  */
 export async function createTable(tableData: CreateTableRequest): Promise<any> {
-  return apiClient.post(`${API_VERSION}/dining-tables/create`, tableData);
+  return apiClient.post(`${API_VERSION}/table`, tableData);
 }
 
 /**
  * Actualiza una mesa
  */
 export async function updateTable(tableId: string, data: CreateTableRequest): Promise<any> {
-  return apiClient.post(`${API_VERSION}/dining-tables/update/${tableId}`, {
+  return apiClient.post(`${API_VERSION}/table/${tableId}`, {
     id: tableId,
     ...data,
   });
@@ -68,7 +68,7 @@ export async function updateTable(tableId: string, data: CreateTableRequest): Pr
  * Elimina una mesa
  */
 export async function deleteTable(tableId: string): Promise<any> {
-  return apiClient.delete(`${API_VERSION}/dining-tables/${tableId}`);
+  return apiClient.delete(`${API_VERSION}/table/${tableId}`);
 }
 
 /**
