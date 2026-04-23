@@ -3,6 +3,7 @@ import { Maximize2, X } from 'lucide-react';
 import { DeliveryZonePoint, upsertDeliveryZone, deleteDeliveryZone } from '../api';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
+import { endpoints } from '../api/enpoints';
 
 export interface DeliveryZoneMapProps {
   deliveryZonePoints: DeliveryZonePoint[];

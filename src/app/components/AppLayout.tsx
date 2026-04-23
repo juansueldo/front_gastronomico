@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { LayoutDashboard, MessageSquare, Calendar, Settings, Building ,LogOut, Bot, Link2, Megaphone, Bell, MoreHorizontal, ClipboardList, LayoutGrid, Wallet, Tags, Package, ChefHat, Puzzle, Boxes, ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Calendar, Settings, Building, MapPin, LogOut, Bot, Link2, Megaphone, Bell, MoreHorizontal, ClipboardList, LayoutGrid, Wallet, Tags, Package, ChefHat, Puzzle, Boxes, ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
 import { toast } from 'sonner';
@@ -91,6 +91,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         { path: '/tables', icon: LayoutGrid, label: 'Mesas', allowedRoles: ['admin', 'manager'] },
         { path: '/cash-register', icon: Wallet, label: 'Caja', allowedRoles: ['admin'] },
         { path: '/headquarters', icon: Building, label: 'Sedes', allowedRoles: ['admin', 'manager'] },
+        { path: '/delivery-zones', icon: MapPin, label: 'Zonas de Entrega', allowedRoles: ['admin', 'manager'] },
       ],
     },
     {

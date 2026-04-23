@@ -39,4 +39,11 @@ export const endpoints = {
     updateHeadquarter: (id: string, data: any) => apiClient.post(`${API_VERSION}/headquarter/${id}`, { id, ...data }),
     deleteHeadquarter: (id: string) => apiClient.delete(`${API_VERSION}/headquarter/${id}`),
 
+    // --- DELIVERY ZONE ---
+    fetchDeliveryZones: () => apiClient.get(`${API_VERSION}/delivery-zone`, { config: { cache: 'long' } }),
+    getDeliveryZone: (id: string) => apiClient.get(`${API_VERSION}/delivery-zone/${id}`),
+    createDeliveryZone: (data: any) => apiClient.post(`${API_VERSION}/delivery-zone`, data),
+    updateDeliveryZone: (id: string, data: any) => apiClient.post(`${API_VERSION}/delivery-zone/${id}`, { id, ...data }),
+    deleteDeliveryZone: (id: string) => apiClient.delete(`${API_VERSION}/delivery-zone/${id}`),
+
 };
