@@ -20,6 +20,7 @@ export function getStoreIdFromToken(token: string): number | null {
   }
 }
 export const AUTH_CHANGED_EVENT = 'app:auth-changed';
+export const AUTH_EXPIRED_EVENT = 'app:auth-expired';
 
 interface SaveAuthSessionInput {
   username: string;
@@ -83,6 +84,14 @@ function emitAuthChanged() {
   }
 
   window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
+}
+
+function emitAuthExpired() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
 }
 
 function isNativePlatform() {
@@ -239,6 +248,11 @@ export function clearAuthSession() {
   removeAuthKeys(webStorage.session);
   void saveCapacitorSession(null);
   emitAuthChanged();
+}
+
+export function expireAuthSession() {
+  clearAuthSession();
+  emitAuthExpired();
 }
 
 export function saveAuthSession({ username, user, accessToken, rememberMe = false }: SaveAuthSessionInput) {

@@ -54,3 +54,6 @@ export * from './delivery-zone';
 
 // Agent Config API
 export * from './agent-config';
+
+// Endpoints map (legacy centralized object)
+export * from './endpoints';

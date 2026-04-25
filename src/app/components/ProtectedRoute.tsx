@@ -1,6 +1,6 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { Navigate } from 'react-router';
-import { getAuthSession, getLoggedUser } from '../authStorage';
+import { AUTH_CHANGED_EVENT, getAuthSession } from '../authStorage';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -8,16 +8,31 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
-  const session = getAuthSession();
+  const [session, setSession] = useState(() => getAuthSession());
+
+  useEffect(() => {
+    const syncSession = () => {
+      setSession(getAuthSession());
+    };
+
+    window.addEventListener(AUTH_CHANGED_EVENT, syncSession);
+
+    return () => {
+      window.removeEventListener(AUTH_CHANGED_EVENT, syncSession);
+    };
+  }, []);
+
   if (!session) {
-    // No autenticado o sesión expirada
     return <Navigate to="/login" replace />;
   }
+
   const user = session.user;
+
   if (allowedRoles && allowedRoles.length > 0) {
     if (!user || !user.role || !allowedRoles.includes(user.role)) {
       return <Navigate to="/unauthorized" replace />;
     }
   }
+
   return <>{children}</>;
 }

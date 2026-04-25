@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { endpoints } from '../api/enpoints';
+import { endpoints } from '../api/endpoints';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

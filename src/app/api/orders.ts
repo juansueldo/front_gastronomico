@@ -22,25 +22,26 @@ export interface OrderItem {
 }
 
 export interface CreateOrderRequest {
-  contactId: number;
-  type: 'delivery' | 'salon';
-  detail: string;
-  total: string | number;
-  status?: string;
-  createdAt?: string;
-  notes?: string;
-  address?: string;
-  latitude?: number;
-  longitude?: number;
-  items?: string[];
-  productIds?: string[];
+  customerId?: number;
+  userId: number;
+  type: 'dine-in' | 'takeaway' | 'delivery';
+  items: Array<{
+    productId: string;
+    quantity: number;
+  }>;
+  delivery_address?: string;
+  delivery_latitude?: number;
+  delivery_longitude?: number;
+  delivery_date?: string;
+  tableId?: number;
+  waiterId?: number;
 }
 
 /**
  * Obtiene las órdenes activas
  */
 export async function fetchActiveOrders(): Promise<OrderItem[]> {
-  const data = await apiClient.get(`${API_VERSION}/orders/active`, {
+  const data = await apiClient.get(`${API_VERSION}/order`, {
     config: { cache: 'short' },
   });
   return Array.isArray(data) ? data : data?.orders ?? [];
@@ -50,7 +51,7 @@ export async function fetchActiveOrders(): Promise<OrderItem[]> {
  * Crea una nueva orden
  */
 export async function createOrder(orderData: CreateOrderRequest): Promise<any> {
-  return apiClient.post(`${API_VERSION}/orders/create`, orderData);
+  return apiClient.post(`${API_VERSION}/order`, orderData);
 }
 
 /**

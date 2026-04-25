@@ -16,26 +16,21 @@ import {
   SelectValue,
 } from './ui/select';
 import { toast } from 'sonner';
+import { getLoggedUser } from '../authStorage';
 import {
   ApiError,
   checkDeliveryZonePoint,
-  completeOrder,
   type CreateOrderRequest,
   createCashMovement,
-  createOrder,
   deleteDeliveryZone,
   getDeliveryZone,
-  fetchActiveOrders,
-  fetchProductCategories,
-  fetchProducts,
   type DeliveryZonePoint,
-  type OrderItem,
   type PaymentMethod,
   type ProductCategory,
   type ProductItem,
   upsertDeliveryZone,
-  updateOrderStatus,
 } from '../api';
+import { endpoints } from '../api/endpoints';
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from './ui/carousel';
 
 const orderStatuses = ['Nuevo', 'En preparación', 'Listo para servir', 'En camino', 'Entregado'];
@@ -216,6 +211,10 @@ export function ActiveOrdersView() {
   const [isCreateOrderDialogOpen, setIsCreateOrderDialogOpen] = useState(false);
   const [newOrderType, setNewOrderType] = useState<ActiveOrderItem['type']>('delivery');
   const [newOrderCustomerName, setNewOrderCustomerName] = useState('');
+  const [newOrderUserId, setNewOrderUserId] = useState('');
+  const [newOrderTableId, setNewOrderTableId] = useState('');
+  const [newOrderWaiterId, setNewOrderWaiterId] = useState('');
+  const [newOrderDeliveryDate, setNewOrderDeliveryDate] = useState('');
   const [newOrderAddress, setNewOrderAddress] = useState('');
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [isLoadingAddressSuggestions, setIsLoadingAddressSuggestions] = useState(false);
@@ -313,26 +312,44 @@ export function ActiveOrdersView() {
     ] as const)
     .sort((a, b) => a[0].localeCompare(b[0], 'es'));
 
-  const normalizeOrder = (order: OrderItem): ActiveOrderItem => {
-    const parsedTotal = Number(order.total);
+  const normalizeOrder = (order: any): ActiveOrderItem => {
+    const rawTotal = order?.total_amount ?? order?.total ?? 0;
+    const parsedTotal = Number(rawTotal);
     const displayTotal = Number.isFinite(parsedTotal)
       ? currencyFormatter.format(parsedTotal)
-      : order.total;
+      : String(rawTotal ?? '0');
+
+    const backendType = String(order?.type ?? '');
+    const normalizedType: ActiveOrderItem['type'] = backendType === 'delivery' ? 'delivery' : 'salon';
+
+    const normalizedItems = Array.isArray(order?.items)
+      ? order.items.map((item: any) => String(item))
+      : Array.isArray(order?.OrderItems)
+        ? order.OrderItems.map((item: any) => {
+          const name = item?.Product?.name ?? `Producto ${item?.productId ?? ''}`.trim();
+          const quantity = Number(item?.quantity ?? 0);
+          return quantity > 1 ? `${name} x${quantity}` : String(name);
+        })
+        : [];
+
+    const customerName = order?.customerName
+      ?? order?.Customer?.name
+      ?? (order?.customerId ? `Cliente #${order.customerId}` : `Orden ${order?.order_number ?? order?.id ?? ''}`);
 
     return {
-      id: order.id,
-      contactId: Number(order.contactId),
-      type: order.type,
-      customerName: order.customerName,
-      address: order.address,
-      latitude: order.latitude,
-      longitude: order.longitude,
-      items: Array.isArray(order.items) ? order.items : [],
-      detail: String(order.detail),
-      status: String(order.status),
+      id: String(order?.id ?? order?.order_number ?? crypto.randomUUID()),
+      contactId: Number(order?.contactId ?? order?.customerId ?? 0),
+      type: normalizedType,
+      customerName: String(customerName),
+      address: order?.address ?? order?.delivery_address ?? undefined,
+      latitude: order?.latitude ?? order?.delivery_latitude ?? undefined,
+      longitude: order?.longitude ?? order?.delivery_longitude ?? undefined,
+      items: normalizedItems,
+      detail: String(order?.detail ?? order?.order_number ?? 'Sin detalle'),
+      status: String(order?.status ?? order?.Status?.name ?? 'pending'),
       total: String(displayTotal),
-      createdAt: order.createdAt,
-      notes: order.notes,
+      createdAt: String(order?.createdAt ?? order?.order_date ?? ''),
+      notes: order?.notes ?? undefined,
     };
   };
 
@@ -340,7 +357,20 @@ export function ActiveOrdersView() {
     setIsLoadingOrders(true);
 
     try {
-      const backendOrders = await fetchActiveOrders();
+      let backendOrders: any[] = [];
+
+      try {
+        const ordersPayload = await endpoints.fetchActiveOrders();
+        backendOrders = Array.isArray(ordersPayload)
+          ? ordersPayload
+          : ordersPayload?.rows ?? ordersPayload?.orders ?? ordersPayload?.data ?? [];
+      } catch {
+        const ordersPayload = await endpoints.fetchOrders();
+        backendOrders = Array.isArray(ordersPayload)
+          ? ordersPayload
+          : ordersPayload?.rows ?? ordersPayload?.data ?? ordersPayload?.orders ?? [];
+      }
+
       setOrders(backendOrders.map(normalizeOrder));
     } catch (error) {
       if (error instanceof ApiError) {
@@ -357,24 +387,43 @@ export function ActiveOrdersView() {
     const loadInitialData = async () => {
       await loadOrders();
 
-      try {
-        const [products, categories] = await Promise.all([
-          fetchProducts(),
-          fetchProductCategories(),
-        ]);
+      const [productsResult, categoriesResult] = await Promise.allSettled([
+        endpoints.fetchProducts(),
+        endpoints.fetchCategories(),
+      ]);
+
+      if (productsResult.status === 'fulfilled') {
+        const productsPayload = productsResult.value;
+        const products = Array.isArray(productsPayload)
+          ? productsPayload
+          : productsPayload?.rows ?? productsPayload?.products ?? productsPayload?.data ?? [];
         setAvailableProducts(products);
+      } else {
+        const reason = productsResult.reason;
+        toast.error(reason instanceof Error ? reason.message : 'No se pudieron cargar los productos');
+      }
+
+      if (categoriesResult.status === 'fulfilled') {
+        const categoriesPayload = categoriesResult.value;
+        const categories = Array.isArray(categoriesPayload)
+          ? categoriesPayload
+          : categoriesPayload?.rows ?? categoriesPayload?.categories ?? categoriesPayload?.data ?? [];
         setAvailableCategories(categories);
-      } catch (error) {
-        if (error instanceof ApiError) {
-          toast.error(error.message);
-        } else {
-          toast.error('No se pudieron cargar los productos');
-        }
+      } else {
+        const reason = categoriesResult.reason;
+        toast.error(reason instanceof Error ? reason.message : 'No se pudieron cargar las categorías');
       }
     };
 
     void loadInitialData();
   }, []);
+
+  useEffect(() => {
+    const loggedUser = getLoggedUser();
+    if (loggedUser?.id && !newOrderUserId) {
+      setNewOrderUserId(String(loggedUser.id));
+    }
+  }, [newOrderUserId]);
 
   useEffect(() => {
     const loadDeliveryZone = async () => {
@@ -671,6 +720,10 @@ export function ActiveOrdersView() {
     setIsCreateOrderDialogOpen(false);
     setNewOrderType('delivery');
     setNewOrderCustomerName('');
+    setNewOrderUserId(String(getLoggedUser()?.id ?? ''));
+    setNewOrderTableId('');
+    setNewOrderWaiterId('');
+    setNewOrderDeliveryDate('');
     setNewOrderAddress('');
     setNewOrderDetail('');
     setSelectedProductQuantities({});
@@ -940,7 +993,7 @@ export function ActiveOrdersView() {
     }
 
     try {
-      await updateOrderStatus(statusOrder.id, nextStatus);
+      await endpoints.updateOrderStatus(statusOrder.id, nextStatus);
     } catch (error) {
       if (error instanceof ApiError) {
         toast.error(error.message);
@@ -967,24 +1020,19 @@ export function ActiveOrdersView() {
   };
 
   const handleCreateOrder = async () => {
-    const contactId = Number(newOrderCustomerName.trim());
+    const customerId = Number(newOrderCustomerName.trim());
+    const userId = Number(newOrderUserId.trim());
+    const tableId = Number(newOrderTableId.trim());
+    const waiterId = Number(newOrderWaiterId.trim());
     const address = newOrderAddress.trim();
-    const productNames = selectedProductsWithQuantity.map((product) => (
-      product.quantity > 1 ? `${product.name} x${product.quantity}` : product.name
-    ));
-    const selectedProductIds = selectedProductsWithQuantity.flatMap((product) => (
-      Array.from({ length: product.quantity }, () => product.id)
-    ));
-    const detail = newOrderDetail.trim() || productNames.join(', ');
-    const totalAmount = selectedProductsTotal;
+    const backendType: CreateOrderRequest['type'] = newOrderType === 'delivery' ? 'delivery' : 'dine-in';
+    const orderItems = selectedProductsWithQuantity.map((product) => ({
+      productId: product.id,
+      quantity: product.quantity,
+    }));
 
-    if (!Number.isInteger(contactId) || contactId <= 0) {
-      toast.error('Ingresá un Contacto ID válido');
-      return;
-    }
-
-    if (!detail) {
-      toast.error('Ingresá el detalle de la orden');
+    if (!Number.isInteger(userId) || userId <= 0) {
+      toast.error('Ingresá un User ID válido');
       return;
     }
 
@@ -998,8 +1046,8 @@ export function ActiveOrdersView() {
       return;
     }
 
-    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
-      toast.error('No se pudo calcular el total de la orden');
+    if (orderItems.length === 0) {
+      toast.error('Seleccioná al menos un producto');
       return;
     }
 
@@ -1021,22 +1069,20 @@ export function ActiveOrdersView() {
     }
 
     const orderPayload: CreateOrderRequest = {
-      contactId,
-      type: newOrderType,
-      detail,
-      status: 'Nuevo',
-      total: String(totalAmount),
-      createdAt: new Date().toISOString(),
-      notes: newOrderNotes.trim() || undefined,
-      address: geocodedAddress?.formattedAddress,
-      latitude: geocodedAddress?.latitude,
-      longitude: geocodedAddress?.longitude,
-      items: productNames,
-      productIds: selectedProductIds,
+      customerId: Number.isInteger(customerId) && customerId > 0 ? customerId : undefined,
+      userId,
+      type: backendType,
+      items: orderItems,
+      delivery_address: geocodedAddress?.formattedAddress,
+      delivery_latitude: geocodedAddress?.latitude,
+      delivery_longitude: geocodedAddress?.longitude,
+      delivery_date: newOrderType === 'delivery' ? (newOrderDeliveryDate || undefined) : undefined,
+      tableId: backendType === 'dine-in' && Number.isInteger(tableId) && tableId > 0 ? tableId : undefined,
+      waiterId: Number.isInteger(waiterId) && waiterId > 0 ? waiterId : undefined,
     };
 
     try {
-      await createOrder(orderPayload);
+      await endpoints.createOrder(orderPayload);
     } catch (error) {
       if (error instanceof ApiError) {
         toast.error(error.message);
@@ -1076,7 +1122,7 @@ export function ActiveOrdersView() {
     }
 
     try {
-      await completeOrder(order.id);
+      await endpoints.completeOrder(order.id);
     } catch (error) {
       if (error instanceof ApiError) {
         toast.error(error.message);
@@ -1413,9 +1459,15 @@ export function ActiveOrdersView() {
             </Select>
 
             <Input
-              placeholder="Contacto ID"
+              placeholder="Customer ID (opcional)"
               value={newOrderCustomerName}
               onChange={(event) => setNewOrderCustomerName(event.target.value)}
+            />
+
+            <Input
+              placeholder="User ID (requerido)"
+              value={newOrderUserId}
+              onChange={(event) => setNewOrderUserId(event.target.value)}
             />
 
             {newOrderType === 'delivery' && (
@@ -1438,8 +1490,30 @@ export function ActiveOrdersView() {
                     {deliveryAddressValidationMessage}
                   </p>
                 ) : null}
+
+                <Input
+                  type="datetime-local"
+                  placeholder="Fecha de entrega (opcional)"
+                  value={newOrderDeliveryDate}
+                  onChange={(event) => setNewOrderDeliveryDate(event.target.value)}
+                />
               </div>
             )}
+
+            {newOrderType === 'salon' ? (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <Input
+                  placeholder="Table ID (opcional)"
+                  value={newOrderTableId}
+                  onChange={(event) => setNewOrderTableId(event.target.value)}
+                />
+                <Input
+                  placeholder="Waiter ID (opcional)"
+                  value={newOrderWaiterId}
+                  onChange={(event) => setNewOrderWaiterId(event.target.value)}
+                />
+              </div>
+            ) : null}
 
             <Input
               placeholder="Detalle"

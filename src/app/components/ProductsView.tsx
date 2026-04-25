@@ -4,6 +4,12 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Checkbox } from './ui/checkbox';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import {
   Dialog,
@@ -13,14 +19,13 @@ import {
 } from './ui/dialog';
 import { toast } from 'sonner';
 import {
-  fetchProductCategories,
+  listProductCategories,
   type ProductCategory,
 } from '../catalogApi';
 import { type DataTableColumn, DataTable } from './ui/data-table';
 import {
   productApi,
 } from '../api';
-import { endpoints } from '../api/enpoints';
 import type { ProductItem, ProductRecipeConfig } from '../api/product';
 
 const currencyFormatter = new Intl.NumberFormat('es-AR', {
@@ -45,13 +50,13 @@ export function ProductsView() {
   const [recipeIngredients, setRecipeIngredients] = useState<Array<{ id: string; name: string; quantity: string; unit: string }>>([]);
 
   const loadCatalog = async () => {
-    const [backendProducts, backendCategories] = await Promise.all([
+    const [backendProducts, backendCategoriesResult] = await Promise.all([
       productApi.listProductsLegacy(),
-      fetchProductCategories(),
+      listProductCategories({ page: 1, pageSize: 200 }),
     ]);
 
     setProducts(backendProducts);
-    setCategories(backendCategories);
+    setCategories(backendCategoriesResult.rows);
   };
 
   useEffect(() => {
@@ -280,6 +285,10 @@ export function ProductsView() {
       .join(', ');
   };
 
+  const removeCategorySelection = (categoryId: string) => {
+    setSelectedCategoryIds((prev) => prev.filter((id) => id !== categoryId));
+  };
+
   const productColumns = useMemo<DataTableColumn<ProductItem>[]>(() => [
     {
       key: 'name',
@@ -397,12 +406,61 @@ export function ProductsView() {
               onChange={(event) => setPrice(event.target.value)}
             />
 
-            <div className="space-y-2 rounded-md border border-orange-700 bg-body p-3">
-              <p className="text-sm text-gray-300">Categorías</p>
+            <div className="space-y-3 rounded-md border border-orange-700 bg-body p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-gray-300">Categorías</p>
+                {categories.length > 0 ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button type="button" size="sm" variant="outline" className="border-orange-600 bg-transparent text-white hover:bg-gray-700">
+                        Seleccionar categorías
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="max-h-72 w-64 overflow-y-auto border-orange-700 bg-card text-white">
+                      {categories.map((category) => (
+                        <DropdownMenuCheckboxItem
+                          key={category.id}
+                          checked={selectedCategoryIds.includes(category.id)}
+                          onCheckedChange={() => toggleCategory(category.id)}
+                          className="cursor-pointer"
+                        >
+                          {category.name}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : null}
+              </div>
+
               {categories.length === 0 ? (
                 <p className="text-xs text-gray-500">Primero creá categorías</p>
+              ) : selectedCategoryIds.length === 0 ? (
+                <p className="text-xs text-gray-500">Seleccioná al menos una categoría</p>
               ) : (
-                categories.map((category) => (
+                <div className="flex flex-wrap gap-2">
+                  {selectedCategoryIds.map((categoryId) => {
+                    const category = categories.find((item) => item.id === categoryId);
+
+                    if (!category) {
+                      return null;
+                    }
+
+                    return (
+                      <Badge
+                        key={category.id}
+                        variant="secondary"
+                        className="cursor-pointer bg-label-secondary text-white"
+                        onClick={() => removeCategorySelection(category.id)}
+                      >
+                        {category.name}
+                      </Badge>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="space-y-2 border-t border-orange-700/50 pt-3">
+                {categories.map((category) => (
                   <label key={category.id} className="flex items-center gap-2 text-sm text-white cursor-pointer">
                     <Checkbox
                       checked={selectedCategoryIds.includes(category.id)}
@@ -410,8 +468,8 @@ export function ProductsView() {
                     />
                     <span>{category.name}</span>
                   </label>
-                ))
-              )}
+                ))}
+              </div>
             </div>
 
             <Button className="w-full" onClick={handleSaveProduct}>

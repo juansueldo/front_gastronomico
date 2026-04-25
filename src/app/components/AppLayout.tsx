@@ -85,7 +85,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       category: 'Operaciones',
       items: [
         { path: '/', icon: LayoutDashboard, label: 'Dashboard', allowedRoles: ['admin', 'manager', 'user'] },
-        { path: '/chats', icon: MessageSquare, label: 'Chats', allowedRoles: ['admin', 'manager', 'user'] },
+        //{ path: '/chats', icon: MessageSquare, label: 'Chats', allowedRoles: ['admin', 'manager', 'user'] },
         { path: '/orders', icon: ClipboardList, label: 'Pedidos', allowedRoles: ['admin', 'manager', 'user'] },
         { path: '/kitchen', icon: ChefHat, label: 'Cocina', allowedRoles: ['admin', 'manager'] },
         { path: '/tables', icon: LayoutGrid, label: 'Mesas', allowedRoles: ['admin', 'manager'] },
@@ -105,12 +105,12 @@ export function AppLayout({ children }: AppLayoutProps) {
     {
       category: 'Herramientas',
       items: [
-        { path: '/calendar', icon: Calendar, label: 'Calendario', allowedRoles: ['admin', 'manager', 'user'] },
-        { path: '/campaigns', icon: Megaphone, label: 'Campañas', allowedRoles: ['admin', 'manager'] },
+        //{ path: '/calendar', icon: Calendar, label: 'Calendario', allowedRoles: ['admin', 'manager', 'user'] },
+        //{ path: '/campaigns', icon: Megaphone, label: 'Campañas', allowedRoles: ['admin', 'manager'] },
         { path: '/notifications', icon: Bell, label: 'Notificaciones', allowedRoles: ['admin', 'manager', 'user'] },
-        { path: '/agent', icon: Bot, label: 'Agente IA', allowedRoles: ['admin'] },
-        { path: '/connections', icon: Link2, label: 'Conexiones', allowedRoles: ['admin'] },
-        { path: '/integrations', icon: Puzzle, label: 'Integraciones', allowedRoles: ['admin'] },
+        //{ path: '/agent', icon: Bot, label: 'Agente IA', allowedRoles: ['admin'] },
+        //{ path: '/connections', icon: Link2, label: 'Conexiones', allowedRoles: ['admin'] },
+        //{ path: '/integrations', icon: Puzzle, label: 'Integraciones', allowedRoles: ['admin'] },
       ],
     },
     {

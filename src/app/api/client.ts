@@ -3,7 +3,7 @@
  * Maneja autenticación, caché, deduplicación de requests, y errores
  */
 
-import { getAuthSession } from '../authStorage';
+import { expireAuthSession, getAuthSession } from '../authStorage';
 import { ApiError, assertOk } from './errors';
 import { API_VERSION, CACHE_TIMES, COMMON_HEADERS, type RequestConfig } from './types';
 
@@ -54,6 +54,7 @@ export class ApiClient {
     if (!isPublic) {
       const token = this.tokenGetter();
       if (!token) {
+        expireAuthSession();
         throw ApiError.unauthorized();
       }
       headers.Authorization = `Bearer ${token}`;
@@ -132,6 +133,9 @@ export class ApiClient {
         throw ApiError.networkError();
       }
       if (error instanceof ApiError) {
+        if (error.isUnauthorized()) {
+          expireAuthSession();
+        }
         throw error;
       }
       throw ApiError.networkError();

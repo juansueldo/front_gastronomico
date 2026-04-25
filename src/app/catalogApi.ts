@@ -1,18 +1,4 @@
-import { getAuthSession } from './authStorage';
-
-type CatalogImportMeta = ImportMeta & {
-  env: {
-    VITE_API_URL?: string;
-    VITE_CATEGORIES_LIST_PATH?: string;
-    VITE_CATEGORIES_CREATE_PATH?: string;
-    VITE_CATEGORIES_UPDATE_PATH?: string;
-    VITE_CATEGORIES_DELETE_PATH?: string;
-    VITE_PRODUCTS_LIST_PATH?: string;
-    VITE_PRODUCTS_CREATE_PATH?: string;
-    VITE_PRODUCTS_UPDATE_PATH?: string;
-    VITE_PRODUCTS_DELETE_PATH?: string;
-  };
-};
+import { endpoints } from './api/endpoints';
 
 export interface ProductCategory {
   id: string;
@@ -27,6 +13,21 @@ export interface ProductItem {
   description?: string;
   price: number;
   categoryIds: string[];
+}
+
+export interface ListProductCategoriesParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  sort?: {
+    key: string;
+    direction: 'asc' | 'desc';
+  } | null;
+}
+
+export interface ProductCategoryListResult {
+  rows: ProductCategory[];
+  total: number;
 }
 
 interface BackendCategory {
@@ -52,58 +53,36 @@ interface BackendProduct {
   categories?: BackendProductCategory[];
 }
 
-const API_URL = (import.meta as CatalogImportMeta).env?.VITE_API_URL;
-const CATEGORIES_LIST_PATH = (import.meta as CatalogImportMeta).env?.VITE_CATEGORIES_LIST_PATH ?? '/v1/category';
-const CATEGORIES_CREATE_PATH = (import.meta as CatalogImportMeta).env?.VITE_CATEGORIES_CREATE_PATH ?? '/v1/category';
-const CATEGORIES_UPDATE_PATH = (import.meta as CatalogImportMeta).env?.VITE_CATEGORIES_UPDATE_PATH ?? '/v1/category/:id';
-const CATEGORIES_DELETE_PATH = (import.meta as CatalogImportMeta).env?.VITE_CATEGORIES_DELETE_PATH ?? '/v1/category/:id';
-const PRODUCTS_LIST_PATH = (import.meta as CatalogImportMeta).env?.VITE_PRODUCTS_LIST_PATH ?? '/v1/product';
-const PRODUCTS_CREATE_PATH = (import.meta as CatalogImportMeta).env?.VITE_PRODUCTS_CREATE_PATH ?? '/v1/product/create';
-const PRODUCTS_UPDATE_PATH = (import.meta as CatalogImportMeta).env?.VITE_PRODUCTS_UPDATE_PATH ?? '/v1/product/update/:id';
-const PRODUCTS_DELETE_PATH = (import.meta as CatalogImportMeta).env?.VITE_PRODUCTS_DELETE_PATH ?? '/v1/product/:id';
+interface UpsertProductCategoryInput {
+  name: string;
+  description?: string;
+  icon?: string;
+}
 
-const resolvePathWithId = (pathTemplate: string, id: string) => {
-  if (pathTemplate.includes(':id')) {
-    return pathTemplate.replace(':id', encodeURIComponent(id));
-  }
+interface CreateProductInput {
+  name: string;
+  description?: string;
+  price: number;
+  categoryIds: string[];
+}
 
-  if (pathTemplate.includes('{id}')) {
-    return pathTemplate.replace('{id}', encodeURIComponent(id));
-  }
+interface UpdateProductInput {
+  name: string;
+  description?: string;
+  price: number;
+  categoryIds: string[];
+}
 
-  return `${pathTemplate.replace(/\/$/, '')}/${encodeURIComponent(id)}`;
-};
-
-const getAuthToken = () => getAuthSession()?.user.token;
-
-const buildAuthHeaders = () => {
-  const authToken = getAuthToken();
-
-  if (!authToken) {
-    throw new Error('Tu sesión expiró. Inicia sesión nuevamente');
-  }
-
+function normalizeCategory(item: BackendCategory): ProductCategory {
   return {
-    Authorization: `Bearer ${authToken}`,
+    id: String(item.id ?? `cat-${Date.now()}-${Math.random()}`),
+    name: item.name ?? 'Categoria',
+    description: item.description ?? undefined,
+    icon: item.icon ?? item.icon_name ?? undefined,
   };
-};
+}
 
-const ensureApiUrl = () => {
-  if (!API_URL) {
-    throw new Error('VITE_API_URL no está configurada');
-  }
-
-  return API_URL;
-};
-
-const normalizeCategory = (item: BackendCategory): ProductCategory => ({
-  id: String(item.id ?? `cat-${Date.now()}-${Math.random()}`),
-  name: item.name ?? 'Categoría',
-  description: item.description ?? undefined,
-  icon: item.icon ?? item.icon_name ?? undefined,
-});
-
-const normalizeProductCategoryIds = (item: BackendProduct): string[] => {
+function normalizeProductCategoryIds(item: BackendProduct): string[] {
   if (Array.isArray(item.categoryIds)) {
     return item.categoryIds.map((categoryId) => String(categoryId));
   }
@@ -120,9 +99,9 @@ const normalizeProductCategoryIds = (item: BackendProduct): string[] => {
   }
 
   return [];
-};
+}
 
-const normalizeProduct = (item: BackendProduct): ProductItem => {
+function normalizeProduct(item: BackendProduct): ProductItem {
   const parsedPrice = Number(item.price ?? 0);
 
   return {
@@ -132,206 +111,163 @@ const normalizeProduct = (item: BackendProduct): ProductItem => {
     price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
     categoryIds: normalizeProductCategoryIds(item),
   };
-};
+}
 
-export const fetchProductCategories = async (): Promise<ProductCategory[]> => {
-  const baseUrl = ensureApiUrl();
-  const response = await fetch(`${baseUrl}${CATEGORIES_LIST_PATH}`, {
-    method: 'GET',
-    headers: buildAuthHeaders(),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => null);
-    throw new Error(errorData?.error || errorData?.detail || 'No se pudieron obtener las categorías');
+function unwrapListPayload<T>(data: unknown, keys: string[]): T[] {
+  if (Array.isArray(data)) {
+    return data as T[];
   }
 
-  const data = await response.json() as {
-    categories?: BackendCategory[];
-    data?: BackendCategory[];
+  if (!data || typeof data !== 'object') {
+    return [];
+  }
+
+  const candidate = data as Record<string, unknown>;
+
+  for (const key of keys) {
+    const value = candidate[key];
+    if (Array.isArray(value)) {
+      return value as T[];
+    }
+  }
+
+  return [];
+}
+
+function sortCategories(items: ProductCategory[], sort: ListProductCategoriesParams['sort']) {
+  if (!sort) {
+    return items;
+  }
+
+  const direction = sort.direction === 'asc' ? 1 : -1;
+
+  return [...items].sort((left, right) => {
+    const leftValue = String((left as Record<string, unknown>)[sort.key] ?? '').toLowerCase();
+    const rightValue = String((right as Record<string, unknown>)[sort.key] ?? '').toLowerCase();
+
+    if (leftValue < rightValue) {
+      return -1 * direction;
+    }
+
+    if (leftValue > rightValue) {
+      return 1 * direction;
+    }
+
+    return 0;
+  });
+}
+
+export async function fetchProductCategories(): Promise<ProductCategory[]> {
+  const payload = await endpoints.fetchCategories();
+  const rows = unwrapListPayload<BackendCategory>(payload, ['rows', 'categories', 'data']);
+  return rows.map(normalizeCategory);
+}
+
+export async function listProductCategories(
+  params: ListProductCategoriesParams = {},
+): Promise<ProductCategoryListResult> {
+  const {
+    page = 1,
+    pageSize = 10,
+    search = '',
+    sort = null,
+  } = params;
+
+  const payload = await endpoints.listCategories({
+    page,
+    pageSize,
+    search,
+    sortBy: sort?.key ?? '',
+    sortDirection: sort?.direction ?? '',
+  });
+
+  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+    const candidate = payload as Record<string, unknown>;
+
+    if (Array.isArray(candidate.rows) && typeof candidate.count === 'number') {
+      return {
+        rows: (candidate.rows as BackendCategory[]).map(normalizeCategory),
+        total: candidate.count,
+      };
+    }
+
+    if (Array.isArray(candidate.data) && typeof candidate.total === 'number') {
+      return {
+        rows: (candidate.data as BackendCategory[]).map(normalizeCategory),
+        total: candidate.total,
+      };
+    }
+  }
+
+  const normalizedCategories = unwrapListPayload<BackendCategory>(payload, ['rows', 'categories', 'data']).map(normalizeCategory);
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredCategories = normalizedSearch
+    ? normalizedCategories.filter((category) => (
+      category.name.toLowerCase().includes(normalizedSearch)
+      || String(category.description ?? '').toLowerCase().includes(normalizedSearch)
+    ))
+    : normalizedCategories;
+  const sortedCategories = sortCategories(filteredCategories, sort);
+  const start = (page - 1) * pageSize;
+
+  return {
+    rows: sortedCategories.slice(start, start + pageSize),
+    total: sortedCategories.length,
   };
-
-  return data;
-};
-
-interface UpsertProductCategoryInput {
-  name: string;
-  description?: string;
-  icon?: string;
 }
 
-export const createProductCategory = async (input: UpsertProductCategoryInput) => {
-  const baseUrl = ensureApiUrl();
-  const response = await fetch(`${baseUrl}${CATEGORIES_CREATE_PATH}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...buildAuthHeaders(),
-    },
-    body: JSON.stringify({
-      name: input.name,
-      description: input.description,
-      icon: input.icon,
-      icon_name: input.icon,
-    }),
+export async function createProductCategory(input: UpsertProductCategoryInput) {
+  return endpoints.createCategory({
+    name: input.name,
+    description: input.description,
+    icon: input.icon,
+    icon_name: input.icon,
   });
-
-  const data = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    throw new Error(data?.error || data?.detail || 'No se pudo crear la categoría');
-  }
-
-  return data;
-};
-
-export const updateProductCategory = async (categoryId: string, input: UpsertProductCategoryInput) => {
-  const baseUrl = ensureApiUrl();
-  const path = resolvePathWithId(CATEGORIES_UPDATE_PATH, categoryId);
-  const response = await fetch(`${baseUrl}${path}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      ...buildAuthHeaders(),
-    },
-    body: JSON.stringify({
-      id: categoryId,
-      categoryId,
-      name: input.name,
-      description: input.description,
-      icon: input.icon,
-    }),
-  });
-
-  const data = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    throw new Error(data?.error || data?.detail || 'No se pudo actualizar la categoría');
-  }
-
-  return data;
-};
-
-export const deleteProductCategory = async (categoryId: string) => {
-  const baseUrl = ensureApiUrl();
-  const path = resolvePathWithId(CATEGORIES_DELETE_PATH, categoryId);
-  const response = await fetch(`${baseUrl}${path}`, {
-    method: 'DELETE',
-    headers: buildAuthHeaders(),
-  });
-
-  const data = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    throw new Error(data?.error || data?.detail || 'No se pudo eliminar la categoría');
-  }
-
-  return data;
-};
-
-export const fetchProducts = async (): Promise<ProductItem[]> => {
-  const baseUrl = ensureApiUrl();
-  const response = await fetch(`${baseUrl}${PRODUCTS_LIST_PATH}`, {
-    method: 'GET',
-    headers: buildAuthHeaders(),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => null);
-    throw new Error(errorData?.error || errorData?.detail || 'No se pudieron obtener los productos');
-  }
-
-  const data = await response.json() as {
-    products?: BackendProduct[];
-    data?: BackendProduct[];
-  };
-
-  const products = data.products ?? data.data ?? [];
-  return Array.isArray(products) ? products.map(normalizeProduct) : [];
-};
-
-interface CreateProductInput {
-  name: string;
-  description?: string;
-  price: number;
-  categoryIds: string[];
 }
 
-export const createProduct = async (input: CreateProductInput) => {
-  const baseUrl = ensureApiUrl();
-  const response = await fetch(`${baseUrl}${PRODUCTS_CREATE_PATH}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...buildAuthHeaders(),
-    },
-    body: JSON.stringify({
-      name: input.name,
-      description: input.description,
-      price: input.price,
-      categoryIds: input.categoryIds,
-      category_ids: input.categoryIds,
-    }),
+export async function updateProductCategory(categoryId: string, input: UpsertProductCategoryInput) {
+  return endpoints.updateCategory(categoryId, {
+    id: categoryId,
+    categoryId,
+    name: input.name,
+    description: input.description,
+    icon: input.icon,
+    icon_name: input.icon,
   });
-
-  const data = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    throw new Error(data?.error || data?.detail || 'No se pudo crear el producto');
-  }
-
-  return data;
-};
-
-interface UpdateProductInput {
-  name: string;
-  description?: string;
-  price: number;
-  categoryIds: string[];
 }
 
-export const updateProduct = async (productId: string, input: UpdateProductInput) => {
-  const baseUrl = ensureApiUrl();
-  const path = resolvePathWithId(PRODUCTS_UPDATE_PATH, productId);
-  const response = await fetch(`${baseUrl}${path}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      ...buildAuthHeaders(),
-    },
-    body: JSON.stringify({
-      id: productId,
-      productId,
-      name: input.name,
-      description: input.description,
-      price: input.price,
-      categoryIds: input.categoryIds,
-      category_ids: input.categoryIds,
-    }),
+export async function deleteProductCategory(categoryId: string) {
+  return endpoints.deleteCategory(categoryId);
+}
+
+export async function fetchProducts(): Promise<ProductItem[]> {
+  const payload = await endpoints.fetchProducts();
+  const rows = unwrapListPayload<BackendProduct>(payload, ['rows', 'products', 'data']);
+  return rows.map(normalizeProduct);
+}
+
+export async function createProduct(input: CreateProductInput) {
+  return endpoints.createProduct({
+    name: input.name,
+    description: input.description,
+    price: input.price,
+    categoryIds: input.categoryIds,
+    category_ids: input.categoryIds,
   });
+}
 
-  const data = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    throw new Error(data?.error || data?.detail || 'No se pudo actualizar el producto');
-  }
-
-  return data;
-};
-
-export const deleteProduct = async (productId: string) => {
-  const baseUrl = ensureApiUrl();
-  const path = resolvePathWithId(PRODUCTS_DELETE_PATH, productId);
-  const response = await fetch(`${baseUrl}${path}`, {
-    method: 'DELETE',
-    headers: buildAuthHeaders(),
+export async function updateProduct(productId: string, input: UpdateProductInput) {
+  return endpoints.updateProduct(productId, {
+    id: productId,
+    productId,
+    name: input.name,
+    description: input.description,
+    price: input.price,
+    categoryIds: input.categoryIds,
+    category_ids: input.categoryIds,
   });
+}
 
-  const data = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    throw new Error(data?.error || data?.detail || 'No se pudo eliminar el producto');
-  }
-
-  return data;
-};
+export async function deleteProduct(productId: string) {
+  return endpoints.deleteProduct(productId);
+}

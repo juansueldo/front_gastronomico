@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -20,12 +20,12 @@ import {
 import {
   createProductCategory,
   deleteProductCategory,
-  fetchProductCategories,
   fetchProducts,
+  listProductCategories,
   type ProductCategory,
   updateProductCategory,
 } from '../catalogApi';
-import { type DataTableColumn, DataTable } from './ui/data-table';
+import { type DataTableColumn, RemoteDataTable, createRowActionsColumn } from './ui/data-table';
 
 // Mapa nombre → componente Lucide
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -100,14 +100,15 @@ export function renderCategoryIcon(iconName: string | null | undefined, props?: 
 }
 
 export function CategoriesView() {
-  const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [productsCountByCategory, setProductsCountByCategory] = useState<Record<string, number>>({});
+  const [totalCategories, setTotalCategories] = useState(0);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [icon, setIcon] = useState(''); // ahora guarda el nombre, ej: "Pizza"
   const [iconQuery, setIconQuery] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
 
   const filteredIconEntries = Object.entries(ICON_MAP).filter(([iconName]) => {
     const q = iconQuery.trim().toLowerCase();
@@ -119,13 +120,8 @@ export function CategoriesView() {
     );
   });
 
-  const loadCatalog = async () => {
-    const [backendCategories, backendProducts] = await Promise.all([
-      fetchProductCategories(),
-      fetchProducts(),
-    ]);
-    setCategories(backendCategories);
-
+  const loadCatalogData = async () => {
+    const backendProducts = await fetchProducts();
     const nextCountByCategory: Record<string, number> = {};
     backendProducts.forEach((product) => {
       product.categoryIds.forEach((categoryId) => {
@@ -138,7 +134,7 @@ export function CategoriesView() {
   useEffect(() => {
     void (async () => {
       try {
-        await loadCatalog();
+        await loadCatalogData();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'No se pudo cargar el catálogo');
       }
@@ -172,17 +168,6 @@ export function CategoriesView() {
       return;
     }
 
-    const duplicated = categories.some(
-      (category) =>
-        category.id !== editingCategoryId &&
-        category.name.toLowerCase() === trimmedName.toLowerCase(),
-    );
-
-    if (duplicated) {
-      toast.error('Ya existe una categoría con ese nombre');
-      return;
-    }
-
     try {
       const payload = {
         name: trimmedName,
@@ -198,7 +183,7 @@ export function CategoriesView() {
         toast.success('Categoría creada');
       }
 
-      await loadCatalog();
+      setReloadKey((current) => current + 1);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo guardar la categoría');
       return;
@@ -218,14 +203,30 @@ export function CategoriesView() {
 
     try {
       await deleteProductCategory(category.id);
-      await loadCatalog();
+      setReloadKey((current) => current + 1);
       toast.success('Categoría eliminada');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo eliminar la categoría');
     }
   };
 
-  const categoryColumns: DataTableColumn<ProductCategory>[] = [
+  const loadCategories = useCallback(async ({
+    page,
+    pageSize,
+    search,
+    sort,
+  }: {
+    page: number;
+    pageSize: number;
+    search: string;
+    sort: { key: string; direction: 'asc' | 'desc' } | null;
+  }) => {
+    const result = await listProductCategories({ page, pageSize, search, sort });
+    setTotalCategories(result.total);
+    return result;
+  }, []);
+
+  const categoryColumns = useMemo<DataTableColumn<ProductCategory>[]>(() => [
     {
       key: 'name',
       header: 'Categoría',
@@ -245,6 +246,18 @@ export function CategoriesView() {
       ),
     },
     {
+      key: 'description',
+      header: 'Descripción',
+      accessor: (category) => category.description ?? '',
+      sortable: true,
+      className: 'text-gray-300',
+      cell: (category) => (
+        <span className="whitespace-normal break-words">
+          {category.description ?? 'Sin descripción'}
+        </span>
+      ),
+    },
+    {
       key: 'products',
       header: 'Productos asociados',
       accessor: (category) => productsCountByCategory[category.id] ?? 0,
@@ -252,24 +265,36 @@ export function CategoriesView() {
       className: 'text-gray-300',
       cell: (category) => `${productsCountByCategory[category.id] ?? 0}`,
     },
-    {
-      key: 'actions',
-      header: 'Acciones',
-      accessor: () => '',
-      headerClassName: 'text-right',
-      className: 'text-right',
-      cell: (category) => (
-        <div className="flex items-center justify-end gap-2">
-          <Button size="sm" variant="secondary" onClick={() => openEditDialog(category)}>
-            Editar
-          </Button>
-          <Button size="sm" variant="destructive" onClick={() => handleDeleteCategory(category)}>
-            Eliminar
-          </Button>
-        </div>
-      ),
-    },
-  ];
+    createRowActionsColumn<ProductCategory>({
+      editAction: {
+        label: 'Editar',
+        onClick: openEditDialog,
+      },
+      deleteAction: {
+        label: 'Eliminar',
+        onClick: handleDeleteCategory,
+      },
+      extraActions: [
+        {
+          label: 'Ver icono',
+          onClick: (category) => {
+            toast.info(category.icon ? `Ícono actual: ${category.icon}` : 'La categoría no tiene ícono');
+          },
+        },
+        {
+          label: 'Copiar nombre',
+          onClick: async (category) => {
+            try {
+              await navigator.clipboard.writeText(category.name);
+              toast.success('Nombre copiado');
+            } catch {
+              toast.error('No se pudo copiar el nombre');
+            }
+          },
+        },
+      ],
+    }),
+  ], [productsCountByCategory]);
 
   return (
     <div className="h-full bg-body overflow-y-auto">
@@ -278,7 +303,7 @@ export function CategoriesView() {
           <h1 className="text-xl md:text-2xl font-semibold text-white">Categorías de productos</h1>
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="bg-label-secondary text-white">
-              {categories.length} categorías
+              {totalCategories} categorías
             </Badge>
             <Button size="sm" onClick={openCreateDialog}>
               Nueva categoría
@@ -286,14 +311,15 @@ export function CategoriesView() {
           </div>
         </div>
 
-        <DataTable
-          data={categories}
+        <RemoteDataTable
           columns={categoryColumns}
           getRowId={(category) => category.id}
           emptyMessage="Sin categorías cargadas"
           searchPlaceholder="Buscar categoría, descripción o cantidad"
           defaultPageSize={10}
           pageSizeOptions={[10, 25, 50]}
+          reloadKey={reloadKey}
+          loadData={loadCategories}
         />
       </div>
 

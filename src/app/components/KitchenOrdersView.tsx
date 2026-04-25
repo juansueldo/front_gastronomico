@@ -3,7 +3,7 @@ import { AlertTriangle, ChefHat, Clock3, Maximize2, Minimize2, RefreshCcw } from
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { toast } from 'sonner';
-import { fetchActiveOrders, type BackendOrderItem, updateOrderStatus } from '../ordersApi';
+import { endpoints } from '../api/endpoints';
 
 type KitchenOrderStatus = 'Nuevo' | 'En preparación' | 'Listo para servir' | 'En camino' | 'Entregado';
 
@@ -128,16 +128,35 @@ const formatAgeMinutes = (createdAt: string) => {
   return '--';
 };
 
-const mapBackendOrder = (order: BackendOrderItem): KitchenOrderItem => ({
-  id: order.id,
-  customerName: order.customerName,
-  type: order.type,
-  status: normalizeKitchenStatus(order.status),
-  createdAt: order.createdAt,
-  detail: order.detail,
-  notes: order.notes,
-  items: Array.isArray(order.items) ? order.items : [],
-});
+const mapBackendOrder = (order: any): KitchenOrderItem => {
+  const backendType = String(order?.type ?? '');
+  const type: KitchenOrderItem['type'] = backendType === 'delivery' ? 'delivery' : 'salon';
+
+  const items = Array.isArray(order?.items)
+    ? order.items.map((item: any) => String(item))
+    : Array.isArray(order?.OrderItems)
+      ? order.OrderItems.map((item: any) => {
+        const name = item?.Product?.name ?? `Producto ${item?.productId ?? ''}`.trim();
+        const quantity = Number(item?.quantity ?? 0);
+        return quantity > 1 ? `${name} x${quantity}` : String(name);
+      })
+      : [];
+
+  const customerName = order?.customerName
+    ?? order?.Customer?.name
+    ?? (order?.customerId ? `Cliente #${order.customerId}` : `Orden ${order?.order_number ?? order?.id ?? ''}`);
+
+  return {
+    id: String(order?.id ?? order?.order_number ?? crypto.randomUUID()),
+    customerName: String(customerName),
+    type,
+    status: normalizeKitchenStatus(String(order?.status ?? order?.Status?.name ?? 'pending')),
+    createdAt: String(order?.createdAt ?? order?.order_date ?? ''),
+    detail: String(order?.detail ?? order?.order_number ?? 'Sin detalle'),
+    notes: order?.notes ?? undefined,
+    items,
+  };
+};
 
 const statusCardClass: Record<KitchenOrderStatus, string> = {
   Nuevo: 'border-slate-500/60 bg-slate-500/10',
@@ -168,7 +187,20 @@ export function KitchenOrdersView() {
     setIsLoading(true);
 
     try {
-      const backendOrders = await fetchActiveOrders();
+      let backendOrders: any[] = [];
+
+      try {
+        const ordersPayload = await endpoints.fetchActiveOrders();
+        backendOrders = Array.isArray(ordersPayload)
+          ? ordersPayload
+          : ordersPayload?.rows ?? ordersPayload?.orders ?? ordersPayload?.data ?? [];
+      } catch {
+        const ordersPayload = await endpoints.fetchOrders();
+        backendOrders = Array.isArray(ordersPayload)
+          ? ordersPayload
+          : ordersPayload?.rows ?? ordersPayload?.orders ?? ordersPayload?.data ?? [];
+      }
+
       const normalizedOrders = backendOrders
         .map(mapBackendOrder)
         .filter((order) => order.status !== 'Entregado');
@@ -296,7 +328,7 @@ export function KitchenOrdersView() {
     setUpdatingOrderId(order.id);
 
     try {
-      await updateOrderStatus(order.id, nextStatus);
+      await endpoints.updateOrderStatus(order.id, nextStatus);
 
       setOrders((prev) => prev
         .map((currentOrder) => (

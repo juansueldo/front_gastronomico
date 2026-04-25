@@ -4,7 +4,7 @@ import { router } from './routes.tsx';
 import { toast } from 'sonner';
 import { Toaster } from './components/ui/sonner';
 import { APP_NOTIFICATION_EVENT, type AppNotificationDetail } from './pushNotifications';
-import { AUTH_CHANGED_EVENT, isUserAuthenticated } from './authStorage';
+import { AUTH_CHANGED_EVENT, AUTH_EXPIRED_EVENT, isUserAuthenticated } from './authStorage';
 import { createNotification } from './api';
 import { startRealtimeChannel, stopRealtimeChannel } from './realtime';
 
@@ -45,13 +45,20 @@ export default function App() {
       stopRealtimeChannel();
     };
 
+    const handleAuthExpired = () => {
+      toast.error('Tu sesion expiro. Volve a iniciar sesion.');
+      void router.navigate('/login', { replace: true });
+    };
+
     window.addEventListener(APP_NOTIFICATION_EVENT, handleNotification);
     window.addEventListener(AUTH_CHANGED_EVENT, syncRealtimeChannel);
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
     syncRealtimeChannel();
 
     return () => {
       window.removeEventListener(APP_NOTIFICATION_EVENT, handleNotification);
       window.removeEventListener(AUTH_CHANGED_EVENT, syncRealtimeChannel);
+      window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
       stopRealtimeChannel();
     };
   }, []);

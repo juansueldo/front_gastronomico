@@ -144,7 +144,7 @@ export async function listProducts(params?: ListProductsRequest): Promise<Produc
  * Lista productos (alias legacy GET /product/list)
  */
 export async function listProductsLegacy(params?: ListProductsRequest): Promise<ProductItem[]> {
-  const data = await apiClient.get(`${API_VERSION}/product/list`, {
+  const data = await apiClient.get(`${API_VERSION}/product`, {
     params,
     config: { cache: 'short' },
   });
@@ -156,7 +156,7 @@ export async function listProductsLegacy(params?: ListProductsRequest): Promise<
  * Crea un producto
  */
 export async function createProduct(payload: CreateProductRequest): Promise<any> {
-  return apiClient.post(`${API_VERSION}/product/create`, payload);
+  return apiClient.post(`${API_VERSION}/product`, payload);
 }
 
 /**
