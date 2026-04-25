@@ -18,10 +18,10 @@ export const endpoints = {
   deleteCategory: (id: string) => apiClient.delete(`${API_VERSION}/category/${id}`),
 
   // --- PRODUCTS (ejemplo, puedes agregar más) ---
-  fetchProducts: () => apiClient.get(`${API_VERSION}/product/list`, { config: { cache: 'long' } }),
+  fetchProducts: () => apiClient.get(`${API_VERSION}/product`, { config: { cache: 'long' } }),
   getProduct: (id: string) => apiClient.get(`${API_VERSION}/product/${id}`),
   createProduct: (data: any) => apiClient.post(`${API_VERSION}/product/create`, data),
-  updateProduct: (id: string, data: any) => apiClient.post(`${API_VERSION}/product/update/${id}`, { id, ...data }),
+  updateProduct: (id: string, data: any) => apiClient.patch(`${API_VERSION}/product/${id}`, { id, ...data }),
   deleteProduct: (id: string) => apiClient.delete(`${API_VERSION}/product/${id}`),
 
     // --- TABLES ---
@@ -29,21 +29,28 @@ export const endpoints = {
     listTables: (params?: any) => apiClient.get(`${API_VERSION}/table`, { params }),
     getTable: (id: string) => apiClient.get(`${API_VERSION}/table/${id}`),
     createTable: (data: any) => apiClient.post(`${API_VERSION}/table`, data),
-    updateTable: (id: string, data: any) => apiClient.post(`${API_VERSION}/table/${id}`, { id, ...data }),
+    updateTable: (id: string, data: any) => apiClient.patch(`${API_VERSION}/table/${id}`, { id, ...data }),
     deleteTable: (id: string) => apiClient.delete(`${API_VERSION}/table/${id}`),
 
     // --- HEADQUARTERS ---
     fetchHeadquarters: () => apiClient.get(`${API_VERSION}/headquarter`, { config: { cache: 'long' } }),
     getHeadquarter: (id: string) => apiClient.get(`${API_VERSION}/headquarter/${id}`),
     createHeadquarter: (data: any) => apiClient.post(`${API_VERSION}/headquarter`, data),
-    updateHeadquarter: (id: string, data: any) => apiClient.post(`${API_VERSION}/headquarter/${id}`, { id, ...data }),
+    updateHeadquarter: (id: string, data: any) => apiClient.patch(`${API_VERSION}/headquarter/${id}`, { id, ...data }),
     deleteHeadquarter: (id: string) => apiClient.delete(`${API_VERSION}/headquarter/${id}`),
 
     // --- DELIVERY ZONE ---
     fetchDeliveryZones: () => apiClient.get(`${API_VERSION}/delivery-zone`, { config: { cache: 'long' } }),
     getDeliveryZone: (id: string) => apiClient.get(`${API_VERSION}/delivery-zone/${id}`),
     createDeliveryZone: (data: any) => apiClient.post(`${API_VERSION}/delivery-zone`, data),
-    updateDeliveryZone: (id: string, data: any) => apiClient.post(`${API_VERSION}/delivery-zone/${id}`, { id, ...data }),
+    updateDeliveryZone: (id: string, data: any) => apiClient.patch(`${API_VERSION}/delivery-zone/${id}`, { id, ...data }),
     deleteDeliveryZone: (id: string) => apiClient.delete(`${API_VERSION}/delivery-zone/${id}`),
+
+    // --- USER ---
+    fetchUsers: () => apiClient.get(`${API_VERSION}/user`, {config: {cache: 'long'}}),
+    getUser: (id: string) => apiClient.get(`${API_VERSION}/user/${id}`),
+    createUser: (data: any) => apiClient.post(`${API_VERSION}/user`, data),
+    updateUser: (id: string, data: any) => apiClient.patch(`${API_VERSION}/user/${id}`, { id, ...data }),
+    deleteUser: (id: string) => apiClient.delete(`${API_VERSION}/user/${id}`),
 
 };

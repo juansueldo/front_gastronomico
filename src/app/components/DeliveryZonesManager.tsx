@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { apiClient } from '../api/client'; // ajustá el path según tu proyecto
 import { endpoints } from '../api/enpoints';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -18,21 +17,18 @@ export interface DeliveryZone {
 }
 
 // ─── API helpers (inline, sin depender del módulo externo) ────────────────────
+const DARK_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#212121' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#212121' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#757575' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#373737' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#8a8a8a' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#000000' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#3d3d3d' }] },
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+];
 
-const API_VERSION = '/api/v1';
-
-const api = {
-  fetchAll: (): Promise<DeliveryZone[]> =>
-    apiClient.get(`${API_VERSION}/delivery-zone`, { config: { cache: 'long' } }),
-  getOne: (id: string): Promise<DeliveryZone> =>
-    apiClient.get(`${API_VERSION}/delivery-zone/${id}`),
-  create: (data: Omit<DeliveryZone, 'id'>): Promise<DeliveryZone> =>
-    apiClient.post(`${API_VERSION}/delivery-zone`, data),
-  update: (id: string, data: Partial<DeliveryZone>): Promise<DeliveryZone> =>
-    apiClient.post(`${API_VERSION}/delivery-zone/${id}`, { id, ...data }),
-  remove: (id: string): Promise<void> =>
-    apiClient.delete(`${API_VERSION}/delivery-zone/${id}`),
-};
+const LIGHT_STYLE: any[] = []; // estilo por defecto de Google
 
 // ─── Google Maps loader (singleton) ──────────────────────────────────────────
 
@@ -60,13 +56,14 @@ function loadGoogleMaps(): Promise<any> {
 type MapMode = 'view' | 'draw' | 'edit';
 
 interface ZoneMapProps {
-  zone: DeliveryZone | null;          // zona que se está mostrando/editando
+  zone: DeliveryZone | null;
   mode: MapMode;
   draft: DeliveryZonePoint[];
   onDraftChange: (pts: DeliveryZonePoint[]) => void;
+  darkMode: boolean; // 👈
 }
 
-function ZoneMap({ zone, mode, draft, onDraftChange }: ZoneMapProps) {
+function ZoneMap({ zone, mode, draft, onDraftChange,darkMode }: ZoneMapProps) {
   const divRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const googleRef = useRef<any>(null);
@@ -89,7 +86,10 @@ function ZoneMap({ zone, mode, draft, onDraftChange }: ZoneMapProps) {
       clickListenerRef.current = null;
     }
   }, []);
-
+useEffect(() => {
+    if (!mapRef.current) return;
+    mapRef.current.setOptions({ styles: darkMode ? DARK_STYLE : LIGHT_STYLE });
+  }, [darkMode]);
   // Init mapa
   useEffect(() => {
     if (!GOOGLE_MAPS_API_KEY || !divRef.current) return;
@@ -105,6 +105,7 @@ function ZoneMap({ zone, mode, draft, onDraftChange }: ZoneMapProps) {
             disableDefaultUI: true,
             zoomControl: true,
             gestureHandling: 'cooperative',
+            styles: darkMode ? DARK_STYLE : LIGHT_STYLE, 
           });
         }
         setMapsError(null);
@@ -204,19 +205,27 @@ export function DeliveryZonesManager() {
   // form de nueva zona
   const [showNewForm, setShowNewForm] = useState(false);
   const [newZoneName, setNewZoneName] = useState('');
-
+const [darkMap, setDarkMap] = useState(true);
   // ── Cargar zonas ──────────────────────────────────────────────────────────
-  const loadZones = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await endpoints.fetchDeliveryZones();
-      setZones(Array.isArray(data) ? data : []);
-    } catch {
-      toast.error('No se pudieron cargar las zonas de entrega');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+ const loadZones = useCallback(async () => {
+  setLoading(true);
+  try {
+    const data = await endpoints.fetchDeliveryZones();
+    // La API devuelve { count, rows }
+    const rows = (data as any)?.rows ?? data;
+    const mapped: DeliveryZone[] = (Array.isArray(rows) ? rows : []).map((z: any) => ({
+      id: String(z.id),
+      name: z.name,
+      active: z.Status?.name === 'active',
+      polygon: Array.isArray(z.polygon) ? z.polygon : [],
+    }));
+    setZones(mapped);
+  } catch {
+    toast.error('No se pudieron cargar las zonas de entrega');
+  } finally {
+    setLoading(false);
+  }
+}, []);
 
   useEffect(() => { void loadZones(); }, [loadZones]);
 
@@ -319,7 +328,13 @@ export function DeliveryZonesManager() {
 
   return (
     <div className="h-full bg-body flex flex-col overflow-hidden">
-
+      <button
+  onClick={() => setDarkMap(p => !p)}
+  className="px-3 py-1.5 text-xs font-medium rounded-md bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+  title="Cambiar tema del mapa"
+>
+  {darkMap ? '☀️ Claro' : '🌙 Oscuro'}
+</button>
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-orange-700/40">
         <h1 className="text-lg font-semibold text-white tracking-tight">Zonas de entrega</h1>
@@ -336,6 +351,7 @@ export function DeliveryZonesManager() {
           + Nueva zona
         </button>
       </div>
+
 
       <div className="flex flex-1 overflow-hidden">
 
@@ -371,18 +387,19 @@ export function DeliveryZonesManager() {
         <div className="flex-1 flex flex-col overflow-hidden">
 
           {/* Mapa */}
-          <div className="relative flex-1 bg-gray-950">
+          <div className="relative flex-1 ">
             <ZoneMap
               zone={mapZone}
               mode={showNewForm ? 'draw' : mode}
               draft={draft}
               onDraftChange={setDraft}
+              darkMode={darkMap}
             />
 
             {/* Overlay hint cuando no hay zona seleccionada */}
             {!selectedZone && !showNewForm && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <p className="text-xs text-gray-600 bg-gray-900/80 px-3 py-2 rounded-lg">
+                <p className="text-xs text-gray-600 px-3 py-2 rounded-lg">
                   Seleccioná una zona o creá una nueva
                 </p>
               </div>
@@ -390,7 +407,7 @@ export function DeliveryZonesManager() {
           </div>
 
           {/* Barra de controles */}
-          <div className="border-t border-orange-700/40 bg-gray-900">
+          <div className="border-t border-orange-700/40">
 
             {/* ── Crear nueva zona ── */}
             {showNewForm && (
@@ -400,7 +417,7 @@ export function DeliveryZonesManager() {
                   placeholder="Nombre de la zona"
                   value={newZoneName}
                   onChange={e => setNewZoneName(e.target.value)}
-                  className="flex-1 min-w-[140px] px-3 py-1.5 text-sm bg-gray-800 border border-gray-700 rounded-md text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
+                  className="flex-1 min-w-[140px] px-3 py-1.5 text-sm  border border-gray-700 rounded-md text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
                 />
                 <span className="text-xs text-amber-400">
                   {draft.length} punto{draft.length !== 1 ? 's' : ''} — mínimo 3

@@ -37,7 +37,6 @@ import {
   updateOrderStatus,
 } from '../api';
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from './ui/carousel';
-import { DeliveryZoneMap } from './DeliveryZoneMap';
 
 const orderStatuses = ['Nuevo', 'En preparación', 'Listo para servir', 'En camino', 'Entregado'];
 
@@ -1245,17 +1244,7 @@ export function ActiveOrdersView() {
           </div>
         </div>
 
-        <DeliveryZoneMap
-          deliveryZonePoints={deliveryZonePoints}
-          draftDeliveryZonePoints={draftDeliveryZonePoints}
-          isEditingDeliveryZone={isEditingDeliveryZone}
-          onSetDraftDeliveryZonePoints={setDraftDeliveryZonePoints}
-          onSetIsEditingDeliveryZone={setIsEditingDeliveryZone}
-          deliveryOrders={deliveryOrders}
-          onZoneSaved={() => {
-            getDeliveryZone().then(zone => setDeliveryZonePoints(zone?.polygon ?? []));
-          }}
-        />
+        
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="space-y-3">

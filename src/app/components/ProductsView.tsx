@@ -20,6 +20,7 @@ import { type DataTableColumn, DataTable } from './ui/data-table';
 import {
   productApi,
 } from '../api';
+import { endpoints } from '../api/enpoints';
 import type { ProductItem, ProductRecipeConfig } from '../api/product';
 
 const currencyFormatter = new Intl.NumberFormat('es-AR', {
