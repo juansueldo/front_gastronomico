@@ -109,24 +109,24 @@ export function DashboardView() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-            <Card className="border-orange-700/60">
+            <Card className="card">
               <CardHeader>
                 <CardTitle className="text-white">Resumen operativo</CardTitle>
               </CardHeader>
               <CardContent className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-lg border border-orange-700/50 bg-body p-4">
+                <div className="card bg-body p-4">
                   <p className="text-xs uppercase tracking-wide text-gray-500">Ritmo</p>
                   <p className="mt-2 text-lg font-medium text-white">
                     {metrics.activeOrders > 0 ? 'Operacion activa' : 'Operacion tranquila'}
                   </p>
                 </div>
-                <div className="rounded-lg border border-orange-700/50 bg-body p-4">
+                <div className="card bg-body p-4">
                   <p className="text-xs uppercase tracking-wide text-gray-500">Capacidad</p>
                   <p className="mt-2 text-lg font-medium text-white">
                     {metrics.tables > 0 ? `${metrics.tables} mesas registradas` : 'Sin mesas configuradas'}
                   </p>
                 </div>
-                <div className="rounded-lg border border-orange-700/50 bg-body p-4">
+                <div className="card bg-body p-4">
                   <p className="text-xs uppercase tracking-wide text-gray-500">Cobertura</p>
                   <p className="mt-2 text-lg font-medium text-white">
                     {metrics.headquarters > 0 ? `${metrics.headquarters} sedes activas` : 'Sin sedes cargadas'}

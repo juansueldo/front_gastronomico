@@ -310,7 +310,7 @@ export function CategoriesView() {
             </Button>
           </div>
         </div>
-
+        <div className='card p-4 bg-card'>
         <RemoteDataTable
           columns={categoryColumns}
           getRowId={(category) => category.id}
@@ -321,6 +321,8 @@ export function CategoriesView() {
           reloadKey={reloadKey}
           loadData={loadCategories}
         />
+
+        </div>
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

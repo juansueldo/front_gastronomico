@@ -369,15 +369,17 @@ export function ProductsView() {
           </div>
         </div>
 
-        <DataTable
-          data={products}
-          columns={productColumns}
-          getRowId={(product) => product.id}
-          emptyMessage="Sin productos cargados"
-          searchPlaceholder="Buscar producto, categoría o precio"
-          defaultPageSize={10}
-          pageSizeOptions={[10, 25, 50]}
-        />
+        <div className="card p-4 bg-card">
+          <DataTable
+            data={products}
+            columns={productColumns}
+            getRowId={(product) => product.id}
+            emptyMessage="Sin productos cargados"
+            searchPlaceholder="Buscar producto, categoría o precio"
+            defaultPageSize={10}
+            pageSizeOptions={[10, 25, 50]}
+          />
+        </div>
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

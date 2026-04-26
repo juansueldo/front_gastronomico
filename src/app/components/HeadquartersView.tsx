@@ -180,7 +180,7 @@ export function HeadquartersView() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-orange-700 bg-card p-4">
+        <div className="card p-4 bg-card">
           <RemoteDataTable
             columns={columns}
             getRowId={(headquarter) => headquarter.id}

@@ -1250,7 +1250,7 @@ export function ActiveOrdersView() {
       onMouseDown={() => handleLongPressStart(order)}
       onMouseUp={handleLongPressEnd}
       onMouseLeave={handleLongPressEnd}
-      className={`p-4 rounded-lg border cursor-pointer transition-colors hover:bg-gray-800/60 ${getOrderCardClass(order)}`}
+      className={`p-4 card cursor-pointer transition-colors hover:bg-[--card-hover] ${getOrderCardClass(order)}`}
     >
       <div className="flex items-center justify-between gap-2 mb-1">
         <div className="flex items-center gap-2">
@@ -1332,7 +1332,7 @@ export function ActiveOrdersView() {
       </div>
 
       <Dialog open={!!detailOrder} onOpenChange={() => setDetailOrder(null)}>
-        <DialogContent className="bg-card border-orange-700 text-white">
+        <DialogContent className="bg-card card text-white">
           <DialogHeader>
             <DialogTitle>Detalle del pedido {detailOrder?.id}</DialogTitle>
           </DialogHeader>
@@ -1442,7 +1442,7 @@ export function ActiveOrdersView() {
           setIsCreateOrderDialogOpen(true);
         }}
       >
-        <DialogContent className="bg-card border-orange-700 text-white">
+        <DialogContent className="bg-card card text-white">
           <DialogHeader>
             <DialogTitle>Nueva orden</DialogTitle>
           </DialogHeader>
@@ -1521,7 +1521,7 @@ export function ActiveOrdersView() {
               onChange={(event) => setNewOrderDetail(event.target.value)}
             />
 
-            <div className="space-y-2 rounded-md border border-orange-700 bg-body p-3">
+            <div className="space-y-2 rounded-md border card bg-body p-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-gray-300">Productos</p>
                 <div className="flex items-center gap-2">

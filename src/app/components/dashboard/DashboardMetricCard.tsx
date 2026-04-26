@@ -17,7 +17,7 @@ export function DashboardMetricCard({
   accentClassName,
 }: DashboardMetricCardProps) {
   return (
-    <Card className={`border-orange-700/60 ${accentClassName}`}>
+    <Card className={`card ${accentClassName}`}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
         <CardTitle className="text-sm font-medium text-gray-300">{title}</CardTitle>
         <Icon className="h-5 w-5 text-orange-300" />
