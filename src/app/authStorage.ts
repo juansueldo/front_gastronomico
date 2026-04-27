@@ -1,6 +1,8 @@
 export interface AuthUser {
   id?: number;
   customerId?: number;
+  storeId?: number | string;
+  token?: string;
   username?: string;
   firstname?: string;
   lastname?: string;
@@ -316,4 +318,34 @@ export function isUserAuthenticated() {
 
 export function getLoggedUser() {
   return getAuthSession()?.user ?? null;
+}
+
+export function updateLoggedUser(patch: Partial<AuthUser>) {
+  const webStorage = getWebStorage();
+  if (!webStorage) {
+    return;
+  }
+
+  const currentSession = getAuthSession();
+  if (!currentSession?.user) {
+    return;
+  }
+
+  const nextUser = {
+    ...currentSession.user,
+    ...patch,
+  };
+
+  const updatedSession = {
+    ...currentSession,
+    user: nextUser,
+  };
+
+  removeAuthKeys(webStorage.local);
+  removeAuthKeys(webStorage.session);
+
+  const targetStorage = currentSession.rememberMe ? webStorage.local : webStorage.session;
+  writeSessionToStorage(targetStorage, updatedSession);
+  void saveCapacitorSession(updatedSession);
+  emitAuthChanged();
 }

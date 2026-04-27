@@ -2,8 +2,7 @@
  * API de integraciones OAuth
  */
 
-import { apiClient } from './client';
-import { API_VERSION } from './types';
+import { endpoints } from './endpoints';
 
 export type OAuthProviderId = 'mercadopago' | 'mercadolibre' | 'google_calendar';
 
@@ -117,9 +116,7 @@ function mergeProviders(remote: OAuthProvider[]): OAuthProvider[] {
 
 export async function listOAuthProviders(): Promise<OAuthProvider[]> {
   try {
-    const data = await apiClient.get(`${API_VERSION}/integrations/oauth/providers`, {
-      config: { cache: 'short' },
-    });
+    const data = await endpoints.listOAuthProviders();
 
     const rows: unknown[] = Array.isArray(data)
       ? data
@@ -153,10 +150,7 @@ function buildFallbackAuthorizeUrl(provider: OAuthProviderId): string {
 
 export async function getOAuthAuthorizeUrl(provider: OAuthProviderId): Promise<string> {
   try {
-    const data = await apiClient.post<OAuthStartResponse>(
-      `${API_VERSION}/integrations/oauth/${encodeURIComponent(provider)}/start`,
-      {},
-    );
+    const data = await endpoints.startOAuthProvider(provider) as OAuthStartResponse;
 
     const url = data?.authUrl ?? data?.url ?? data?.redirectUrl ?? data?.oauthUrl ?? data?.authorizeUrl;
     if (typeof url === 'string' && url.trim()) {

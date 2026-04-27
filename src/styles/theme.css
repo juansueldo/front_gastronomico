@@ -71,7 +71,7 @@
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.396 0.141 25.723);
   --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(23.725% 0.00306 16.889 / 0.514);
+  --border: oklch(38.304% 0.00544 16.955 / 0.582);
   --input: oklch(0.269 0 0);
   --ring: oklch(0.439 0 0);
   --font-weight-medium: 500;
@@ -103,7 +103,7 @@
   --color-gray-400: #d3d9df;
   --color-gray-300: #d5d7e0;
   --color-gray-200: #d5d7e0;
-  --card-hover: #202022af;
+  --card-hover: #3c3c41af;
 }
 
 @theme inline {

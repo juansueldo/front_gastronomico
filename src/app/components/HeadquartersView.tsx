@@ -195,7 +195,7 @@ export function HeadquartersView() {
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
-        <DialogContent className="border-orange-700 bg-card text-white">
+        <DialogContent className="card bg-card text-white">
           <DialogHeader>
             <DialogTitle>{editingHeadquarterId ? 'Editar sede' : 'Nueva sede'}</DialogTitle>
           </DialogHeader>

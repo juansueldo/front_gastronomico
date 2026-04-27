@@ -2,6 +2,8 @@ import type { ChangeEvent, FormEvent } from 'react';
 import type { CreateHeadquarterRequest } from '../../api/headquarter';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { DialogFormShell } from '../forms/DialogFormShell';
+import { FormField } from '../forms/FormField';
 
 interface HeadquartersFormProps {
   form: CreateHeadquarterRequest;
@@ -36,43 +38,44 @@ export function HeadquartersForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
-      <div className="space-y-1">
-        <h2 className="text-sm font-medium text-white">{title}</h2>
-        <p className="text-xs text-gray-400">{description}</p>
-      </div>
+      <DialogFormShell
+        title={title}
+        description={description}
+        error={error}
+      >
+        <FormField label="Nombre">
+          <Input
+            name="name"
+            value={form.name}
+            onChange={handleInputChange}
+            placeholder="Nombre"
+            className="border-orange-700"
+            required
+          />
+        </FormField>
+        <FormField label="Telefono">
+          <Input
+            name="phone"
+            value={form.phone ?? ''}
+            onChange={handleInputChange}
+            placeholder="Telefono"
+            className="border-orange-700"
+          />
+        </FormField>
+        <FormField label="Ubicacion">
+          <Input
+            name="location"
+            value={form.location ?? ''}
+            onChange={handleInputChange}
+            placeholder="Ubicacion"
+            className="border-orange-700"
+          />
+        </FormField>
 
-      <Input
-        name="name"
-        value={form.name}
-        onChange={handleInputChange}
-        placeholder="Nombre"
-        className="border-orange-700"
-        required
-      />
-      <Input
-        name="phone"
-        value={form.phone ?? ''}
-        onChange={handleInputChange}
-        placeholder="Telefono"
-        className="border-orange-700"
-      />
-      <Input
-        name="location"
-        value={form.location ?? ''}
-        onChange={handleInputChange}
-        placeholder="Ubicacion"
-        className="border-orange-700"
-      />
-
-      <Button type="submit" disabled={loading} className="w-full">
-        {loading ? 'Guardando...' : submitLabel}
-      </Button>
-
-      {error ? (
-        <div className="rounded-md border border-red-700/60 bg-red-950/20 px-3 py-2 text-xs text-red-200">
-          {error}
-        </div>
-      ) : null}
+        <Button type="submit" disabled={loading} className="w-full">
+          {loading ? 'Guardando...' : submitLabel}
+        </Button>
+      </DialogFormShell>
     </form>
   );
 }

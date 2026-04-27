@@ -3,9 +3,9 @@ import { AlertTriangle, ChefHat, Clock3, Maximize2, Minimize2, RefreshCcw } from
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { toast } from 'sonner';
-import { endpoints } from '../api/endpoints';
+import { fetchActiveOrders, transitionOrderStatus } from '../api';
 
-type KitchenOrderStatus = 'Nuevo' | 'En preparación' | 'Listo para servir' | 'En camino' | 'Entregado';
+type KitchenOrderStatus = 'Nuevo' | 'En preparación' | 'Listo para servir' | 'Entregado';
 
 interface KitchenOrderItem {
   id: string;
@@ -36,16 +36,17 @@ const normalizeKitchenStatus = (status: string): KitchenOrderStatus => {
     return 'Nuevo';
   }
 
-  if (normalizedStatus === 'en preparación' || normalizedStatus === 'preparing') {
+  if (
+    normalizedStatus === 'en preparación'
+    || normalizedStatus === 'en preparacion'
+    || normalizedStatus === 'processing'
+    || normalizedStatus === 'preparing'
+  ) {
     return 'En preparación';
   }
 
   if (normalizedStatus === 'listo para servir' || normalizedStatus === 'ready') {
     return 'Listo para servir';
-  }
-
-  if (normalizedStatus === 'en camino' || normalizedStatus === 'on-the-way') {
-    return 'En camino';
   }
 
   if (normalizedStatus === 'entregado' || normalizedStatus === 'delivered' || normalizedStatus === 'completed') {
@@ -65,7 +66,7 @@ const toNextStatus = (order: KitchenOrderItem): KitchenOrderStatus | null => {
   }
 
   if (order.status === 'Listo para servir') {
-    return order.type === 'delivery' ? 'En camino' : 'Entregado';
+    return 'Entregado';
   }
 
   return null;
@@ -131,6 +132,7 @@ const formatAgeMinutes = (createdAt: string) => {
 const mapBackendOrder = (order: any): KitchenOrderItem => {
   const backendType = String(order?.type ?? '');
   const type: KitchenOrderItem['type'] = backendType === 'delivery' ? 'delivery' : 'salon';
+  const customerFullName = [order?.Customer?.firstname, order?.Customer?.lastname].filter(Boolean).join(' ').trim();
 
   const items = Array.isArray(order?.items)
     ? order.items.map((item: any) => String(item))
@@ -143,8 +145,9 @@ const mapBackendOrder = (order: any): KitchenOrderItem => {
       : [];
 
   const customerName = order?.customerName
-    ?? order?.Customer?.name
-    ?? (order?.customerId ? `Cliente #${order.customerId}` : `Orden ${order?.order_number ?? order?.id ?? ''}`);
+    || order?.Customer?.name
+    || customerFullName
+    || (order?.customerId ? `Cliente #${order.customerId}` : `Orden ${order?.order_number ?? order?.id ?? ''}`);
 
   return {
     id: String(order?.id ?? order?.order_number ?? crypto.randomUUID()),
@@ -162,7 +165,6 @@ const statusCardClass: Record<KitchenOrderStatus, string> = {
   Nuevo: 'border-slate-500/60 bg-slate-500/10',
   'En preparación': 'border-amber-500/60 bg-amber-500/10',
   'Listo para servir': 'border-emerald-500/60 bg-emerald-500/10',
-  'En camino': 'border-sky-500/60 bg-sky-500/10',
   Entregado: 'border-orange-700 bg-card',
 };
 
@@ -170,7 +172,6 @@ const statusBadgeClass: Record<KitchenOrderStatus, string> = {
   Nuevo: 'bg-slate-500 text-white',
   'En preparación': 'bg-amber-500 text-black',
   'Listo para servir': 'bg-emerald-500 text-white',
-  'En camino': 'bg-sky-500 text-white',
   Entregado: 'bg-gray-600 text-white',
 };
 
@@ -187,20 +188,7 @@ export function KitchenOrdersView() {
     setIsLoading(true);
 
     try {
-      let backendOrders: any[] = [];
-
-      try {
-        const ordersPayload = await endpoints.fetchActiveOrders();
-        backendOrders = Array.isArray(ordersPayload)
-          ? ordersPayload
-          : ordersPayload?.rows ?? ordersPayload?.orders ?? ordersPayload?.data ?? [];
-      } catch {
-        const ordersPayload = await endpoints.fetchOrders();
-        backendOrders = Array.isArray(ordersPayload)
-          ? ordersPayload
-          : ordersPayload?.rows ?? ordersPayload?.orders ?? ordersPayload?.data ?? [];
-      }
-
+      const backendOrders = await fetchActiveOrders();
       const normalizedOrders = backendOrders
         .map(mapBackendOrder)
         .filter((order) => order.status !== 'Entregado');
@@ -328,7 +316,7 @@ export function KitchenOrdersView() {
     setUpdatingOrderId(order.id);
 
     try {
-      await endpoints.updateOrderStatus(order.id, nextStatus);
+      await transitionOrderStatus(order.id, order.status, nextStatus);
 
       setOrders((prev) => prev
         .map((currentOrder) => (

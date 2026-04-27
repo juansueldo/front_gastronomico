@@ -1,5 +1,6 @@
-import { apiClient } from './client';
-import { API_VERSION } from './types';
+import { getLoggedUser } from '../authStorage';
+import { listHeadquarters } from './headquarter';
+import { endpoints } from './endpoints';
 
 export interface DeliveryZonePoint {
   lat: number;
@@ -13,6 +14,9 @@ export interface DeliveryZone {
   active?: boolean;
   polygon: DeliveryZonePoint[];
   updatedAt?: string;
+  zoneid?: string;
+  storeId?: number;
+  statusId?: number;
 }
 
 export interface UpsertDeliveryZoneRequest {
@@ -21,9 +25,25 @@ export interface UpsertDeliveryZoneRequest {
   polygon: DeliveryZonePoint[];
 }
 
+export interface CreateDeliveryZoneRequest {
+  name: string;
+  polygon: DeliveryZonePoint[];
+  metadata?: Record<string, unknown>;
+  zoneid?: string;
+  storeId?: number;
+}
+
+export interface UpdateDeliveryZoneRequest {
+  name?: string;
+  polygon?: DeliveryZonePoint[];
+  metadata?: Record<string, unknown>;
+  zoneid?: string;
+}
+
 export interface CheckDeliveryZoneRequest {
-  lat: number;
-  lng: number;
+  latitude: number;
+  longitude: number;
+  headquarterId?: number;
 }
 
 export interface CheckDeliveryZoneResponse {
@@ -37,6 +57,16 @@ type DeliveryZoneApiRaw = {
   customer_id?: number;
   name?: string;
   active?: boolean;
+  metadata?: Record<string, unknown>;
+  zoneid?: string;
+  storeId?: number;
+  store_id?: number;
+  statusId?: number;
+  status_id?: number;
+  Status?: {
+    id?: number;
+    name?: string;
+  };
   polygon?: Array<{ lat?: number; lng?: number }>;
   geojson?: {
     type?: string;
@@ -150,6 +180,12 @@ const normalizeZone = (raw: DeliveryZoneApiRaw | null | undefined): DeliveryZone
   }
 
   const polygon = normalizePoints(zoneRaw);
+  const resolvedStatusId = Number(zoneRaw.statusId ?? zoneRaw.status_id ?? zoneRaw.Status?.id ?? (zoneRaw.active === false ? 2 : 1));
+  const resolvedActive = typeof zoneRaw.active === 'boolean'
+    ? zoneRaw.active
+    : String(zoneRaw.Status?.name ?? '').toLowerCase() === 'active'
+      ? true
+      : resolvedStatusId === 1;
 
   if (polygon.length === 0) {
     return null;
@@ -159,31 +195,108 @@ const normalizeZone = (raw: DeliveryZoneApiRaw | null | undefined): DeliveryZone
     id: zoneRaw.id !== undefined ? String(zoneRaw.id) : undefined,
     customerId: zoneRaw.customerId ?? zoneRaw.customer_id,
     name: zoneRaw.name,
-    active: zoneRaw.active ?? true,
+    active: resolvedActive,
     polygon,
     updatedAt: zoneRaw.updatedAt ?? zoneRaw.updated_at,
+    zoneid: zoneRaw.zoneid,
+    storeId: zoneRaw.storeId ?? zoneRaw.store_id,
+    statusId: resolvedStatusId,
   };
 };
 
+const getCurrentStoreId = () => {
+  const loggedUser = getLoggedUser();
+  const storeId = Number(loggedUser?.storeId);
+  return Number.isInteger(storeId) && storeId > 0 ? storeId : null;
+};
+
+const resolveHeadquarterId = async (headquarterId?: number) => {
+  if (Number.isInteger(headquarterId) && headquarterId > 0) {
+    return headquarterId;
+  }
+
+  try {
+    const headquarters = await listHeadquarters({ page: 1, pageSize: 1 });
+    const firstHeadquarterId = Number(headquarters.rows[0]?.id);
+    return Number.isInteger(firstHeadquarterId) && firstHeadquarterId > 0
+      ? firstHeadquarterId
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const extractZoneList = (data: any): DeliveryZone[] => {
+  const rows = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.rows)
+      ? data.rows
+      : Array.isArray(data?.data)
+        ? data.data
+        : [];
+
+  return rows
+    .map((row) => normalizeZone(row as DeliveryZoneApiRaw))
+    .filter((zone): zone is DeliveryZone => zone !== null);
+};
+
 export async function getDeliveryZone(): Promise<DeliveryZone | null> {
-  const data = await apiClient.get(`${API_VERSION}/delivery-zone`, {
-    config: { cache: 'short' },
+  const data = await endpoints.getDeliveryZone();
+
+  return normalizeZone(data as DeliveryZoneApiRaw | null | undefined);
+}
+
+export async function fetchDeliveryZones(storeId?: number): Promise<DeliveryZone[]> {
+  const resolvedStoreId = storeId ?? getCurrentStoreId();
+  const data = await endpoints.fetchDeliveryZones(
+    resolvedStoreId ? { storeId: resolvedStoreId } : undefined
+  );
+
+  return extractZoneList(data);
+}
+
+export async function createDeliveryZone(payload: CreateDeliveryZoneRequest): Promise<DeliveryZone | null> {
+  const resolvedStoreId = payload.storeId ?? getCurrentStoreId();
+  const data = await endpoints.createDeliveryZone({
+    ...payload,
+    storeId: resolvedStoreId,
   });
 
   return normalizeZone(data as DeliveryZoneApiRaw | null | undefined);
 }
 
+export async function updateDeliveryZone(zoneId: string, payload: UpdateDeliveryZoneRequest): Promise<DeliveryZone | null> {
+  const data = await endpoints.updateDeliveryZone(zoneId, payload);
+  return normalizeZone(data as DeliveryZoneApiRaw | null | undefined);
+}
+
+export async function updateDeliveryZoneStatus(zoneId: string, statusId: number): Promise<void> {
+  await endpoints.updateDeliveryZoneStatus(zoneId, statusId);
+}
+
+export async function deleteDeliveryZoneById(zoneId: string): Promise<void> {
+  await endpoints.deleteDeliveryZoneById(zoneId);
+}
+
 export async function upsertDeliveryZone(payload: UpsertDeliveryZoneRequest): Promise<DeliveryZone | null> {
-  const data = await apiClient.put(`${API_VERSION}/delivery-zone`, payload);
+  const data = await endpoints.upsertDeliveryZone(payload);
   return normalizeZone(data as DeliveryZoneApiRaw | null | undefined);
 }
 
 export async function deleteDeliveryZone(): Promise<void> {
-  await apiClient.delete(`${API_VERSION}/delivery-zone`);
+  await endpoints.deleteDeliveryZone();
 }
 
 export async function checkDeliveryZonePoint(payload: CheckDeliveryZoneRequest): Promise<CheckDeliveryZoneResponse> {
-  const data = await apiClient.post(`${API_VERSION}/delivery-zone/check`, payload);
+  const resolvedHeadquarterId = await resolveHeadquarterId(payload.headquarterId);
+  const data = await endpoints.checkDeliveryZonePoint({
+    latitude: payload.latitude,
+    longitude: payload.longitude,
+    headquarterId: resolvedHeadquarterId,
+    // Temporary legacy aliases for backends that still accept the old payload.
+    lat: payload.latitude,
+    lng: payload.longitude,
+  });
 
   const rawInside = (data as { inside?: unknown; inZone?: unknown; allowed?: unknown })?.inside
     ?? (data as { inZone?: unknown; allowed?: unknown })?.inZone
@@ -193,8 +306,17 @@ export async function checkDeliveryZonePoint(payload: CheckDeliveryZoneRequest):
     ?? (data as { has_zone?: unknown; zoneExists?: unknown })?.has_zone
     ?? (data as { zoneExists?: unknown })?.zoneExists;
 
+  const rawZone = (data as { zone?: unknown; deliveryZone?: unknown; matchedZone?: unknown })?.zone
+    ?? (data as { deliveryZone?: unknown; matchedZone?: unknown })?.deliveryZone
+    ?? (data as { matchedZone?: unknown })?.matchedZone;
+
+  const inside = rawInside === true;
+  const hasZone = typeof rawHasZone === 'boolean'
+    ? rawHasZone
+    : inside || (typeof rawZone === 'object' && rawZone !== null);
+
   return {
-    inside: rawInside === true,
-    hasZone: rawHasZone === true,
+    inside,
+    hasZone,
   };
 }

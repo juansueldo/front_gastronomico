@@ -20,11 +20,14 @@ import {
   ApiError,
   createCashMovement,
   createTable,
+  deleteTable as deleteBackendTable,
   fetchProducts,
   fetchTables,
   type PaymentMethod,
   type ProductItem,
   type TableItem as ApiTableItem,
+  updateTable as updateBackendTable,
+  updateTableStatus as updateBackendTableStatus,
 } from '../api';
 
 interface TableItem {
@@ -36,6 +39,9 @@ interface TableItem {
   status: 'libre' | 'ocupada' | 'por-cerrar' | 'reservada';
   openedAt?: string;
   totalAmount?: number;
+  capacity?: number;
+  description?: string;
+  backendStatusId?: number;
 }
 
 const paymentMethodLabels: Record<PaymentMethod, string> = {
@@ -72,6 +78,8 @@ const statusBadgeClasses: Record<TableItem['status'], string> = {
 };
 
 const areaOptions: TableItem['area'][] = ['Salón principal', 'Patio', 'Barra'];
+const ACTIVE_TABLE_STATUS_ID = 1;
+const INACTIVE_TABLE_STATUS_ID = 2;
 
 const getAreaFromDescription = (description: string | undefined): TableItem['area'] => {
   if (!description) {
@@ -98,15 +106,69 @@ const getWaiterFromDescription = (description: string | undefined) => {
   return waiterMatch?.[1]?.trim() || 'Sin asignar';
 };
 
+const getAreaFromLocation = (location: string | undefined): TableItem['area'] => {
+  if (!location) {
+    return 'Salón principal';
+  }
+
+  if (location.toLowerCase().includes('patio')) {
+    return 'Patio';
+  }
+
+  if (location.toLowerCase().includes('barra')) {
+    return 'Barra';
+  }
+
+  return 'Salón principal';
+};
+
+const getAreaFromTable = (table: ApiTableItem): TableItem['area'] => {
+  const metadataArea = typeof table.metadata?.area === 'string' ? table.metadata.area : undefined;
+
+  if (metadataArea && areaOptions.includes(metadataArea as TableItem['area'])) {
+    return metadataArea as TableItem['area'];
+  }
+
+  if (table.location) {
+    return getAreaFromLocation(table.location);
+  }
+
+  return getAreaFromDescription(table.description);
+};
+
+const getWaiterFromTable = (table: ApiTableItem) => {
+  const metadataWaiter = typeof table.metadata?.waiter === 'string' ? table.metadata.waiter.trim() : '';
+  if (metadataWaiter) {
+    return metadataWaiter;
+  }
+
+  return getWaiterFromDescription(table.description);
+};
+
+const getUiStatusFromBackend = (table: ApiTableItem): TableItem['status'] => {
+  if (table.active === false) {
+    return 'reservada';
+  }
+
+  if (Number(table.statusId) === INACTIVE_TABLE_STATUS_ID) {
+    return 'reservada';
+  }
+
+  return 'libre';
+};
+
 const mapBackendTableToUi = (table: ApiTableItem, index: number): TableItem => {
-  const parsedNumber = Number(table.name.match(/\d+/)?.[0]);
+  const parsedNumber = Number(table.tableNumber ?? table.table_number ?? table.name.match(/\d+/)?.[0]);
   return {
     id: table.id,
     number: Number.isFinite(parsedNumber) ? parsedNumber : index + 1,
-    area: getAreaFromDescription(table.description),
-    waiter: getWaiterFromDescription(table.description),
+    area: getAreaFromTable(table),
+    waiter: getWaiterFromTable(table),
     guests: 0,
-    status: table.active ? 'libre' : 'reservada',
+    status: getUiStatusFromBackend(table),
+    capacity: table.capacity,
+    description: table.description,
+    backendStatusId: table.statusId,
   };
 };
 
@@ -118,8 +180,16 @@ export function TablesView() {
   const [newTableNumber, setNewTableNumber] = useState('');
   const [newTableArea, setNewTableArea] = useState<TableItem['area']>('Salón principal');
   const [newTableWaiter, setNewTableWaiter] = useState('');
+  const [newTableCapacity, setNewTableCapacity] = useState('');
   const [isMoveTableDialogOpen, setIsMoveTableDialogOpen] = useState(false);
   const [nextAreaForMove, setNextAreaForMove] = useState<TableItem['area']>('Salón principal');
+  const [editingTable, setEditingTable] = useState<TableItem | null>(null);
+  const [editTableNumber, setEditTableNumber] = useState('');
+  const [editTableArea, setEditTableArea] = useState<TableItem['area']>('Salón principal');
+  const [editTableWaiter, setEditTableWaiter] = useState('');
+  const [editTableCapacity, setEditTableCapacity] = useState('');
+  const [editTableDescription, setEditTableDescription] = useState('');
+  const [tableToDelete, setTableToDelete] = useState<TableItem | null>(null);
   const [draggedTableId, setDraggedTableId] = useState<string | null>(null);
   const [dragOverTableId, setDragOverTableId] = useState<string | null>(null);
   const [availableProducts, setAvailableProducts] = useState<ProductItem[]>([]);
@@ -128,15 +198,19 @@ export function TablesView() {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressNextClick = useRef(false);
 
+  const loadTables = async () => {
+    const backendTables = await fetchTables();
+    setTables(backendTables.map(mapBackendTableToUi));
+  };
+
   useEffect(() => {
     const loadInitialData = async () => {
       try {
-        const [backendTables, products] = await Promise.all([
-          fetchTables(),
+        const [_, products] = await Promise.all([
+          loadTables(),
           fetchProducts(),
         ]);
 
-        setTables(backendTables.map(mapBackendTableToUi));
         setAvailableProducts(products);
         if (products.length > 0) {
           setSelectedProductId(products[0].id);
@@ -320,22 +394,48 @@ export function TablesView() {
     setIsMoveTableDialogOpen(true);
   };
 
-  const handleConfirmMoveTable = () => {
+  const handleOpenEditTable = () => {
     if (!actionTable) {
       return;
     }
 
-    updateTable(actionTable.id, (table) => ({
-      ...table,
-      area: nextAreaForMove,
-    }));
+    setEditTableNumber(String(actionTable.number));
+    setEditTableArea(actionTable.area);
+    setEditTableWaiter(actionTable.waiter === 'Sin asignar' ? '' : actionTable.waiter);
+    setEditTableCapacity(actionTable.capacity ? String(actionTable.capacity) : '');
+    setEditTableDescription(actionTable.description ?? '');
+    setEditingTable(actionTable);
+  };
 
-    setIsMoveTableDialogOpen(false);
-    toast.success(`Mesa ${actionTable.number} movida a ${nextAreaForMove}`);
+  const handleConfirmMoveTable = async () => {
+    if (!actionTable) {
+      return;
+    }
+
+    try {
+      await updateBackendTable(actionTable.id, {
+        location: nextAreaForMove,
+        metadata: {
+          waiter: actionTable.waiter === 'Sin asignar' ? undefined : actionTable.waiter,
+          area: nextAreaForMove,
+        },
+      });
+
+      await loadTables();
+      setIsMoveTableDialogOpen(false);
+      toast.success(`Mesa ${actionTable.number} movida a ${nextAreaForMove}`);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        toast.error(error.message);
+      } else {
+        toast.error('No se pudo actualizar la mesa');
+      }
+    }
   };
 
   const handleCreateTable = async () => {
     const waiter = newTableWaiter.trim();
+    const capacity = Number(newTableCapacity.trim());
     const parsedTableNumber = Number(newTableNumber);
     const maxTableNumber = tables.reduce((maxValue, table) => Math.max(maxValue, table.number), 0);
     const nextTableNumber = newTableNumber.trim() ? parsedTableNumber : maxTableNumber + 1;
@@ -353,12 +453,16 @@ export function TablesView() {
     try {
       await createTable({
         name: `Mesa ${nextTableNumber}`,
-        description: `${newTableArea} | Mozo: ${waiter || 'Sin asignar'}`,
-        active: true,
+        table_number: nextTableNumber,
+        capacity: Number.isFinite(capacity) && capacity > 0 ? capacity : undefined,
+        location: newTableArea,
+        metadata: {
+          waiter: waiter || undefined,
+          area: newTableArea,
+        },
       });
 
-      const backendTables = await fetchTables();
-      setTables(backendTables.map(mapBackendTableToUi));
+      await loadTables();
     } catch (error) {
       if (error instanceof ApiError) {
         toast.error(error.message);
@@ -371,8 +475,98 @@ export function TablesView() {
     setIsCreateTableDialogOpen(false);
     setNewTableNumber('');
     setNewTableWaiter('');
+    setNewTableCapacity('');
     setNewTableArea('Salón principal');
     toast.success(`Mesa ${nextTableNumber} creada`);
+  };
+
+  const handleSaveTableChanges = async () => {
+    if (!editingTable) {
+      return;
+    }
+
+    const nextTableNumber = Number(editTableNumber.trim());
+    const nextCapacity = Number(editTableCapacity.trim());
+    const waiter = editTableWaiter.trim();
+    const description = editTableDescription.trim();
+
+    if (!Number.isInteger(nextTableNumber) || nextTableNumber <= 0) {
+      toast.error('Ingresá un número de mesa válido');
+      return;
+    }
+
+    if (tables.some((table) => table.id !== editingTable.id && table.number === nextTableNumber)) {
+      toast.error(`La mesa ${nextTableNumber} ya existe`);
+      return;
+    }
+
+    try {
+      await updateBackendTable(editingTable.id, {
+        name: `Mesa ${nextTableNumber}`,
+        table_number: nextTableNumber,
+        capacity: Number.isFinite(nextCapacity) && nextCapacity > 0 ? nextCapacity : undefined,
+        location: editTableArea,
+        description: description || undefined,
+        metadata: {
+          waiter: waiter || undefined,
+          area: editTableArea,
+        },
+      });
+
+      await loadTables();
+      setEditingTable(null);
+      toast.success(`Mesa ${nextTableNumber} actualizada`);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        toast.error(error.message);
+      } else {
+        toast.error('No se pudo actualizar la mesa');
+      }
+    }
+  };
+
+  const handleToggleTableAvailability = async () => {
+    if (!actionTable) {
+      return;
+    }
+
+    const nextStatusId = actionTable.status === 'reservada' ? ACTIVE_TABLE_STATUS_ID : INACTIVE_TABLE_STATUS_ID;
+    const nextStatusLabel = nextStatusId === ACTIVE_TABLE_STATUS_ID ? 'libre' : 'reservada';
+
+    try {
+      await updateBackendTableStatus(actionTable.id, nextStatusId);
+      await loadTables();
+      setActionTable(null);
+      setDetailTable(null);
+      toast.success(`Mesa ${actionTable.number} marcada como ${nextStatusLabel}`);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        toast.error(error.message);
+      } else {
+        toast.error('No se pudo actualizar el estado de la mesa');
+      }
+    }
+  };
+
+  const handleDeleteTable = async () => {
+    if (!tableToDelete) {
+      return;
+    }
+
+    try {
+      await deleteBackendTable(tableToDelete.id);
+      await loadTables();
+      setActionTable(null);
+      setDetailTable(null);
+      setTableToDelete(null);
+      toast.success(`Mesa ${tableToDelete.number} eliminada`);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        toast.error(error.message);
+      } else {
+        toast.error('No se pudo eliminar la mesa');
+      }
+    }
   };
 
   const reorderTables = (sourceId: string, targetId: string) => {
@@ -454,20 +648,20 @@ export function TablesView() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <div className="p-2 rounded-lg bg-card border border-orange-700 text-center">
-            <p className="text-xs text-gray-400">Libres</p>
+          <div className="p-2 rounded-lg bg-orange-700/10 border border-orange-700 text-center">
+            <p className="text-xs dark:text-orange-300 text-orange-900">Libres</p>
             <p className="text-sm text-white font-medium">{freeCount}</p>
           </div>
-          <div className="p-2 rounded-lg bg-card border border-green-500/60 text-center">
-            <p className="text-xs text-green-300">Ocupadas</p>
+          <div className="p-2 rounded-lg bg-green-700/10 border border-green-500/60 text-center">
+            <p className="text-xs dark:text-green-300 text-green-900">Ocupadas</p>
             <p className="text-sm text-white font-medium">{occupiedCount}</p>
           </div>
-          <div className="p-2 rounded-lg bg-card border border-yellow-500/60 text-center">
-            <p className="text-xs text-yellow-300">Por cerrar</p>
+          <div className="p-2 rounded-lg bg-yellow-700/10 border border-yellow-500/60 text-center">
+            <p className="text-xs dark:text-yellow-300 text-yellow-900">Por cerrar</p>
             <p className="text-sm text-white font-medium">{closingCount}</p>
           </div>
-          <div className="p-2 rounded-lg bg-card border border-blue-500/60 text-center">
-            <p className="text-xs text-blue-300">Reservadas</p>
+          <div className="p-2 rounded-lg bg-blue-700/10 border border-blue-500/60 text-center">
+            <p className="text-xs dark:text-blue-300 text-blue-900">Reservadas</p>
             <p className="text-sm text-white font-medium">{reservedCount}</p>
           </div>
         </div>
@@ -526,7 +720,7 @@ export function TablesView() {
       </div>
 
       <Dialog open={!!detailTable} onOpenChange={() => setDetailTable(null)}>
-        <DialogContent className="bg-card border-orange-700 text-white">
+        <DialogContent className="bg-card card text-white">
           <DialogHeader>
             <DialogTitle>Detalle de Mesa {detailTable?.number}</DialogTitle>
           </DialogHeader>
@@ -551,6 +745,10 @@ export function TablesView() {
                 <span>{detailTable.guests}</span>
               </div>
               <div className="flex items-center justify-between">
+                <span className="text-gray-400">Capacidad</span>
+                <span>{detailTable.capacity ?? '-'}</span>
+              </div>
+              <div className="flex items-center justify-between">
                 <span className="text-gray-400">Hora apertura</span>
                 <span>{detailTable.openedAt ?? '--:--'}</span>
               </div>
@@ -567,7 +765,7 @@ export function TablesView() {
       </Dialog>
 
       <Dialog open={!!actionTable} onOpenChange={() => setActionTable(null)}>
-        <DialogContent className="bg-card border-orange-700 text-white">
+        <DialogContent className="bg-card card text-white">
           <DialogHeader>
             <DialogTitle>Acciones Mesa {actionTable?.number}</DialogTitle>
           </DialogHeader>
@@ -613,18 +811,31 @@ export function TablesView() {
                 Cobrar ({actionTable ? formatCurrency(getTableTotalAmount(actionTable)) : formatCurrency(0)})
               </Button>
             </div>
+            <Button variant="secondary" className="w-full" onClick={handleOpenEditTable}>
+              Editar mesa
+            </Button>
             <Button variant="secondary" className="w-full" onClick={handleMoveTable}>
               Mover mesa
             </Button>
+            <Button variant="secondary" className="w-full" onClick={handleToggleTableAvailability}>
+              {actionTable?.status === 'reservada' ? 'Marcar como libre' : 'Marcar como reservada'}
+            </Button>
             <Button variant="destructive" className="w-full" onClick={handleCloseTable}>
               Cerrar mesa
+            </Button>
+            <Button
+              variant="destructive"
+              className="w-full"
+              onClick={() => actionTable && setTableToDelete(actionTable)}
+            >
+              Eliminar mesa
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={isCreateTableDialogOpen} onOpenChange={setIsCreateTableDialogOpen}>
-        <DialogContent className="bg-card border-orange-700 text-white">
+        <DialogContent className="bg-card card text-white">
           <DialogHeader>
             <DialogTitle>Nueva mesa</DialogTitle>
           </DialogHeader>
@@ -642,6 +853,14 @@ export function TablesView() {
               value={newTableWaiter}
               onChange={(event) => setNewTableWaiter(event.target.value)}
             />
+            <Input
+              type="number"
+              min="1"
+              step="1"
+              placeholder="Capacidad (opcional)"
+              value={newTableCapacity}
+              onChange={(event) => setNewTableCapacity(event.target.value)}
+            />
             <Select value={newTableArea} onValueChange={(value) => setNewTableArea(value as TableItem['area'])}>
               <SelectTrigger>
                 <SelectValue placeholder="Sector" />
@@ -654,6 +873,69 @@ export function TablesView() {
             </Select>
             <Button className="w-full" onClick={handleCreateTable}>
               Crear mesa
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingTable} onOpenChange={(open) => !open && setEditingTable(null)}>
+        <DialogContent className="bg-card border-orange-700 text-white">
+          <DialogHeader>
+            <DialogTitle>Editar Mesa {editingTable?.number}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              type="number"
+              min="1"
+              step="1"
+              placeholder="Número de mesa"
+              value={editTableNumber}
+              onChange={(event) => setEditTableNumber(event.target.value)}
+            />
+            <Input
+              placeholder="Mozo"
+              value={editTableWaiter}
+              onChange={(event) => setEditTableWaiter(event.target.value)}
+            />
+            <Input
+              type="number"
+              min="1"
+              step="1"
+              placeholder="Capacidad"
+              value={editTableCapacity}
+              onChange={(event) => setEditTableCapacity(event.target.value)}
+            />
+            <Select value={editTableArea} onValueChange={(value) => setEditTableArea(value as TableItem['area'])}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sector" />
+              </SelectTrigger>
+              <SelectContent>
+                {areaOptions.map((area) => (
+                  <SelectItem key={area} value={area}>{area}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              placeholder="Descripción (opcional)"
+              value={editTableDescription}
+              onChange={(event) => setEditTableDescription(event.target.value)}
+            />
+            <Button className="w-full" onClick={handleSaveTableChanges}>
+              Guardar cambios
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!tableToDelete} onOpenChange={(open) => !open && setTableToDelete(null)}>
+        <DialogContent className="bg-card border-orange-700 text-white">
+          <DialogHeader>
+            <DialogTitle>Eliminar Mesa {tableToDelete?.number}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-gray-300">Esta acción eliminará la mesa de forma permanente.</p>
+            <Button variant="destructive" className="w-full" onClick={handleDeleteTable}>
+              Confirmar eliminación
             </Button>
           </div>
         </DialogContent>

@@ -1,29 +1,26 @@
+import { Moon, SunMedium } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { endpoints } from '../api/endpoints';
+import {
+  createDeliveryZone,
+  deleteDeliveryZoneById,
+  fetchDeliveryZones,
+  type DeliveryZone,
+  type DeliveryZonePoint,
+  updateDeliveryZone,
+  updateDeliveryZoneStatus,
+} from '../api';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-export interface DeliveryZonePoint {
-  lat: number;
-  lng: number;
-}
-
-export interface DeliveryZone {
-  id: string;
-  name: string;
-  active: boolean;
-  polygon: DeliveryZonePoint[];
-}
 
 // ─── API helpers (inline, sin depender del módulo externo) ────────────────────
 const DARK_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#212121' }] },
   { elementType: 'labels.text.stroke', stylers: [{ color: '#212121' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#757575' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#373737' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#333330' }] },
   { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#8a8a8a' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#000000' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#040925' }] },
   { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#3d3d3d' }] },
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },
 ];
@@ -210,16 +207,8 @@ const [darkMap, setDarkMap] = useState(true);
  const loadZones = useCallback(async () => {
   setLoading(true);
   try {
-    const data = await endpoints.fetchDeliveryZones();
-    // La API devuelve { count, rows }
-    const rows = (data as any)?.rows ?? data;
-    const mapped: DeliveryZone[] = (Array.isArray(rows) ? rows : []).map((z: any) => ({
-      id: String(z.id),
-      name: z.name,
-      active: z.Status?.name === 'active',
-      polygon: Array.isArray(z.polygon) ? z.polygon : [],
-    }));
-    setZones(mapped);
+    const data = await fetchDeliveryZones();
+    setZones(data);
   } catch {
     toast.error('No se pudieron cargar las zonas de entrega');
   } finally {
@@ -244,8 +233,18 @@ const [darkMap, setDarkMap] = useState(true);
     if (draft.length < 3) { toast.error('Dibujá al menos 3 puntos en el mapa'); return; }
     setSaving(true);
     try {
-      const created = await endpoints.createDeliveryZone({ name, active: true, polygon: draft });
-      setZones(prev => [...prev, created]);
+      const created = await createDeliveryZone({
+        name,
+        polygon: draft,
+        zoneid: `ZONE_${Date.now()}`,
+        metadata: {},
+      });
+
+      if (!created) {
+        throw new Error('No se pudo normalizar la zona creada');
+      }
+
+      await loadZones();
       setSelectedZone(created);
       setMode('view');
       setDraft([]);
@@ -271,9 +270,9 @@ const [darkMap, setDarkMap] = useState(true);
     if (draft.length < 3) { toast.error('La zona necesita al menos 3 puntos'); return; }
     setSaving(true);
     try {
-      const updated = await endpoints.updateDeliveryZone(selectedZone.id, { polygon: draft });
-      const next = { ...selectedZone, polygon: draft, ...updated };
-      setZones(prev => prev.map(z => z.id === selectedZone.id ? next : z));
+      const updated = await updateDeliveryZone(selectedZone.id!, { polygon: draft });
+      const next = updated ? { ...selectedZone, ...updated, polygon: draft } : { ...selectedZone, polygon: draft };
+      await loadZones();
       setSelectedZone(next);
       setMode('view');
       setDraft([]);
@@ -295,8 +294,8 @@ const [darkMap, setDarkMap] = useState(true);
     if (!confirm(`¿Eliminás la zona "${zone.name}"?`)) return;
     setSaving(true);
     try {
-      await endpoints.deleteDeliveryZone(zone.id);
-      setZones(prev => prev.filter(z => z.id !== zone.id));
+      await deleteDeliveryZoneById(zone.id!);
+      await loadZones();
       if (selectedZone?.id === zone.id) {
         setSelectedZone(null);
         setMode('view');
@@ -313,8 +312,9 @@ const [darkMap, setDarkMap] = useState(true);
   // ── Toggle activo ─────────────────────────────────────────────────────────
   const toggleActive = async (zone: DeliveryZone) => {
     try {
-      await endpoints.updateDeliveryZone(zone.id, { active: !zone.active });
-      const next = { ...zone, active: !zone.active };
+      await updateDeliveryZoneStatus(zone.id!, zone.active ? 2 : 1);
+      const next = { ...zone, active: !zone.active, statusId: zone.active ? 2 : 1 };
+      await loadZones();
       setZones(prev => prev.map(z => z.id === zone.id ? next : z));
       if (selectedZone?.id === zone.id) setSelectedZone(next);
     } catch {
@@ -328,13 +328,6 @@ const [darkMap, setDarkMap] = useState(true);
 
   return (
     <div className="h-full bg-body flex flex-col overflow-hidden">
-      <button
-  onClick={() => setDarkMap(p => !p)}
-  className="px-3 py-1.5 text-xs font-medium rounded-md bg-gray-700 hover:bg-gray-600 text-white transition-colors"
-  title="Cambiar tema del mapa"
->
-  {darkMap ? '☀️ Claro' : '🌙 Oscuro'}
-</button>
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-orange-700/40">
         <h1 className="text-lg font-semibold text-white tracking-tight">Zonas de entrega</h1>
@@ -387,7 +380,7 @@ const [darkMap, setDarkMap] = useState(true);
         <div className="flex-1 flex flex-col overflow-hidden">
 
           {/* Mapa */}
-          <div className="relative flex-1 ">
+          <div className="relative flex-1">
             <ZoneMap
               zone={mapZone}
               mode={showNewForm ? 'draw' : mode}
@@ -395,6 +388,42 @@ const [darkMap, setDarkMap] = useState(true);
               onDraftChange={setDraft}
               darkMode={darkMap}
             />
+
+            <div className="absolute right-4 top-4 z-10">
+              <div className="flex items-center gap-1 rounded-xl border border-orange-700/50 bg-card/95 p-1 shadow-lg backdrop-blur">
+                <span className="px-2 text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                  Mapa
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setDarkMap(false)}
+                  aria-pressed={!darkMap}
+                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    !darkMap
+                      ? 'bg-orange-600 text-white'
+                      : 'text-gray-300 hover:bg-orange-700/30 hover:text-white'
+                  }`}
+                  title="Usar mapa claro"
+                >
+                  <SunMedium className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Claro</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDarkMap(true)}
+                  aria-pressed={darkMap}
+                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    darkMap
+                      ? 'bg-orange-600 text-white'
+                      : 'text-gray-300 hover:bg-orange-700/30 hover:text-white'
+                  }`}
+                  title="Usar mapa oscuro"
+                >
+                  <Moon className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Oscuro</span>
+                </button>
+              </div>
+            </div>
 
             {/* Overlay hint cuando no hay zona seleccionada */}
             {!selectedZone && !showNewForm && (

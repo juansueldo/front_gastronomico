@@ -258,5 +258,12 @@ export class ApiClient {
 /**
  * Instancia global del cliente con la URL base del ambiente
  */
-const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3000';
+const ENV_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3000';
+const SHOULD_USE_DEV_PROXY = (
+  (import.meta as any).env?.DEV
+  && typeof window !== 'undefined'
+  && /^https?:\/\/localhost:3000\/?$/.test(ENV_BASE_URL)
+  && /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)
+);
+const BASE_URL = SHOULD_USE_DEV_PROXY ? window.location.origin : ENV_BASE_URL;
 export const apiClient = new ApiClient(BASE_URL);

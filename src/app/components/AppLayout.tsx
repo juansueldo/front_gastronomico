@@ -1,12 +1,14 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { LayoutDashboard, MessageSquare, Calendar, Settings, Building, MapPin, LogOut, Bot, Link2, Megaphone, Bell, MoreHorizontal, ClipboardList, LayoutGrid, Wallet, Tags, Package, ChefHat, Puzzle, Boxes, ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Calendar, Settings, Building, MapPin, LogOut, Bot, Link2, Megaphone, Bell, MoreHorizontal, ClipboardList, LayoutGrid, Wallet, Tags, Package, ChefHat, Puzzle, Boxes, ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, Moon, SunMedium, Laptop, Languages, CircleUserRound } from 'lucide-react';
 import { Avatar, AvatarFallback } from './ui/avatar';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
 import { toast } from 'sonner';
 import { Toaster } from './ui/sonner';
-import { clearAuthSession, getLoggedUser } from '../authStorage';
-import { AuthUser } from '../authStorage';
+import { clearAuthSession, getLoggedUser, updateLoggedUser, AUTH_CHANGED_EVENT, type AuthUser } from '../authStorage';
+import { getThemePreference, setThemePreference, type ThemePreference, THEME_CHANGED_EVENT } from '../theme';
+import { getLanguagePreference, setLanguagePreference, type LanguagePreference, LANGUAGE_CHANGED_EVENT } from '../language';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -17,6 +19,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [loggedUser, setLoggedUser] = useState<AuthUser | null>(null);
+  const [themePreference, setThemePreferenceState] = useState<ThemePreference>(() => getThemePreference());
+  const [languagePreference, setLanguagePreferenceState] = useState<LanguagePreference>(() => getLanguagePreference());
 
   // Estado de colapso del sidebar completo (persistente)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
@@ -59,10 +63,33 @@ export function AppLayout({ children }: AppLayoutProps) {
   };
 
   useEffect(() => {
-    const storedUser = getLoggedUser();
-    if (storedUser) {
-      setLoggedUser(storedUser as AuthUser);
-    }
+    const syncUser = () => {
+      setLoggedUser(getLoggedUser() as AuthUser | null);
+    };
+
+    const syncTheme = (event: Event) => {
+      const customEvent = event as CustomEvent<ThemePreference>;
+      setThemePreferenceState(customEvent.detail ?? getThemePreference());
+    };
+
+    const syncLanguage = (event: Event) => {
+      const customEvent = event as CustomEvent<LanguagePreference>;
+      setLanguagePreferenceState(customEvent.detail ?? getLanguagePreference());
+    };
+
+    syncUser();
+    setThemePreferenceState(getThemePreference());
+    setLanguagePreferenceState(getLanguagePreference());
+
+    window.addEventListener(AUTH_CHANGED_EVENT, syncUser);
+    window.addEventListener(THEME_CHANGED_EVENT, syncTheme);
+    window.addEventListener(LANGUAGE_CHANGED_EVENT, syncLanguage);
+
+    return () => {
+      window.removeEventListener(AUTH_CHANGED_EVENT, syncUser);
+      window.removeEventListener(THEME_CHANGED_EVENT, syncTheme);
+      window.removeEventListener(LANGUAGE_CHANGED_EVENT, syncLanguage);
+    };
   }, []);
 
   useEffect(() => {
@@ -121,7 +148,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     },
   ];
 
-  const mobilePrimaryPaths = ['/', '/calendar', '/campaigns', '/notifications'];
+  const mobilePrimaryPaths = ['/', '/orders', '/tables', '/cash-register'];
   // Filtrar items según el rol del usuario logueado
   const userRole = loggedUser?.role;
   const filteredNavCategories = navCategories.map(cat => ({
@@ -152,10 +179,47 @@ export function AppLayout({ children }: AppLayoutProps) {
     offline: 'bg-gray-500',
   };
 
+  const statusLabels: Record<NonNullable<AuthUser['status']>, string> = {
+    active: 'Activo',
+    away: 'Ausente',
+    busy: 'Ocupado',
+    offline: 'Desconectado',
+  };
+
+  const themeLabels: Record<ThemePreference, string> = {
+    dark: 'Oscuro',
+    light: 'Claro',
+    auto: 'Sistema',
+  };
+
+  const languageLabels: Record<LanguagePreference, string> = {
+    es: 'Español',
+    en: 'English',
+    pt: 'Português',
+  };
+
   const handleLogout = () => {
     clearAuthSession();
     toast.success('Sesión cerrada correctamente');
     navigate('/login');
+  };
+
+  const handleThemeChange = (nextTheme: ThemePreference) => {
+    setThemePreferenceState(nextTheme);
+    setThemePreference(nextTheme);
+    toast.success(`Tema ${themeLabels[nextTheme].toLowerCase()}`);
+  };
+
+  const handleLanguageChange = (nextLanguage: LanguagePreference) => {
+    setLanguagePreferenceState(nextLanguage);
+    setLanguagePreference(nextLanguage);
+    toast.success(`Idioma ${languageLabels[nextLanguage]}`);
+  };
+
+  const handleStatusChange = (nextStatus: NonNullable<AuthUser['status']>) => {
+    updateLoggedUser({ status: nextStatus });
+    setLoggedUser((prev) => (prev ? { ...prev, status: nextStatus } : prev));
+    toast.success(`Estado ${statusLabels[nextStatus].toLowerCase()}`);
   };
 
   // Cuando el sidebar está colapsado, se comporta como el modo "md" (solo íconos, ancho w-20)
@@ -174,22 +238,117 @@ export function AppLayout({ children }: AppLayoutProps) {
           {!loggedUser ? (
             <div className="text-gray-400 text-sm">Cargando...</div>
           ) : (
-            <div className="flex items-center gap-3">
-              <div className="relative shrink-0">
-                <Avatar className="h-10 w-10">
-                  <AvatarFallback className="bg-primary text-sm">
-                    {getInitials(loggedUser.firstname + ' ' + loggedUser.lastname)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-card ${statusColors[loggedUser.status ?? 'active']}`} />
-              </div>
-              {showLabels && (
-                <div className="hidden lg:block flex-1 min-w-0">
-                  <h3 className="text-white font-medium truncate">{loggedUser.firstname} {loggedUser.lastname}</h3>
-                  <p className="text-xs text-gray-400 truncate">{loggedUser.role}</p>
-                </div>
-              )}
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 rounded-lg px-2 py-1 text-left transition-colors hover:bg-orange-700/40"
+                >
+                  <div className="relative shrink-0">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback className="bg-primary text-sm">
+                        {getInitials(`${loggedUser.firstname ?? ''} ${loggedUser.lastname ?? ''}`.trim() || 'U')}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-card ${statusColors[loggedUser.status ?? 'active']}`} />
+                  </div>
+                  {showLabels && (
+                    <div className="hidden lg:block min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="truncate font-medium text-white">
+                          {loggedUser.firstname} {loggedUser.lastname}
+                        </h3>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" />
+                      </div>
+                      <p className="truncate text-xs text-gray-400">{loggedUser.role}</p>
+                    </div>
+                  )}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-64 border-gray-600 bg-card text-white">
+                <DropdownMenuLabel className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <CircleUserRound className="h-4 w-4 text-gray-400" />
+                    <span className="font-medium">{loggedUser.firstname} {loggedUser.lastname}</span>
+                  </div>
+                  <p className="text-xs text-gray-400">{loggedUser.role}</p>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <div className="flex items-center gap-2">
+                      <Moon className="h-4 w-4" />
+                      <span>Tema</span>
+                    </div>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="border-gray-600 bg-card text-white">
+                    <DropdownMenuRadioGroup
+                      value={themePreference}
+                      onValueChange={(value) => handleThemeChange(value as ThemePreference)}
+                    >
+                      <DropdownMenuRadioItem value="dark">
+                        <div className="flex items-center gap-2">
+                          <Moon className="h-4 w-4" />
+                          <span>Oscuro</span>
+                        </div>
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="light">
+                        <div className="flex items-center gap-2">
+                          <SunMedium className="h-4 w-4" />
+                          <span>Claro</span>
+                        </div>
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="auto">
+                        <div className="flex items-center gap-2">
+                          <Laptop className="h-4 w-4" />
+                          <span>Sistema</span>
+                        </div>
+                      </DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <div className="flex items-center gap-2">
+                      <Languages className="h-4 w-4" />
+                      <span>Idioma</span>
+                    </div>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="border-gray-600 bg-card text-white">
+                    <DropdownMenuRadioGroup
+                      value={languagePreference}
+                      onValueChange={(value) => handleLanguageChange(value as LanguagePreference)}
+                    >
+                      <DropdownMenuRadioItem value="es">Español</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="en">English</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="pt">Português</DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs uppercase tracking-wide text-gray-400">
+                  Estado del usuario
+                </DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={loggedUser.status ?? 'active'}
+                  onValueChange={(value) => handleStatusChange(value as NonNullable<AuthUser['status']>)}
+                >
+                  <DropdownMenuRadioItem value="active">Activo</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="away">Ausente</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="busy">Ocupado</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="offline">Desconectado</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="gap-2">
+                  <LogOut className="h-4 w-4" />
+                  Cerrar sesión
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
 
@@ -227,7 +386,9 @@ export function AppLayout({ children }: AppLayoutProps) {
                         key={item.path}
                         onClick={() => navigate(item.path)}
                         title={isSidebarCollapsed ? item.label : undefined}
-                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                        className={`w-full flex items-center rounded-lg py-3 transition-colors ${
+                          showLabels ? 'justify-start gap-3 px-4' : 'justify-center px-0'
+                        } ${
                           active
                             ? 'bg-primary text-white-700'
                             : 'text-gray-400 hover:bg-orange-700 hover:text-white'
@@ -244,26 +405,20 @@ export function AppLayout({ children }: AppLayoutProps) {
           ))}
         </nav>
 
-        {/* Bottom actions: collapse toggle + logout */}
+        {/* Bottom actions: collapse toggle */}
         <div className="p-4 border-t border-gray-600 space-y-1">
           {/* Toggle sidebar collapse — only visible on lg+ */}
           <button
             onClick={toggleSidebar}
             title={isSidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'}
-            className="w-full hidden lg:flex items-center gap-3 px-4 py-3 text-gray-400 hover:bg-orange-700 hover:text-white rounded-lg transition-colors"
+            className={`w-full hidden lg:flex items-center rounded-lg py-3 text-gray-400 transition-colors hover:bg-orange-700 hover:text-white ${
+              showLabels ? 'justify-start gap-3 px-4' : 'justify-center px-0'
+            }`}
           >
             {isSidebarCollapsed
               ? <PanelLeftOpen className="h-5 w-5 shrink-0" />
               : <PanelLeftClose className="h-5 w-5 shrink-0" />}
             {showLabels && <span className="hidden lg:block">Colapsar menú</span>}
-          </button>
-
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 text-gray-400 hover:bg-orange-700 hover:text-white rounded-lg transition-colors"
-          >
-            <LogOut className="h-5 w-5 shrink-0" />
-            {showLabels && <span className="hidden lg:block">Cerrar sesión</span>}
           </button>
         </div>
       </div>

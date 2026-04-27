@@ -141,13 +141,6 @@ export function SettingsView() {
     }
   };
 
-  const statusOptions = [
-    { value: 'active', label: 'Activo', color: 'bg-green-500' },
-    { value: 'away', label: 'Ausente', color: 'bg-yellow-500' },
-    { value: 'busy', label: 'Ocupado', color: 'bg-red-500' },
-    { value: 'offline', label: 'Desconectado', color: 'bg-gray-500' },
-  ];
-
   return (
     <div className="h-full bg-body overflow-y-auto">
       <Toaster />
@@ -200,7 +193,6 @@ export function SettingsView() {
                     <Input
                       type="text"
                       value={loggedUser?.lastname ?? ''}
-                      //onChange={(e) => setLoggedUser({ ...loggedUser, lastname: e.target.value })}
                       className="bg-body border-orange-600 text-white"
                     />
                   </div>
@@ -212,7 +204,6 @@ export function SettingsView() {
                     <Input
                       type="email"
                       value={loggedUser?.email ?? ''}
-                      //onChange={(e) => setLoggedUser({ ...loggedUser, email: e.target.value })}
                       className="bg-body border-orange-600 text-white"
                     />
                   </div>
@@ -220,32 +211,9 @@ export function SettingsView() {
                     <Label className="text-gray-300">Rol</Label>
                     <Input
                       value={loggedUser?.role ?? ''}
-                      //onChange={(e) => setLoggedUser({ ...loggedUser, role: e.target.value })}
                       className="bg-body border-orange-600 text-white"
                     />
                   </div>
-                </div>
-
-                <div>
-                  <Label className="text-gray-300">Estado</Label>
-                  <Select
-                    //value={loggedUser.status}
-                    //onValueChange={(value: any) => setLoggedUser({ ...loggedUser, status: value })}
-                  >
-                    <SelectTrigger className="bg-body border-orange-600 text-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {statusOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${option.color}`} />
-                            {option.label}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                 </div>
 
                 <Button

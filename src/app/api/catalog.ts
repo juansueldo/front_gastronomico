@@ -2,8 +2,7 @@
  * API de Catálogo - Products y Categories endpoints
  */
 
-import { apiConnection } from './apiConnection';
-import { API_VERSION } from './types';
+import { endpoints } from './endpoints';
 
 export interface ProductCategory {
   id: string;
@@ -41,9 +40,7 @@ export interface CreateProductRequest {
  * Obtiene todas las categorías
  */
 export async function fetchProductCategories(): Promise<ProductCategory[]> {
-  const data: any = await apiConnection.get(`${API_VERSION}/category/list`, {
-    config: { cache: 'long' },
-  });
+  const data: any = await endpoints.fetchCategories();
   if (Array.isArray(data)) return data;
   if (data && Array.isArray(data.categories)) return data.categories;
   if (data && Array.isArray(data.data)) return data.data;
@@ -54,21 +51,21 @@ export async function fetchProductCategories(): Promise<ProductCategory[]> {
  * Obtiene una categoría específica
  */
 export async function getCategory(categoryId: string): Promise<ProductCategory> {
-  return apiConnection.get(`${API_VERSION}/category/${categoryId}`);
+  return endpoints.getCategory(categoryId);
 }
 
 /**
  * Crea una nueva categoría
  */
 export async function createCategory(categoryData: CreateCategoryRequest): Promise<any> {
-  return apiConnection.post(`${API_VERSION}/category/create`, categoryData);
+  return endpoints.createCategory(categoryData);
 }
 
 /**
  * Actualiza una categoría
  */
 export async function updateCategory(categoryId: string, data: CreateCategoryRequest): Promise<any> {
-  return apiConnection.post(`${API_VERSION}/category/update/${categoryId}`, {
+  return endpoints.updateCategory(categoryId, {
     id: categoryId,
     ...data,
   });
@@ -78,16 +75,14 @@ export async function updateCategory(categoryId: string, data: CreateCategoryReq
  * Elimina una categoría
  */
 export async function deleteCategory(categoryId: string): Promise<any> {
-  return apiConnection.delete(`${API_VERSION}/category/${categoryId}`);
+  return endpoints.deleteCategory(categoryId);
 }
 
 /**
  * Obtiene todos los productos
  */
 export async function fetchProducts(): Promise<ProductItem[]> {
-  const data: any = await apiConnection.get(`${API_VERSION}/product/list`, {
-    config: { cache: 'long' },
-  });
+  const data: any = await endpoints.fetchProducts();
   if (Array.isArray(data)) return data;
   if (data && Array.isArray(data.products)) return data.products;
   if (data && Array.isArray(data.data)) return data.data;
@@ -98,21 +93,21 @@ export async function fetchProducts(): Promise<ProductItem[]> {
  * Obtiene un producto específico
  */
 export async function getProduct(productId: string): Promise<ProductItem> {
-  return apiConnection.get(`${API_VERSION}/product/${productId}`);
+  return endpoints.getProduct(productId);
 }
 
 /**
  * Crea un nuevo producto
  */
 export async function createProduct(productData: CreateProductRequest): Promise<any> {
-  return apiConnection.post(`${API_VERSION}/product/create`, productData);
+  return endpoints.createProduct(productData);
 }
 
 /**
  * Actualiza un producto
  */
 export async function updateProduct(productId: string, data: CreateProductRequest): Promise<any> {
-  return apiConnection.post(`${API_VERSION}/product/update/${productId}`, {
+  return endpoints.updateProduct(productId, {
     id: productId,
     ...data,
   });
@@ -122,5 +117,5 @@ export async function updateProduct(productId: string, data: CreateProductReques
  * Elimina un producto
  */
 export async function deleteProduct(productId: string): Promise<any> {
-  return apiConnection.delete(`${API_VERSION}/product/${productId}`);
+  return endpoints.deleteProduct(productId);
 }

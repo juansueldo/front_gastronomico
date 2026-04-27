@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { BookOpenText, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -10,23 +10,16 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
-import { toast } from 'sonner';
-import {
-  listProductCategories,
-  type ProductCategory,
-} from '../catalogApi';
 import { type DataTableColumn, DataTable } from './ui/data-table';
-import {
-  productApi,
-} from '../api';
-import type { ProductItem, ProductRecipeConfig } from '../api/product';
+import { useProductsViewModel } from '../hooks/useProductsViewModel';
+import type { ProductItem } from '../api/product';
+import { ProductRecipeIngredientRow } from './products/ProductRecipeIngredientRow';
 
 const currencyFormatter = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -35,258 +28,44 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
 });
 
 export function ProductsView() {
-  const [products, setProducts] = useState<ProductItem[]>([]);
-  const [categories, setCategories] = useState<ProductCategory[]>([]);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingProductId, setEditingProductId] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [price, setPrice] = useState('');
-  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
-  const [recipesByProductId, setRecipesByProductId] = useState<Record<string, ProductRecipeConfig>>({});
-  const [isRecipeDialogOpen, setIsRecipeDialogOpen] = useState(false);
-  const [recipeProduct, setRecipeProduct] = useState<ProductItem | null>(null);
-  const [recipeUsesIngredients, setRecipeUsesIngredients] = useState(false);
-  const [recipeIngredients, setRecipeIngredients] = useState<Array<{ id: string; name: string; quantity: string; unit: string }>>([]);
-
-  const loadCatalog = async () => {
-    const [backendProducts, backendCategoriesResult] = await Promise.all([
-      productApi.listProductsLegacy(),
-      listProductCategories({ page: 1, pageSize: 200 }),
-    ]);
-
-    setProducts(backendProducts);
-    setCategories(backendCategoriesResult.rows);
-  };
-
-  useEffect(() => {
-    const loadInitialCatalog = async () => {
-      try {
-        await loadCatalog();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'No se pudo cargar el catálogo');
-      }
-    };
-
-    void loadInitialCatalog();
-
-  }, []);
-
-  const openRecipeDialog = async (product: ProductItem) => {
-    const localRecipe = recipesByProductId[product.id];
-
-    setRecipeProduct(product);
-    setRecipeUsesIngredients(localRecipe?.usesRecipe ?? false);
-    setRecipeIngredients(
-      localRecipe?.ingredients.map((ingredient) => ({
-        id: ingredient.id ?? crypto.randomUUID(),
-        name: ingredient.name,
-        quantity: String(ingredient.quantity),
-        unit: ingredient.unit,
-      })) ?? [],
-    );
-    setIsRecipeDialogOpen(true);
-
-    try {
-      const backendRecipe = await productApi.getProductRecipe(product.id);
-
-      if (!backendRecipe) {
-        return;
-      }
-
-      setRecipesByProductId((prev) => ({
-        ...prev,
-        [product.id]: backendRecipe,
-      }));
-      setRecipeUsesIngredients(backendRecipe.usesRecipe);
-      setRecipeIngredients(
-        backendRecipe.ingredients.map((ingredient) => ({
-          id: ingredient.id ?? crypto.randomUUID(),
-          name: ingredient.name,
-          quantity: String(ingredient.quantity),
-          unit: ingredient.unit,
-        })),
-      );
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo cargar la receta');
-    }
-  };
-
-  const addRecipeIngredientRow = () => {
-    setRecipeIngredients((prev) => ([
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        name: '',
-        quantity: '',
-        unit: 'unidad',
-      },
-    ]));
-  };
-
-  const removeRecipeIngredientRow = (ingredientId: string) => {
-    setRecipeIngredients((prev) => prev.filter((ingredient) => ingredient.id !== ingredientId));
-  };
-
-  const updateRecipeIngredient = (ingredientId: string, field: 'name' | 'quantity' | 'unit', value: string) => {
-    setRecipeIngredients((prev) => prev.map((ingredient) => (
-      ingredient.id === ingredientId
-        ? { ...ingredient, [field]: value }
-        : ingredient
-    )));
-  };
-
-  const handleSaveRecipe = async () => {
-    if (!recipeProduct) {
-      return;
-    }
-
-    const normalizedIngredients = recipeIngredients
-      .map((ingredient) => ({
-        name: ingredient.name.trim(),
-        quantity: Number(ingredient.quantity.replace(',', '.')),
-        unit: ingredient.unit.trim(),
-      }))
-      .filter((ingredient) => ingredient.name.length > 0 || ingredient.unit.length > 0 || ingredient.quantity > 0);
-
-    const hasInvalidIngredient = normalizedIngredients.some((ingredient) => (
-      !ingredient.name
-      || !Number.isFinite(ingredient.quantity)
-      || ingredient.quantity <= 0
-      || !ingredient.unit
-    ));
-
-    if (hasInvalidIngredient) {
-      toast.error('Completá nombre, cantidad y unidad en cada ingrediente');
-      return;
-    }
-
-    if (recipeUsesIngredients && normalizedIngredients.length === 0) {
-      toast.error('Agregá al menos un ingrediente para la receta');
-      return;
-    }
-
-    let savedRecipe: ProductRecipeConfig;
-
-    try {
-      savedRecipe = await productApi.saveProductRecipe({
-        productId: recipeProduct.id,
-        usesRecipe: recipeUsesIngredients,
-        ingredients: normalizedIngredients,
-      });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo guardar la receta');
-      return;
-    }
-
-    setRecipesByProductId((prev) => ({
-      ...prev,
-      [recipeProduct.id]: savedRecipe,
-    }));
-
-    setIsRecipeDialogOpen(false);
-    toast.success('Receta actualizada');
-  };
-
-  const openCreateDialog = () => {
-    setEditingProductId(null);
-    setName('');
-    setDescription('');
-    setPrice('');
-    setSelectedCategoryIds([]);
-    setIsDialogOpen(true);
-  };
-
-  const openEditDialog = (product: ProductItem) => {
-    setEditingProductId(product.id);
-    setName(product.name);
-    setDescription(product.description ?? '');
-    setPrice(String(product.price));
-    setSelectedCategoryIds(product.categoryIds ?? []);
-    setIsDialogOpen(true);
-  };
-
-  const toggleCategory = (categoryId: string) => {
-    setSelectedCategoryIds((prev) => (
-      prev.includes(categoryId)
-        ? prev.filter((id) => id !== categoryId)
-        : [...prev, categoryId]
-    ));
-  };
-
-  const handleSaveProduct = async () => {
-    const trimmedName = name.trim();
-    const parsedPrice = Number(price.replace(',', '.'));
-
-    if (!trimmedName) {
-      toast.error('Ingresá el nombre del producto');
-      return;
-    }
-
-    if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
-      toast.error('Ingresá un precio válido');
-      return;
-    }
-
-    if (selectedCategoryIds.length === 0) {
-      toast.error('Seleccioná al menos una categoría');
-      return;
-    }
-
-    try {
-      if (editingProductId) {
-        await productApi.updateProduct(editingProductId, {
-          name: trimmedName,
-          description: description.trim() || undefined,
-          price: parsedPrice,
-          categoryIds: selectedCategoryIds,
-        });
-        toast.success('Producto actualizado');
-      } else {
-        await productApi.createProduct({
-          name: trimmedName,
-          description: description.trim() || undefined,
-          price: parsedPrice,
-          categoryIds: selectedCategoryIds,
-        });
-        toast.success('Producto creado');
-      }
-
-      await loadCatalog();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo guardar el producto');
-      return;
-    }
-
-    setIsDialogOpen(false);
-    setEditingProductId(null);
-  };
-
-  const handleDeleteProduct = async (product: ProductItem) => {
-    const confirmed = window.confirm(`¿Eliminar el producto \"${product.name}\"?`);
-
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      await productApi.deleteProduct(product.id);
-      await loadCatalog();
-      toast.success('Producto eliminado');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo eliminar el producto');
-    }
-  };
+  const {
+    products,
+    categories,
+    isDialogOpen,
+    setIsDialogOpen,
+    editingProductId,
+    name,
+    setName,
+    description,
+    setDescription,
+    price,
+    setPrice,
+    selectedCategoryIds,
+    recipesByProductId,
+    isRecipeDialogOpen,
+    setIsRecipeDialogOpen,
+    recipeProduct,
+    recipeUsesIngredients,
+    setRecipeUsesIngredients,
+    recipeIngredients,
+    openRecipeDialog,
+    addRecipeIngredientRow,
+    removeRecipeIngredientRow,
+    updateRecipeIngredient,
+    handleSaveRecipe,
+    openCreateDialog,
+    openEditDialog,
+    toggleCategory,
+    removeCategorySelection,
+    handleSaveProduct,
+    handleDeleteProduct,
+  } = useProductsViewModel();
 
   const getCategoryNames = (categoryIds: string[]) => {
     return categories
       .filter((category) => categoryIds.includes(category.id))
       .map((category) => category.name)
       .join(', ');
-  };
-
-  const removeCategorySelection = (categoryId: string) => {
-    setSelectedCategoryIds((prev) => prev.filter((id) => id !== categoryId));
   };
 
   const productColumns = useMemo<DataTableColumn<ProductItem>[]>(() => [
@@ -525,41 +304,12 @@ export function ProductsView() {
                 ) : (
                   <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                     {recipeIngredients.map((ingredient) => (
-                      <div key={ingredient.id} className="grid grid-cols-1 md:grid-cols-[1fr_140px_160px_auto] gap-2 items-center">
-                        <Input
-                          placeholder="Ingrediente"
-                          value={ingredient.name}
-                          onChange={(event) => updateRecipeIngredient(ingredient.id, 'name', event.target.value)}
-                        />
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder="Cantidad"
-                          value={ingredient.quantity}
-                          onChange={(event) => updateRecipeIngredient(ingredient.id, 'quantity', event.target.value)}
-                        />
-                        <Select value={ingredient.unit} onValueChange={(value) => updateRecipeIngredient(ingredient.id, 'unit', value)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Unidad" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="unidad">Unidad</SelectItem>
-                            <SelectItem value="g">Gramos</SelectItem>
-                            <SelectItem value="kg">Kilogramos</SelectItem>
-                            <SelectItem value="ml">Mililitros</SelectItem>
-                            <SelectItem value="l">Litros</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => removeRecipeIngredientRow(ingredient.id)}
-                        >
-                          Quitar
-                        </Button>
-                      </div>
+                      <ProductRecipeIngredientRow
+                        key={ingredient.id}
+                        ingredient={ingredient}
+                        onChange={updateRecipeIngredient}
+                        onRemove={removeRecipeIngredientRow}
+                      />
                     ))}
                   </div>
                 )}

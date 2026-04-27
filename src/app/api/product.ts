@@ -163,7 +163,7 @@ export async function createProduct(payload: CreateProductRequest): Promise<any>
  * Actualiza un producto
  */
 export async function updateProduct(productId: string, payload: UpdateProductRequest): Promise<any> {
-  return apiClient.post(`${API_VERSION}/product/update/${productId}`, {
+  return apiClient.patch(`${API_VERSION}/product/${productId}`, {
     id: productId,
     ...payload,
   });

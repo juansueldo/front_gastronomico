@@ -20,20 +20,24 @@ import { getLoggedUser } from '../authStorage';
 import {
   ApiError,
   checkDeliveryZonePoint,
+  createOrder as createBackendOrder,
   type CreateOrderRequest,
   createCashMovement,
   deleteDeliveryZone,
+  fetchActiveOrders as fetchBackendActiveOrders,
+  finalizeOrder,
+  getAvailableOrderStatusTargets,
   getDeliveryZone,
+  getOrderStatusLabel,
   type DeliveryZonePoint,
   type PaymentMethod,
   type ProductCategory,
   type ProductItem,
+  transitionOrderStatus,
   upsertDeliveryZone,
 } from '../api';
 import { endpoints } from '../api/endpoints';
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from './ui/carousel';
-
-const orderStatuses = ['Nuevo', 'En preparación', 'Listo para servir', 'En camino', 'Entregado'];
 
 type OrderVisualPriority = 'default' | 'on-time' | 'delayed' | 'old';
 type DeliveryAddressValidationState = 'idle' | 'typing' | 'validating' | 'valid' | 'outside_zone' | 'not_found' | 'error';
@@ -252,6 +256,9 @@ export function ActiveOrdersView() {
 
   const deliveryOrders = orders.filter((order) => order.type === 'delivery');
   const salonOrders = orders.filter((order) => order.type === 'salon');
+  const statusOptions = statusOrder
+    ? getAvailableOrderStatusTargets(statusOrder.status).map((status) => getOrderStatusLabel(status))
+    : [];
   const selectedProductsWithQuantity = availableProducts
     .map((product) => ({
       ...product,
@@ -332,9 +339,11 @@ export function ActiveOrdersView() {
         })
         : [];
 
+    const customerFullName = [order?.Customer?.firstname, order?.Customer?.lastname].filter(Boolean).join(' ').trim();
     const customerName = order?.customerName
-      ?? order?.Customer?.name
-      ?? (order?.customerId ? `Cliente #${order.customerId}` : `Orden ${order?.order_number ?? order?.id ?? ''}`);
+      || order?.Customer?.name
+      || customerFullName
+      || (order?.customerId ? `Cliente #${order.customerId}` : `Orden ${order?.order_number ?? order?.id ?? ''}`);
 
     return {
       id: String(order?.id ?? order?.order_number ?? crypto.randomUUID()),
@@ -346,7 +355,7 @@ export function ActiveOrdersView() {
       longitude: order?.longitude ?? order?.delivery_longitude ?? undefined,
       items: normalizedItems,
       detail: String(order?.detail ?? order?.order_number ?? 'Sin detalle'),
-      status: String(order?.status ?? order?.Status?.name ?? 'pending'),
+      status: getOrderStatusLabel(String(order?.status ?? order?.Status?.name ?? 'pending')),
       total: String(displayTotal),
       createdAt: String(order?.createdAt ?? order?.order_date ?? ''),
       notes: order?.notes ?? undefined,
@@ -357,20 +366,7 @@ export function ActiveOrdersView() {
     setIsLoadingOrders(true);
 
     try {
-      let backendOrders: any[] = [];
-
-      try {
-        const ordersPayload = await endpoints.fetchActiveOrders();
-        backendOrders = Array.isArray(ordersPayload)
-          ? ordersPayload
-          : ordersPayload?.rows ?? ordersPayload?.orders ?? ordersPayload?.data ?? [];
-      } catch {
-        const ordersPayload = await endpoints.fetchOrders();
-        backendOrders = Array.isArray(ordersPayload)
-          ? ordersPayload
-          : ordersPayload?.rows ?? ordersPayload?.data ?? ordersPayload?.orders ?? [];
-      }
-
+      const backendOrders = await fetchBackendActiveOrders();
       setOrders(backendOrders.map(normalizeOrder));
     } catch (error) {
       if (error instanceof ApiError) {
@@ -416,6 +412,16 @@ export function ActiveOrdersView() {
     };
 
     void loadInitialData();
+  }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void loadOrders();
+    }, 20_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   useEffect(() => {
@@ -589,8 +595,8 @@ export function ActiveOrdersView() {
   const validateDeliveryPoint = async (point: GeocodedAddressResult) => {
     try {
       const zoneCheck = await checkDeliveryZonePoint({
-        lat: point.latitude,
-        lng: point.longitude,
+        latitude: point.latitude,
+        longitude: point.longitude,
       });
 
       if (zoneCheck.hasZone && !zoneCheck.inside) {
@@ -993,7 +999,7 @@ export function ActiveOrdersView() {
     }
 
     try {
-      await endpoints.updateOrderStatus(statusOrder.id, nextStatus);
+      await transitionOrderStatus(statusOrder.id, statusOrder.status, nextStatus);
     } catch (error) {
       if (error instanceof ApiError) {
         toast.error(error.message);
@@ -1003,23 +1009,33 @@ export function ActiveOrdersView() {
       return;
     }
 
-    setOrders((prev) => prev.map((order) => (
-      order.id === statusOrder.id
-        ? { ...order, status: nextStatus }
-        : order
-    )));
+    const normalizedNextStatus = getOrderStatusLabel(nextStatus);
+    const isTerminalStatus = normalizedNextStatus === 'Entregado' || normalizedNextStatus === 'Cancelado';
+
+    setOrders((prev) => (
+      isTerminalStatus
+        ? prev.filter((order) => order.id !== statusOrder.id)
+        : prev.map((order) => (
+            order.id === statusOrder.id
+              ? { ...order, status: normalizedNextStatus }
+              : order
+          ))
+    ));
 
     setDetailOrder((prev) => (
       prev && prev.id === statusOrder.id
-        ? { ...prev, status: nextStatus }
+        ? isTerminalStatus ? null : { ...prev, status: normalizedNextStatus }
         : prev
     ));
 
-    setStatusOrder((prev) => (prev ? { ...prev, status: nextStatus } : prev));
-    toast.success(`Estado actualizado a "${nextStatus}"`);
+    setStatusOrder(null);
+    void loadOrders();
+    toast.success(`Estado actualizado a "${normalizedNextStatus}"`);
   };
 
   const handleCreateOrder = async () => {
+    const loggedUser = getLoggedUser();
+    const storeId = Number(loggedUser?.storeId);
     const customerId = Number(newOrderCustomerName.trim());
     const userId = Number(newOrderUserId.trim());
     const tableId = Number(newOrderTableId.trim());
@@ -1033,6 +1049,11 @@ export function ActiveOrdersView() {
 
     if (!Number.isInteger(userId) || userId <= 0) {
       toast.error('Ingresá un User ID válido');
+      return;
+    }
+
+    if (!Number.isInteger(storeId) || storeId <= 0) {
+      toast.error('No se encontró un storeId válido en la sesión');
       return;
     }
 
@@ -1069,6 +1090,7 @@ export function ActiveOrdersView() {
     }
 
     const orderPayload: CreateOrderRequest = {
+      storeId,
       customerId: Number.isInteger(customerId) && customerId > 0 ? customerId : undefined,
       userId,
       type: backendType,
@@ -1082,7 +1104,7 @@ export function ActiveOrdersView() {
     };
 
     try {
-      await endpoints.createOrder(orderPayload);
+      await createBackendOrder(orderPayload);
     } catch (error) {
       if (error instanceof ApiError) {
         toast.error(error.message);
@@ -1098,6 +1120,13 @@ export function ActiveOrdersView() {
   };
 
   const handleFinalizeOrder = async (order: ActiveOrderItem) => {
+    const readyStatusLabel = getOrderStatusLabel('ready');
+
+    if (getOrderStatusLabel(order.status) !== readyStatusLabel) {
+      toast.error('La orden debe estar lista para servir antes de cobrarla');
+      return;
+    }
+
     const amount = parseMoneyValue(order.total);
 
     if (amount <= 0) {
@@ -1122,7 +1151,7 @@ export function ActiveOrdersView() {
     }
 
     try {
-      await endpoints.completeOrder(order.id);
+      await finalizeOrder(order.id);
     } catch (error) {
       if (error instanceof ApiError) {
         toast.error(error.message);
@@ -1135,6 +1164,7 @@ export function ActiveOrdersView() {
     setOrders((prev) => prev.filter((currentOrder) => currentOrder.id !== order.id));
     setDetailOrder(null);
     setStatusOrder((prev) => (prev?.id === order.id ? null : prev));
+    void loadOrders();
     toast.success(`Orden ${order.id} finalizada`);
   };
 
@@ -1302,7 +1332,7 @@ export function ActiveOrdersView() {
             </div>
             <div className="space-y-2">
               {deliveryOrders.length === 0 ? (
-                <div className="p-4 rounded-lg border border-orange-700 bg-card text-sm text-gray-400">
+                <div className="p-4 rounded-lg border card bg-card text-sm text-gray-400">
                   Sin pedidos de delivery
                 </div>
               ) : (
@@ -1320,7 +1350,7 @@ export function ActiveOrdersView() {
             </div>
             <div className="space-y-2">
               {salonOrders.length === 0 ? (
-                <div className="p-4 rounded-lg border border-orange-700 bg-card text-sm text-gray-400">
+                <div className="p-4 rounded-lg border card bg-card text-sm text-gray-400">
                   Sin pedidos en salón
                 </div>
               ) : (
@@ -1417,16 +1447,20 @@ export function ActiveOrdersView() {
             <DialogTitle>Cambiar estado {statusOrder ? `(${statusOrder.id})` : ''}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
-            {orderStatuses.map((status) => (
-              <Button
-                key={status}
-                variant="ghost"
-                className={`w-full justify-start hover:bg-gray-700 ${statusOrder?.status === status ? 'bg-primary text-white' : 'text-white'}`}
-                onClick={() => handleChangeStatus(status)}
-              >
-                {status}
-              </Button>
-            ))}
+            {statusOptions.length === 0 ? (
+              <p className="text-sm text-gray-400">No hay transiciones disponibles para este estado.</p>
+            ) : (
+              statusOptions.map((status) => (
+                <Button
+                  key={status}
+                  variant="ghost"
+                  className={`w-full justify-start hover:bg-gray-700 ${statusOrder?.status === status ? 'bg-primary text-white' : 'text-white'}`}
+                  onClick={() => handleChangeStatus(status)}
+                >
+                  {status}
+                </Button>
+              ))
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -1442,12 +1476,12 @@ export function ActiveOrdersView() {
           setIsCreateOrderDialogOpen(true);
         }}
       >
-        <DialogContent className="bg-card card text-white">
+        <DialogContent className="bg-card card max-h-[90vh] overflow-hidden text-white">
           <DialogHeader>
             <DialogTitle>Nueva orden</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className="max-h-[calc(90vh-5rem)] space-y-3 overflow-y-auto pr-1">
             <Select value={newOrderType} onValueChange={(value) => setNewOrderType(value as ActiveOrderItem['type'])}>
               <SelectTrigger>
                 <SelectValue placeholder="Tipo" />

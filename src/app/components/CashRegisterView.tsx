@@ -5,7 +5,7 @@ import { Input } from './ui/input';
 import {Dialog, DialogContent, DialogHeader, DialogTitle} from './ui/dialog';
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from './ui/select';
 import { toast } from 'sonner';
-import { ApiError, createCashMovement, fetchCashMovements, type CashMovement, type PaymentMethod } from '../api';
+import { ApiError, closeDailyCashMovements, createCashMovement, fetchCashMovements, type CashMovement, type PaymentMethod } from '../api';
 
 const currencyFormatter = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -14,11 +14,11 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
 });
 
 const getTypeBadgeClass = (type: CashMovement['type']) => {
-  if (type === 'venta') {
+  if (type === 'income' || type === 'opening') {
     return 'bg-label-success text-xs';
   }
 
-  if (type === 'ingreso') {
+  if (type === 'adjustment' || type === 'closing') {
     return 'bg-label-info  text-xs';
   }
 
@@ -26,15 +26,11 @@ const getTypeBadgeClass = (type: CashMovement['type']) => {
 };
 
 const getTypeLabel = (type: CashMovement['type']) => {
-  if (type === 'venta') {
-    return 'Venta';
-  }
-
-  if (type === 'ingreso') {
-    return 'Ingreso';
-  }
-
-  return 'Egreso';
+  if (type === 'opening') return 'Apertura';
+  if (type === 'income') return 'Ingreso';
+  if (type === 'expense') return 'Egreso';
+  if (type === 'adjustment') return 'Ajuste';
+  return 'Cierre';
 };
 
 const getPaymentMethodLabel = (paymentMethod: PaymentMethod) => {
@@ -75,16 +71,16 @@ export function CashRegisterView() {
   }, []);
 
   const totalSales = movements
-    .filter((movement) => movement.type === 'venta')
+    .filter((movement) => movement.legacyType === 'venta' || movement.description.toLowerCase().startsWith('orden ') || movement.description.toLowerCase().startsWith('mesa '))
     .reduce((accumulator, movement) => accumulator + movement.amount, 0);
 
   const totalIncomes = movements
-    .filter((movement) => movement.type === 'ingreso')
-    .reduce((accumulator, movement) => accumulator + movement.amount, 0);
+    .filter((movement) => movement.type === 'income' || (movement.type === 'adjustment' && movement.amount > 0) || movement.type === 'opening')
+    .reduce((accumulator, movement) => accumulator + Math.abs(movement.amount), 0);
 
   const totalExpenses = movements
-    .filter((movement) => movement.type === 'egreso')
-    .reduce((accumulator, movement) => accumulator + movement.amount, 0);
+    .filter((movement) => movement.type === 'expense' || (movement.type === 'adjustment' && movement.amount < 0))
+    .reduce((accumulator, movement) => accumulator + Math.abs(movement.amount), 0);
 
   const expectedCash = movements
     .filter((movement) => movement.paymentMethod === 'efectivo')
@@ -133,6 +129,21 @@ export function CashRegisterView() {
     setIsManualDialogOpen(false);
   };
 
+  const handleCloseCashRegister = async () => {
+    try {
+      await closeDailyCashMovements(new Date().toISOString(), undefined, Math.max(expectedCash, 0));
+      const backendMovements = await fetchCashMovements();
+      setMovements(backendMovements);
+      toast.success('Cierre de caja registrado');
+    } catch (error) {
+      if (error instanceof ApiError) {
+        toast.error(error.message);
+      } else {
+        toast.error('No se pudo registrar el cierre de caja');
+      }
+    }
+  };
+
   return (
     <div className="h-full bg-body overflow-y-auto">
       <div className="p-4 md:p-6 space-y-6">
@@ -146,31 +157,31 @@ export function CashRegisterView() {
             <Button size="sm" variant="secondary" onClick={() => setIsManualDialogOpen(true)}>
               Registrar movimiento
             </Button>
-            <Button size="sm">Cierre de caja</Button>
+            <Button size="sm" onClick={() => void handleCloseCashRegister()}>Cierre de caja</Button>
           </div>
         </div>
 
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-          <div className="p-3 rounded-lg border border-orange-700 bg-card">
+          <div className="p-3 rounded-lg border card bg-blue-500/10 border-blue-500/70">
             <p className="text-xs text-gray-400">Ventas</p>
             <p className="text-lg font-semibold text-white">{currencyFormatter.format(totalSales)}</p>
           </div>
-          <div className="p-3 rounded-lg border border-orange-700 bg-card">
+          <div className="p-3 rounded-lg border card bg-green-500/10 border-green-500/70">
             <p className="text-xs text-gray-400">Ingresos</p>
             <p className="text-lg font-semibold text-white">{currencyFormatter.format(totalIncomes)}</p>
           </div>
-          <div className="p-3 rounded-lg border border-orange-700 bg-card">
+          <div className="p-3 rounded-lg border card bg-red-500/10 border-red-500/70">
             <p className="text-xs text-gray-400">Egresos</p>
             <p className="text-lg font-semibold text-white">{currencyFormatter.format(totalExpenses)}</p>
           </div>
-          <div className="p-3 rounded-lg border border-green-500/70 bg-green-500/10">
+          <div className="p-3 rounded-lg border border-yellow-500/70 card bg-yellow-500/10">
             <p className="text-xs text-gray-300">Efectivo esperado</p>
             <p className="text-lg font-semibold text-white">{currencyFormatter.format(expectedCash)}</p>
           </div>
         </div>
 
-        <div className="rounded-lg border border-orange-700 bg-card">
-          <div className="px-4 py-3 border-b border-orange-700 flex items-center justify-between">
+        <div className="rounded-lg border card bg-card">
+          <div className="px-4 py-3 border-b border-[--border] flex items-center justify-between">
             <h2 className="text-sm font-medium text-white">Movimientos del turno</h2>
             <Badge variant="secondary" className="bg-label-secondary text-white text-xs">
               {movements.length} movimientos
@@ -200,7 +211,7 @@ export function CashRegisterView() {
         </div>
 
         <Dialog open={isManualDialogOpen} onOpenChange={setIsManualDialogOpen}>
-          <DialogContent className="bg-card border-orange-700 text-white">
+          <DialogContent className="bg-card card text-white">
             <DialogHeader>
               <DialogTitle>Registrar ingreso/egreso</DialogTitle>
             </DialogHeader>
