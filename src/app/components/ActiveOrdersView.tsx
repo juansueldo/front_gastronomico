@@ -215,6 +215,7 @@ export function ActiveOrdersView() {
   const [isCreateOrderDialogOpen, setIsCreateOrderDialogOpen] = useState(false);
   const [newOrderType, setNewOrderType] = useState<ActiveOrderItem['type']>('delivery');
   const [newOrderCustomerName, setNewOrderCustomerName] = useState('');
+  const [newOrderCustomerPhone, setNewOrderCustomerPhone] = useState('');
   const [newOrderUserId, setNewOrderUserId] = useState('');
   const [newOrderTableId, setNewOrderTableId] = useState('');
   const [newOrderWaiterId, setNewOrderWaiterId] = useState('');
@@ -339,7 +340,7 @@ export function ActiveOrdersView() {
         })
         : [];
 
-    const customerFullName = [order?.Customer?.firstname, order?.Customer?.lastname].filter(Boolean).join(' ').trim();
+    const customerFullName = [order?.Customer?.name].filter(Boolean).join(' ').trim();
     const customerName = order?.customerName
       || order?.Customer?.name
       || customerFullName
@@ -1092,6 +1093,8 @@ export function ActiveOrdersView() {
     const orderPayload: CreateOrderRequest = {
       storeId,
       customerId: Number.isInteger(customerId) && customerId > 0 ? customerId : undefined,
+      customerName: !Number.isInteger(customerId) || customerId <= 0 ? newOrderCustomerName.trim() : undefined,
+      customerPhone: !Number.isInteger(customerId) || customerId <= 0 ? newOrderCustomerPhone.trim() : undefined,
       userId,
       type: backendType,
       items: orderItems,
@@ -1494,6 +1497,18 @@ export function ActiveOrdersView() {
 
             <Input
               placeholder="Customer ID (opcional)"
+              value={newOrderCustomerName}
+              onChange={(event) => setNewOrderCustomerName(event.target.value)}
+            />
+
+            <Input
+              placeholder="Customer phone (opcional)"
+              value={newOrderCustomerPhone}
+              onChange={(event) => setNewOrderCustomerPhone(event.target.value)}
+            />
+
+            <Input
+              placeholder="Customer name (opcional)"
               value={newOrderCustomerName}
               onChange={(event) => setNewOrderCustomerName(event.target.value)}
             />

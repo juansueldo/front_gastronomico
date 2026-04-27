@@ -896,6 +896,8 @@ export function ChatView() {
     const orderAddress = scheduledOrderAddress.trim();
     const selectedProductNames = scheduledSelectedProducts.map((product) => product.name);
     const orderDetail = scheduledOrderDetail.trim() || selectedProductNames.join(', ');
+    const normalizedCustomerName = conversation.contactName?.trim() || undefined;
+    const normalizedCustomerPhone = contactPhone?.trim() || undefined;
 
     if (!Number.isInteger(contactId) || contactId <= 0) {
       toast.error('No se encontró un contactId válido para esta conversación');
@@ -938,6 +940,8 @@ export function ChatView() {
     try {
       await createOrder({
         contactId,
+        customerName: normalizedCustomerName,
+        customerPhone: normalizedCustomerPhone,
         type: scheduledOrderType,
         detail: orderDetail,
         status: 'pending',

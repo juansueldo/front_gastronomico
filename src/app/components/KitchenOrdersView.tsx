@@ -132,7 +132,7 @@ const formatAgeMinutes = (createdAt: string) => {
 const mapBackendOrder = (order: any): KitchenOrderItem => {
   const backendType = String(order?.type ?? '');
   const type: KitchenOrderItem['type'] = backendType === 'delivery' ? 'delivery' : 'salon';
-  const customerFullName = [order?.Customer?.firstname, order?.Customer?.lastname].filter(Boolean).join(' ').trim();
+  const customerFullName = [order?.Customer?.name].filter(Boolean).join(' ').trim();
 
   const items = Array.isArray(order?.items)
     ? order.items.map((item: any) => String(item))

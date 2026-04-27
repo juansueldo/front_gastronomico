@@ -36,6 +36,8 @@ export interface CreateOrderRequest {
   storeId?: number;
   userId: number;
   customerId?: number;
+  customerName?: string;
+  customerPhone?: string;
   type: BackendOrderType;
   items: Array<{
     productId: string | number;
@@ -53,6 +55,8 @@ export interface LegacyCreateOrderRequest {
   headquarterId?: string | number;
   contactId?: number;
   customerId?: number;
+  customerName?: string;
+  customerPhone?: string;
   userId?: number;
   type: 'delivery' | 'salon' | BackendOrderType;
   detail?: string;
@@ -82,6 +86,8 @@ type ResolvedCreateOrderPayload = {
   headquarterId: number;
   userId: number;
   customerId?: number;
+  customerName?: string;
+  customerPhone?: string;
   type: BackendOrderType;
   items: Array<{
     productId: string | number;
@@ -340,17 +346,30 @@ const normalizeItems = (
   return [];
 };
 
+const normalizeOptionalString = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const normalizedValue = value.trim();
+  return normalizedValue.length > 0 ? normalizedValue : undefined;
+};
+
 const toCreateOrderPayload = async (
   orderData: CreateOrderRequest | LegacyCreateOrderRequest
 ): Promise<ResolvedCreateOrderPayload> => {
   const userId = Number(orderData.userId ?? getCurrentUserId());
   const headquarterId = await resolveHeadquarterId(orderData.headquarterId);
+  const customerName = normalizeOptionalString(orderData.customerName);
+  const customerPhone = normalizeOptionalString(orderData.customerPhone);
 
   if (isModernCreateOrderRequest(orderData)) {
     return {
       headquarterId,
       userId,
       customerId: orderData.customerId,
+      customerName,
+      customerPhone,
       type: orderData.type,
       items: normalizeItems(orderData),
       tableId: orderData.tableId,
@@ -366,6 +385,8 @@ const toCreateOrderPayload = async (
     headquarterId,
     userId,
     customerId: orderData.customerId ?? orderData.contactId,
+    customerName,
+    customerPhone,
     type: toBackendOrderType(orderData.type),
     items: normalizeItems(orderData),
     tableId: orderData.tableId,
@@ -457,7 +478,9 @@ export async function createOrder(orderData: CreateOrderRequest | LegacyCreateOr
       customerId,
       contactId: customerId,
       type: payload.type,
-      customerName: customerId ? `Cliente #${customerId}` : `Orden ${response?.order_number ?? orderId}`,
+      customerName: payload.customerName ?? (customerId ? `Cliente #${customerId}` : `Orden ${response?.order_number ?? orderId}`),
+      customerPhone: payload.customerPhone,
+      phone: payload.customerPhone,
       address: payload.delivery_address,
       delivery_address: payload.delivery_address,
       latitude: payload.delivery_latitude,
