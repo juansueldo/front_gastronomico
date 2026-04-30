@@ -219,6 +219,7 @@ export function useProductsViewModel() {
           description: description.trim() || undefined,
           price: parsedPrice,
           categoryIds: selectedCategoryIds,
+          categoryId: selectedCategoryIds[0],
         });
         toast.success('Producto actualizado');
       } else {
@@ -227,6 +228,7 @@ export function useProductsViewModel() {
           description: description.trim() || undefined,
           price: parsedPrice,
           categoryIds: selectedCategoryIds,
+          categoryId: selectedCategoryIds[0],
         });
         toast.success('Producto creado');
       }
@@ -288,5 +290,7 @@ export function useProductsViewModel() {
     removeCategorySelection,
     handleSaveProduct,
     handleDeleteProduct,
+    setRecipeProduct,       // agregar
+  setRecipeIngredients,
   };
 }

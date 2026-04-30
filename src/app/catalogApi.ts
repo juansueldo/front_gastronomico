@@ -12,7 +12,7 @@ export interface ProductItem {
   name: string;
   description?: string;
   price: number;
-  categoryIds: string[];
+  categoryId: number;
 }
 
 export interface ListProductCategoriesParams {

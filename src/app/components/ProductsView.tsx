@@ -61,9 +61,9 @@ export function ProductsView() {
     handleDeleteProduct,
   } = useProductsViewModel();
 
-  const getCategoryNames = (categoryIds: string[]) => {
+  const getCategoryNames = (categoryId: number) => {
     return categories
-      .filter((category) => categoryIds.includes(category.id))
+      .filter((category) => category.id == categoryId)
       .map((category) => category.name)
       .join(', ');
   };
@@ -87,7 +87,7 @@ export function ProductsView() {
     {
       key: 'categories',
       header: 'Categorías',
-      accessor: (product) => getCategoryNames(product.categoryIds ?? []) || 'Sin categorías',
+      accessor: (product) => getCategoryNames(product.categoryId ?? []) || 'Sin categorías',
       sortable: true,
       className: 'text-gray-300',
     },
@@ -263,13 +263,13 @@ export function ProductsView() {
       <Dialog
         open={isRecipeDialogOpen}
         onOpenChange={(open) => {
-          setIsRecipeDialogOpen(open);
-          if (!open) {
-            setRecipeProduct(null);
-            setRecipeIngredients([]);
-            setRecipeUsesIngredients(false);
-          }
-        }}
+        setIsRecipeDialogOpen(open);
+        if (!open) {
+          setRecipeProduct(null);      // ❌ no existe en el hook
+          setRecipeIngredients([]);    // ❌ no existe en el hook
+          setRecipeUsesIngredients(false);
+        }
+      }}
       >
         <DialogContent className="bg-card border-orange-700 text-white max-w-2xl">
           <DialogHeader>

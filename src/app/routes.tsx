@@ -29,14 +29,14 @@ import { DashboardView } from './components/DashboardView';
 // Wrapper components
 function DashboardPage() {
   return (
-    <ProtectedRoute allowedRoles={["admin", "manager", "user"]}>
+    <ProtectedRoute allowedRoles={["admin", "supervisor", "agent"]}>
       <DashboardView />
     </ProtectedRoute>
   );
 }
 function ConversationListPage() {
   return (
-    <ProtectedRoute allowedRoles={["admin", "manager", "user"]}>
+    <ProtectedRoute allowedRoles={["admin", "supervisor", "agent"]}>
       <AppLayout>
         <ConversationList />
       </AppLayout>
@@ -46,7 +46,7 @@ function ConversationListPage() {
 
 function ChatViewPage() {
   return (
-    <ProtectedRoute allowedRoles={["admin", "manager", "user"]}>
+    <ProtectedRoute allowedRoles={["admin", "supervisor", "agent"]}>
       <ChatView />
     </ProtectedRoute>
   );
@@ -54,7 +54,7 @@ function ChatViewPage() {
 
 function CalendarPage() {
   return (
-    <ProtectedRoute allowedRoles={["admin", "manager", "user"]}>
+    <ProtectedRoute allowedRoles={["admin", "supervisor", "agent"]}>
       <AppLayout>
         <CalendarView />
       </AppLayout>
@@ -64,7 +64,7 @@ function CalendarPage() {
 
 function SettingsPage() {
   return (
-    <ProtectedRoute allowedRoles={["admin", "manager", "user"]}>
+    <ProtectedRoute allowedRoles={["admin", "supervisor", "agent"]}>
       <AppLayout>
         <SettingsView />
       </AppLayout>
@@ -94,7 +94,7 @@ function ConnectionsPage() {
 
 function CampaignsPage() {
   return (
-    <ProtectedRoute allowedRoles={["admin", "manager"]}>
+    <ProtectedRoute allowedRoles={["admin", "supervisor"]}>
       <AppLayout>
         <CampaignsView />
       </AppLayout>
@@ -104,7 +104,7 @@ function CampaignsPage() {
 
 function NotificationsPage() {
   return (
-    <ProtectedRoute allowedRoles={["admin", "manager", "user"]}>
+    <ProtectedRoute allowedRoles={["admin", "supervisor", "agent"]}>
       <AppLayout>
         <NotificationsView />
       </AppLayout>
@@ -114,7 +114,7 @@ function NotificationsPage() {
 
 function ActiveOrdersPage() {
   return (
-    <ProtectedRoute allowedRoles={["admin", "manager", "user"]}>
+    <ProtectedRoute allowedRoles={["admin", "supervisor", "agent"]}>
       <AppLayout>
         <ActiveOrdersView />
       </AppLayout>
@@ -124,7 +124,7 @@ function ActiveOrdersPage() {
 
 function TablesPage() {
   return (
-    <ProtectedRoute allowedRoles={["admin", "manager"]}>
+    <ProtectedRoute allowedRoles={["admin", "supervisor"]}>
       <AppLayout>
         <TablesView />
       </AppLayout>
@@ -144,7 +144,7 @@ function CashRegisterPage() {
 
 function CategoriesPage() {
   return (
-    <ProtectedRoute allowedRoles={["admin", "manager"]}>
+    <ProtectedRoute allowedRoles={["admin", "supervisor"]}>
       <AppLayout>
         <CategoriesView />
       </AppLayout>
@@ -154,7 +154,7 @@ function CategoriesPage() {
 
 function ProductsPage() {
   return (
-    <ProtectedRoute allowedRoles={["admin", "manager"]}>
+    <ProtectedRoute allowedRoles={["admin", "supervisor"]}>
       <AppLayout>
         <ProductsView />
       </AppLayout>
@@ -164,7 +164,7 @@ function ProductsPage() {
 
 function InventoryPage() {
   return (
-    <ProtectedRoute allowedRoles={["admin", "manager"]}>
+    <ProtectedRoute allowedRoles={["admin", "supervisor"]}>
       <AppLayout>
         <InventoryView />
       </AppLayout>
@@ -174,7 +174,7 @@ function InventoryPage() {
 
 function KitchenOrdersPage() {
   return (
-    <ProtectedRoute allowedRoles={["admin", "manager"]}>
+    <ProtectedRoute allowedRoles={["admin", "supervisor"]}>
       <AppLayout>
         <KitchenOrdersView />
       </AppLayout>
@@ -183,7 +183,7 @@ function KitchenOrdersPage() {
 }
 function HeadquarterPage() {
   return (
-    <ProtectedRoute allowedRoles={["admin", "manager"]}>
+    <ProtectedRoute allowedRoles={["admin", "supervisor"]}>
       <AppLayout>
         <HeadquartersView />
       </AppLayout>
@@ -192,7 +192,7 @@ function HeadquarterPage() {
 }
 function DeliveryZonesPage() {
   return (
-    <ProtectedRoute allowedRoles={["admin", "manager"]}>
+    <ProtectedRoute allowedRoles={["admin", "supervisor"]}>
       <AppLayout>
         <DeliveryZonesManager />
       </AppLayout>
