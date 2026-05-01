@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
 import {
   Dialog,
   DialogContent,
@@ -19,9 +18,6 @@ import { toast } from 'sonner';
 import { getLoggedUser } from '../authStorage';
 import {
   ApiError,
-  checkDeliveryZonePoint,
-  createOrder as createBackendOrder,
-  type CreateOrderRequest,
   createCashMovement,
   deleteDeliveryZone,
   fetchActiveOrders as fetchBackendActiveOrders,
@@ -37,22 +33,11 @@ import {
   upsertDeliveryZone,
 } from '../api';
 import { endpoints } from '../api/endpoints';
-import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from './ui/carousel';
+
+// ← NUEVO: importar el dialog de creación
+import { CreateOrderDialog } from './orders/CreateOrderDialog';
 
 type OrderVisualPriority = 'default' | 'on-time' | 'delayed' | 'old';
-type DeliveryAddressValidationState = 'idle' | 'typing' | 'validating' | 'valid' | 'outside_zone' | 'not_found' | 'error';
-
-interface GeocodedAddressResult {
-  formattedAddress: string;
-  latitude: number;
-  longitude: number;
-}
-
-interface AddressSuggestion {
-  label: string;
-  lat: number;
-  lng: number;
-}
 
 interface ActiveOrderItem {
   id: string;
@@ -108,103 +93,10 @@ const loadGoogleMapsScript = (apiKey: string) => {
   return googleMapsScriptPromise;
 };
 
-const geocodeAddressWithGoogle = async (address: string): Promise<GeocodedAddressResult | null> => {
-  if (!GOOGLE_MAPS_API_KEY) {
-    return null;
-  }
-
-  const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}`;
-  const response = await fetch(geocodeUrl);
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const data = await response.json() as {
-    status: string;
-    results?: Array<{
-      formatted_address: string;
-      geometry: {
-        location: {
-          lat: number;
-          lng: number;
-        };
-      };
-    }>;
-  };
-
-  if (data.status !== 'OK' || !data.results || data.results.length === 0) {
-    return null;
-  }
-
-  const firstResult = data.results[0];
-  return {
-    formattedAddress: firstResult.formatted_address,
-    latitude: firstResult.geometry.location.lat,
-    longitude: firstResult.geometry.location.lng,
-  };
-};
-
-const geocodeAddressWithNominatim = async (address: string): Promise<GeocodedAddressResult | null> => {
-  const geocodeUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`;
-  const response = await fetch(geocodeUrl, {
-    headers: {
-      'Accept-Language': 'es',
-    },
-  });
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const data = await response.json() as Array<{
-    display_name: string;
-    lat: string;
-    lon: string;
-  }>;
-
-  if (!Array.isArray(data) || data.length === 0) {
-    return null;
-  }
-
-  const firstResult = data[0];
-  const latitude = Number(firstResult.lat);
-  const longitude = Number(firstResult.lon);
-
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return null;
-  }
-
-  return {
-    formattedAddress: firstResult.display_name,
-    latitude,
-    longitude,
-  };
-};
-
-const geocodeAddress = async (address: string) => {
-  const googleResult = await geocodeAddressWithGoogle(address);
-
-  if (googleResult) {
-    return googleResult;
-  }
-
-  return geocodeAddressWithNominatim(address);
-};
-
 const getPriorityMapPinColor = (priority: OrderVisualPriority) => {
-  if (priority === 'old') {
-    return '#ef4444';
-  }
-
-  if (priority === 'delayed') {
-    return '#eab308';
-  }
-
-  if (priority === 'on-time') {
-    return '#22c55e';
-  }
-
+  if (priority === 'old') return '#ef4444';
+  if (priority === 'delayed') return '#eab308';
+  if (priority === 'on-time') return '#22c55e';
   return '#6b7280';
 };
 
@@ -212,36 +104,21 @@ export function ActiveOrdersView() {
   const [orders, setOrders] = useState<ActiveOrderItem[]>([]);
   const [detailOrder, setDetailOrder] = useState<ActiveOrderItem | null>(null);
   const [statusOrder, setStatusOrder] = useState<ActiveOrderItem | null>(null);
+
+  // ← NUEVO: un solo boolean para abrir/cerrar CreateOrderDialog
   const [isCreateOrderDialogOpen, setIsCreateOrderDialogOpen] = useState(false);
-  const [newOrderType, setNewOrderType] = useState<ActiveOrderItem['type']>('delivery');
-  const [newOrderCustomerName, setNewOrderCustomerName] = useState('');
-  const [newOrderCustomerPhone, setNewOrderCustomerPhone] = useState('');
-  const [newOrderUserId, setNewOrderUserId] = useState('');
-  const [newOrderTableId, setNewOrderTableId] = useState('');
-  const [newOrderWaiterId, setNewOrderWaiterId] = useState('');
-  const [newOrderDeliveryDate, setNewOrderDeliveryDate] = useState('');
-  const [newOrderAddress, setNewOrderAddress] = useState('');
-  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
-  const [isLoadingAddressSuggestions, setIsLoadingAddressSuggestions] = useState(false);
-  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
-  const [newOrderDetail, setNewOrderDetail] = useState('');
+
+  // Productos y categorías se cargan acá y se pasan al dialog
   const [availableProducts, setAvailableProducts] = useState<ProductItem[]>([]);
   const [availableCategories, setAvailableCategories] = useState<ProductCategory[]>([]);
-  const [productFilter, setProductFilter] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [selectedProductQuantities, setSelectedProductQuantities] = useState<Record<string, number>>({});
-  const [newOrderNotes, setNewOrderNotes] = useState('');
+
   const [finalizePaymentMethod, setFinalizePaymentMethod] = useState<PaymentMethod>('efectivo');
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
-  const [isValidatingAddress, setIsValidatingAddress] = useState(false);
-  const [deliveryAddressValidationState, setDeliveryAddressValidationState] = useState<DeliveryAddressValidationState>('idle');
-  const [deliveryAddressValidationMessage, setDeliveryAddressValidationMessage] = useState('');
-  const [validatedDeliveryAddressPoint, setValidatedDeliveryAddressPoint] = useState<GeocodedAddressResult | null>(null);
-  const [validatedDeliveryAddressInput, setValidatedDeliveryAddressInput] = useState('');
   const [googleMapsError, setGoogleMapsError] = useState<string | null>(null);
   const [deliveryZonePoints, setDeliveryZonePoints] = useState<DeliveryZonePoint[]>([]);
   const [draftDeliveryZonePoints, setDraftDeliveryZonePoints] = useState<DeliveryZonePoint[]>([]);
   const [isEditingDeliveryZone, setIsEditingDeliveryZone] = useState(false);
+
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressNextClick = useRef(false);
   const deliveryMapRef = useRef<HTMLDivElement | null>(null);
@@ -252,73 +129,12 @@ export function ActiveOrdersView() {
   const draftDeliveryZonePolylineRef = useRef<any>(null);
   const deliveryZoneClickListenerRef = useRef<any>(null);
   const draftVertexMarkersRef = useRef<any[]>([]);
-  const addressValidationRequestIdRef = useRef(0);
-  const addressSuggestionsRequestIdRef = useRef(0);
 
   const deliveryOrders = orders.filter((order) => order.type === 'delivery');
   const salonOrders = orders.filter((order) => order.type === 'salon');
   const statusOptions = statusOrder
     ? getAvailableOrderStatusTargets(statusOrder.status).map((status) => getOrderStatusLabel(status))
     : [];
-  const selectedProductsWithQuantity = availableProducts
-    .map((product) => ({
-      ...product,
-      quantity: selectedProductQuantities[product.id] ?? 0,
-    }))
-    .filter((product) => product.quantity > 0);
-  const selectedProductsTotal = selectedProductsWithQuantity.reduce(
-    (accumulator, product) => accumulator + (product.price * product.quantity),
-    0,
-  );
-  const selectedProductsCount = selectedProductsWithQuantity.reduce(
-    (accumulator, product) => accumulator + product.quantity,
-    0,
-  );
-  const categoriesById = availableCategories.reduce((accumulator, category) => {
-    accumulator[category.id] = category;
-    return accumulator;
-  }, {} as Record<string, ProductCategory>);
-
-  const getProductCategoryIds = (product: ProductItem) => (Array.isArray(product.categoryIds) ? product.categoryIds : []);
-
-  const filteredProducts = availableProducts.filter((product) => {
-    const normalizedFilter = productFilter.trim().toLowerCase();
-    const matchesName = normalizedFilter.length === 0
-      || product.name.toLowerCase().includes(normalizedFilter)
-      || (product.description ?? '').toLowerCase().includes(normalizedFilter);
-    const productCategoryIds = getProductCategoryIds(product);
-    const matchesCategory = categoryFilter === 'all' || productCategoryIds.includes(categoryFilter);
-
-    return matchesName && matchesCategory;
-  });
-
-  const groupedFilteredProducts = filteredProducts.reduce((accumulator, product) => {
-    const productCategoryIds = getProductCategoryIds(product);
-    const categoryIds = productCategoryIds.length > 0 ? productCategoryIds : ['uncategorized'];
-
-    categoryIds.forEach((categoryId) => {
-      const categoryLabel = categoryId === 'uncategorized'
-        ? 'Sin categoría'
-        : categoriesById[categoryId]?.name ?? 'Sin categoría';
-
-      if (!accumulator[categoryLabel]) {
-        accumulator[categoryLabel] = [];
-      }
-
-      accumulator[categoryLabel].push(product);
-    });
-
-    return accumulator;
-  }, {} as Record<string, ProductItem[]>);
-
-  const groupedFilteredProductEntries = Object.entries(groupedFilteredProducts)
-    .map(([categoryName, products]) => [
-      categoryName,
-      products.filter((product, index, productList) => (
-        productList.findIndex((candidate) => candidate.id === product.id) === index
-      )),
-    ] as const)
-    .sort((a, b) => a[0].localeCompare(b[0], 'es'));
 
   const normalizeOrder = (order: any): ActiveOrderItem => {
     const rawTotal = order?.total_amount ?? order?.total ?? 0;
@@ -334,17 +150,18 @@ export function ActiveOrdersView() {
       ? order.items.map((item: any) => String(item))
       : Array.isArray(order?.OrderItems)
         ? order.OrderItems.map((item: any) => {
-          const name = item?.Product?.name ?? `Producto ${item?.productId ?? ''}`.trim();
-          const quantity = Number(item?.quantity ?? 0);
-          return quantity > 1 ? `${name} x${quantity}` : String(name);
-        })
+            const name = item?.Product?.name ?? `Producto ${item?.productId ?? ''}`.trim();
+            const quantity = Number(item?.quantity ?? 0);
+            return quantity > 1 ? `${name} x${quantity}` : String(name);
+          })
         : [];
 
     const customerFullName = [order?.Customer?.name].filter(Boolean).join(' ').trim();
-    const customerName = order?.customerName
-      || order?.Customer?.name
-      || customerFullName
-      || (order?.customerId ? `Cliente #${order.customerId}` : `Orden ${order?.order_number ?? order?.id ?? ''}`);
+    const customerName =
+      order?.customerName ||
+      order?.Customer?.name ||
+      customerFullName ||
+      (order?.customerId ? `Cliente #${order.customerId}` : `Orden ${order?.order_number ?? order?.id ?? ''}`);
 
     return {
       id: String(order?.id ?? order?.order_number ?? crypto.randomUUID()),
@@ -365,16 +182,11 @@ export function ActiveOrdersView() {
 
   const loadOrders = async () => {
     setIsLoadingOrders(true);
-
     try {
       const backendOrders = await fetchBackendActiveOrders();
       setOrders(backendOrders.map(normalizeOrder));
     } catch (error) {
-      if (error instanceof ApiError) {
-        toast.error(error.message);
-      } else {
-        toast.error('No se pudieron cargar las órdenes');
-      }
+      toast.error(error instanceof ApiError ? error.message : 'No se pudieron cargar las órdenes');
     } finally {
       setIsLoadingOrders(false);
     }
@@ -390,25 +202,17 @@ export function ActiveOrdersView() {
       ]);
 
       if (productsResult.status === 'fulfilled') {
-        const productsPayload = productsResult.value;
-        const products = Array.isArray(productsPayload)
-          ? productsPayload
-          : productsPayload?.rows ?? productsPayload?.products ?? productsPayload?.data ?? [];
-        setAvailableProducts(products);
+        const p = productsResult.value;
+        setAvailableProducts(Array.isArray(p) ? p : p?.rows ?? p?.products ?? p?.data ?? []);
       } else {
-        const reason = productsResult.reason;
-        toast.error(reason instanceof Error ? reason.message : 'No se pudieron cargar los productos');
+        toast.error('No se pudieron cargar los productos');
       }
 
       if (categoriesResult.status === 'fulfilled') {
-        const categoriesPayload = categoriesResult.value;
-        const categories = Array.isArray(categoriesPayload)
-          ? categoriesPayload
-          : categoriesPayload?.rows ?? categoriesPayload?.categories ?? categoriesPayload?.data ?? [];
-        setAvailableCategories(categories);
+        const c = categoriesResult.value;
+        setAvailableCategories(Array.isArray(c) ? c : c?.rows ?? c?.categories ?? c?.data ?? []);
       } else {
-        const reason = categoriesResult.reason;
-        toast.error(reason instanceof Error ? reason.message : 'No se pudieron cargar las categorías');
+        toast.error('No se pudieron cargar las categorías');
       }
     };
 
@@ -416,21 +220,9 @@ export function ActiveOrdersView() {
   }, []);
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      void loadOrders();
-    }, 20_000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
+    const intervalId = window.setInterval(() => { void loadOrders(); }, 20_000);
+    return () => { window.clearInterval(intervalId); };
   }, []);
-
-  useEffect(() => {
-    const loggedUser = getLoggedUser();
-    if (loggedUser?.id && !newOrderUserId) {
-      setNewOrderUserId(String(loggedUser.id));
-    }
-  }, [newOrderUserId]);
 
   useEffect(() => {
     const loadDeliveryZone = async () => {
@@ -441,320 +233,20 @@ export function ActiveOrdersView() {
         toast.error(error instanceof Error ? error.message : 'No se pudo cargar la zona de entrega');
       }
     };
-
     void loadDeliveryZone();
   }, []);
 
-  useEffect(() => {
-    if (!isCreateOrderDialogOpen || newOrderType !== 'delivery') {
-      resetDeliveryAddressValidation();
-      return;
-    }
-
-    const trimmedAddress = newOrderAddress.trim();
-
-    if (!trimmedAddress) {
-      resetDeliveryAddressValidation();
-      return;
-    }
-
-    setDeliveryAddressValidationState('typing');
-    setDeliveryAddressValidationMessage('Escribiendo dirección...');
-
-    const requestId = ++addressValidationRequestIdRef.current;
-    const timeoutId = window.setTimeout(async () => {
-      if (requestId !== addressValidationRequestIdRef.current) {
-        return;
-      }
-
-      await validateDeliveryAddress(trimmedAddress);
-    }, 650);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [newOrderAddress, newOrderType, isCreateOrderDialogOpen]);
+  // ── Google Maps ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!isCreateOrderDialogOpen || newOrderType !== 'delivery') {
-      resetAddressSuggestions();
-      return;
-    }
-
-    const query = newOrderAddress.trim();
-
-    if (query.length < 3) {
-      resetAddressSuggestions();
-      return;
-    }
-
-    const requestId = ++addressSuggestionsRequestIdRef.current;
-    setIsLoadingAddressSuggestions(true);
-    setShowAddressSuggestions(true);
-
-    const timeoutId = window.setTimeout(async () => {
-      try {
-        const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&q=${encodeURIComponent(query)}`,
-          {
-            headers: {
-              'Accept-Language': 'es',
-            },
-          },
-        );
-
-        if (!response.ok) {
-          throw new Error('No se pudieron obtener sugerencias');
-        }
-
-        const data = await response.json() as Array<{
-          display_name?: string;
-          lat?: string;
-          lon?: string;
-        }>;
-
-        if (requestId !== addressSuggestionsRequestIdRef.current) {
-          return;
-        }
-
-        const nextSuggestions = (Array.isArray(data) ? data : [])
-          .map((item) => {
-            const lat = Number(item.lat);
-            const lng = Number(item.lon);
-
-            if (!item.display_name || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-              return null;
-            }
-
-            return {
-              label: item.display_name,
-              lat,
-              lng,
-            };
-          })
-          .filter((item): item is AddressSuggestion => item !== null);
-
-        setAddressSuggestions(nextSuggestions);
-      } catch {
-        if (requestId !== addressSuggestionsRequestIdRef.current) {
-          return;
-        }
-
-        setAddressSuggestions([]);
-      } finally {
-        if (requestId === addressSuggestionsRequestIdRef.current) {
-          setIsLoadingAddressSuggestions(false);
-        }
-      }
-    }, 300);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [newOrderAddress, newOrderType, isCreateOrderDialogOpen]);
-
-  const incrementProductQuantity = (productId: string) => {
-    setSelectedProductQuantities((prev) => ({
-      ...prev,
-      [productId]: (prev[productId] ?? 0) + 1,
-    }));
-  };
-
-  const decrementProductQuantity = (productId: string) => {
-    setSelectedProductQuantities((prev) => {
-      const currentQuantity = prev[productId] ?? 0;
-
-      if (currentQuantity <= 1) {
-        const { [productId]: _removed, ...rest } = prev;
-        return rest;
-      }
-
-      return {
-        ...prev,
-        [productId]: currentQuantity - 1,
-      };
-    });
-  };
-
-  const clearSelectedProducts = () => {
-    setSelectedProductQuantities({});
-  };
-
-  const resetAddressSuggestions = () => {
-    setAddressSuggestions([]);
-    setShowAddressSuggestions(false);
-    setIsLoadingAddressSuggestions(false);
-  };
-
-  const resetDeliveryAddressValidation = () => {
-    setDeliveryAddressValidationState('idle');
-    setDeliveryAddressValidationMessage('');
-    setValidatedDeliveryAddressPoint(null);
-    setValidatedDeliveryAddressInput('');
-  };
-
-  const validateDeliveryPoint = async (point: GeocodedAddressResult) => {
-    try {
-      const zoneCheck = await checkDeliveryZonePoint({
-        latitude: point.latitude,
-        longitude: point.longitude,
-      });
-
-      if (zoneCheck.hasZone && !zoneCheck.inside) {
-        setDeliveryAddressValidationState('outside_zone');
-        setDeliveryAddressValidationMessage('Dirección fuera de la zona de entrega');
-        setValidatedDeliveryAddressPoint(null);
-        setValidatedDeliveryAddressInput('');
-        return null;
-      }
-
-      setDeliveryAddressValidationState('valid');
-      setDeliveryAddressValidationMessage(
-        zoneCheck.hasZone
-          ? 'Dirección válida dentro de zona'
-          : 'Dirección válida (sin zona activa)',
-      );
-      setValidatedDeliveryAddressPoint(point);
-      setValidatedDeliveryAddressInput(point.formattedAddress.trim());
-      return point;
-    } catch {
-      setDeliveryAddressValidationState('error');
-      setDeliveryAddressValidationMessage('No se pudo validar la zona de entrega');
-      setValidatedDeliveryAddressPoint(null);
-      setValidatedDeliveryAddressInput('');
-      return null;
-    }
-  };
-
-  const validateDeliveryAddress = async (address: string) => {
-    const trimmedAddress = address.trim();
-
-    if (!trimmedAddress) {
-      resetDeliveryAddressValidation();
-      return null;
-    }
-
-    setDeliveryAddressValidationState('validating');
-    setDeliveryAddressValidationMessage('Validando dirección y zona...');
-
-    const geocodedAddress = await geocodeAddress(trimmedAddress);
-
-    if (!geocodedAddress) {
-      setDeliveryAddressValidationState('not_found');
-      setDeliveryAddressValidationMessage('No se encontró la dirección');
-      setValidatedDeliveryAddressPoint(null);
-      setValidatedDeliveryAddressInput('');
-      return null;
-    }
-
-    return validateDeliveryPoint({
-      ...geocodedAddress,
-      formattedAddress: trimmedAddress,
-    });
-  };
-
-  const selectAddressSuggestion = async (suggestion: AddressSuggestion) => {
-    const normalizedAddress = suggestion.label.trim();
-    setNewOrderAddress(normalizedAddress);
-    resetAddressSuggestions();
-    setIsValidatingAddress(true);
-    await validateDeliveryPoint({
-      formattedAddress: normalizedAddress,
-      latitude: suggestion.lat,
-      longitude: suggestion.lng,
-    });
-    setIsValidatingAddress(false);
-  };
-
-  const startDeliveryZoneEdition = () => {
-    if (!GOOGLE_MAPS_API_KEY) {
-      toast.error('Configurá VITE_GOOGLE_MAPS_API_KEY para dibujar zona de entrega');
-      return;
-    }
-
-    setDraftDeliveryZonePoints(deliveryZonePoints);
-    setIsEditingDeliveryZone(true);
-    toast.info('Modo edición activo: hacé click sobre el mapa para agregar puntos');
-  };
-
-  const cancelDeliveryZoneEdition = () => {
-    setIsEditingDeliveryZone(false);
-    setDraftDeliveryZonePoints([]);
-  };
-
-  const undoDeliveryZonePoint = () => {
-    setDraftDeliveryZonePoints((prev) => prev.slice(0, -1));
-  };
-
-  const saveDeliveryZonePolygon = async () => {
-    if (draftDeliveryZonePoints.length < 3) {
-      toast.error('La zona de entrega necesita al menos 3 puntos');
-      return;
-    }
-
-    try {
-      const zone = await upsertDeliveryZone({
-        name: 'Zona principal',
-        active: true,
-        polygon: draftDeliveryZonePoints,
-      });
-
-      setDeliveryZonePoints(zone?.polygon ?? draftDeliveryZonePoints);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo guardar la zona de entrega');
-      return;
-    }
-
-    setIsEditingDeliveryZone(false);
-    toast.success('Zona de entrega guardada');
-  };
-
-  const removeDeliveryZonePolygon = async () => {
-    try {
-      await deleteDeliveryZone();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo eliminar la zona de entrega');
-      return;
-    }
-
-    setDeliveryZonePoints([]);
-    setDraftDeliveryZonePoints([]);
-    setIsEditingDeliveryZone(false);
-    toast.success('Zona de entrega eliminada');
-  };
-
-  const resetOrderForm = () => {
-    setIsCreateOrderDialogOpen(false);
-    setNewOrderType('delivery');
-    setNewOrderCustomerName('');
-    setNewOrderUserId(String(getLoggedUser()?.id ?? ''));
-    setNewOrderTableId('');
-    setNewOrderWaiterId('');
-    setNewOrderDeliveryDate('');
-    setNewOrderAddress('');
-    setNewOrderDetail('');
-    setSelectedProductQuantities({});
-    setProductFilter('');
-    setCategoryFilter('all');
-    setNewOrderNotes('');
-    resetDeliveryAddressValidation();
-    resetAddressSuggestions();
-  };
-
-  useEffect(() => {
-    if (!GOOGLE_MAPS_API_KEY || !deliveryMapRef.current) {
-      return;
-    }
+    if (!GOOGLE_MAPS_API_KEY || !deliveryMapRef.current) return;
 
     let isCancelled = false;
 
     const renderGoogleMap = async () => {
       try {
         const google = await loadGoogleMapsScript(GOOGLE_MAPS_API_KEY) as any;
-
-        if (isCancelled || !deliveryMapRef.current) {
-          return;
-        }
+        if (isCancelled || !deliveryMapRef.current) return;
 
         setGoogleMapsError(null);
 
@@ -767,68 +259,46 @@ export function ActiveOrdersView() {
           });
         }
 
-        googleMapMarkersRef.current.forEach((marker) => marker.setMap(null));
+        googleMapMarkersRef.current.forEach((m) => m.setMap(null));
         googleMapMarkersRef.current = [];
 
-        if (deliveryZonePolygonRef.current) {
-          deliveryZonePolygonRef.current.setMap(null);
-          deliveryZonePolygonRef.current = null;
-        }
-
-        if (draftDeliveryZonePolygonRef.current) {
-          draftDeliveryZonePolygonRef.current.setMap(null);
-          draftDeliveryZonePolygonRef.current = null;
-        }
-
-        if (draftDeliveryZonePolylineRef.current) {
-          draftDeliveryZonePolylineRef.current.setMap(null);
-          draftDeliveryZonePolylineRef.current = null;
-        }
-
-        draftVertexMarkersRef.current.forEach((marker) => marker.setMap(null));
+        if (deliveryZonePolygonRef.current) { deliveryZonePolygonRef.current.setMap(null); deliveryZonePolygonRef.current = null; }
+        if (draftDeliveryZonePolygonRef.current) { draftDeliveryZonePolygonRef.current.setMap(null); draftDeliveryZonePolygonRef.current = null; }
+        if (draftDeliveryZonePolylineRef.current) { draftDeliveryZonePolylineRef.current.setMap(null); draftDeliveryZonePolylineRef.current = null; }
+        draftVertexMarkersRef.current.forEach((m) => m.setMap(null));
         draftVertexMarkersRef.current = [];
-
         if (deliveryZoneClickListenerRef.current) {
           google.maps.event.removeListener(deliveryZoneClickListenerRef.current);
           deliveryZoneClickListenerRef.current = null;
         }
 
-        const deliveryOrdersWithCoordinates = deliveryOrders.filter(
-          (order) => Number.isFinite(order.latitude) && Number.isFinite(order.longitude),
-        );
-
         const bounds = new google.maps.LatLngBounds();
         let hasBounds = false;
 
-        deliveryOrdersWithCoordinates.forEach((order) => {
-          const position = { lat: order.latitude as number, lng: order.longitude as number };
-          const priority = getOrderVisualPriority(order);
-
-          const marker = new google.maps.Marker({
-            position,
-            map: googleMapInstanceRef.current,
-            title: `${order.id} · ${getPriorityLabel(order)}`,
-            label: {
-              text: order.id.replace('A-', ''),
-              color: '#ffffff',
-              fontSize: '11px',
-              fontWeight: '700',
-            },
-            icon: {
-              path: google.maps.SymbolPath.CIRCLE,
-              fillColor: getPriorityMapPinColor(priority),
-              fillOpacity: 1,
-              strokeColor: '#111827',
-              strokeWeight: 1,
-              scale: 14,
-            },
+        deliveryOrders
+          .filter((o) => Number.isFinite(o.latitude) && Number.isFinite(o.longitude))
+          .forEach((order) => {
+            const position = { lat: order.latitude as number, lng: order.longitude as number };
+            const priority = getOrderVisualPriority(order);
+            const marker = new google.maps.Marker({
+              position,
+              map: googleMapInstanceRef.current,
+              title: `${order.id} · ${getPriorityLabel(order)}`,
+              label: { text: order.id.replace('A-', ''), color: '#ffffff', fontSize: '11px', fontWeight: '700' },
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                fillColor: getPriorityMapPinColor(priority),
+                fillOpacity: 1,
+                strokeColor: '#111827',
+                strokeWeight: 1,
+                scale: 14,
+              },
+            });
+            marker.addListener('click', () => handleOpenDetail(order));
+            googleMapMarkersRef.current.push(marker);
+            bounds.extend(position);
+            hasBounds = true;
           });
-
-          marker.addListener('click', () => handleOpenDetail(order));
-          googleMapMarkersRef.current.push(marker);
-          bounds.extend(position);
-          hasBounds = true;
-        });
 
         if (deliveryZonePoints.length >= 3) {
           deliveryZonePolygonRef.current = new google.maps.Polygon({
@@ -840,11 +310,7 @@ export function ActiveOrdersView() {
             fillColor: '#06b6d4',
             fillOpacity: 0.15,
           });
-
-          deliveryZonePoints.forEach((point) => {
-            bounds.extend(point);
-            hasBounds = true;
-          });
+          deliveryZonePoints.forEach((p) => { bounds.extend(p); hasBounds = true; });
         }
 
         if (isEditingDeliveryZone && draftDeliveryZonePoints.length > 0) {
@@ -868,51 +334,27 @@ export function ActiveOrdersView() {
             });
           }
 
-          draftDeliveryZonePoints.forEach((point) => {
-            bounds.extend(point);
-            hasBounds = true;
-          });
+          draftDeliveryZonePoints.forEach((p) => { bounds.extend(p); hasBounds = true; });
 
           draftVertexMarkersRef.current = draftDeliveryZonePoints.map((point, index) => {
-            const vertexMarker = new google.maps.Marker({
+            const vm = new google.maps.Marker({
               position: point,
               map: googleMapInstanceRef.current,
               draggable: true,
-              label: {
-                text: String(index + 1),
-                color: '#ffffff',
-                fontSize: '10px',
-                fontWeight: '700',
-              },
-              icon: {
-                path: google.maps.SymbolPath.CIRCLE,
-                fillColor: '#f59e0b',
-                fillOpacity: 1,
-                strokeColor: '#111827',
-                strokeWeight: 1,
-                scale: 8,
-              },
+              label: { text: String(index + 1), color: '#ffffff', fontSize: '10px', fontWeight: '700' },
+              icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: '#f59e0b', fillOpacity: 1, strokeColor: '#111827', strokeWeight: 1, scale: 8 },
               title: `Vértice ${index + 1}`,
             });
-
-            vertexMarker.addListener('dragend', (event: any) => {
+            vm.addListener('dragend', (event: any) => {
               const lat = event?.latLng?.lat?.();
               const lng = event?.latLng?.lng?.();
-
-              if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-                return;
-              }
-
-              setDraftDeliveryZonePoints((prev) => prev.map((vertex, vertexIndex) => (
-                vertexIndex === index ? { lat, lng } : vertex
-              )));
+              if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+              setDraftDeliveryZonePoints((prev) => prev.map((v, i) => i === index ? { lat, lng } : v));
             });
-
-            vertexMarker.addListener('rightclick', () => {
-              setDraftDeliveryZonePoints((prev) => prev.filter((_, vertexIndex) => vertexIndex !== index));
+            vm.addListener('rightclick', () => {
+              setDraftDeliveryZonePoints((prev) => prev.filter((_, i) => i !== index));
             });
-
-            return vertexMarker;
+            return vm;
           });
         }
 
@@ -920,61 +362,78 @@ export function ActiveOrdersView() {
           deliveryZoneClickListenerRef.current = googleMapInstanceRef.current.addListener('click', (event: any) => {
             const lat = event?.latLng?.lat?.();
             const lng = event?.latLng?.lng?.();
-
-            if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-              return;
-            }
-
-            setDraftDeliveryZonePoints((prev) => ([...prev, { lat, lng }]));
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+            setDraftDeliveryZonePoints((prev) => [...prev, { lat, lng }]);
           });
         }
 
-        if (hasBounds) {
-          googleMapInstanceRef.current.fitBounds(bounds);
-        }
+        if (hasBounds) googleMapInstanceRef.current.fitBounds(bounds);
       } catch {
         setGoogleMapsError('No se pudo cargar Google Maps');
       }
     };
 
     void renderGoogleMap();
-
-    return () => {
-      isCancelled = true;
-    };
+    return () => { isCancelled = true; };
   }, [deliveryOrders, deliveryZonePoints, draftDeliveryZonePoints, isEditingDeliveryZone]);
 
-  const getCurrentTime = () => {
-    return new Date().toLocaleTimeString('es-AR', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
+  // ── Zona de entrega ───────────────────────────────────────────────────────────
+
+  const startDeliveryZoneEdition = () => {
+    if (!GOOGLE_MAPS_API_KEY) { toast.error('Configurá VITE_GOOGLE_MAPS_API_KEY para dibujar zona de entrega'); return; }
+    setDraftDeliveryZonePoints(deliveryZonePoints);
+    setIsEditingDeliveryZone(true);
+    toast.info('Modo edición activo: hacé click sobre el mapa para agregar puntos');
   };
 
-  const parseMoneyValue = (moneyText: string) => {
-    const normalizedValue = moneyText.replace(/[^\d,.-]/g, '').replace(',', '.');
-    const parsedValue = Number(normalizedValue);
+  const cancelDeliveryZoneEdition = () => {
+    setIsEditingDeliveryZone(false);
+    setDraftDeliveryZonePoints([]);
+  };
 
-    if (!Number.isFinite(parsedValue)) {
-      return 0;
+  const undoDeliveryZonePoint = () => {
+    setDraftDeliveryZonePoints((prev) => prev.slice(0, -1));
+  };
+
+  const saveDeliveryZonePolygon = async () => {
+    if (draftDeliveryZonePoints.length < 3) { toast.error('La zona de entrega necesita al menos 3 puntos'); return; }
+    try {
+      const zone = await upsertDeliveryZone({ name: 'Zona principal', active: true, polygon: draftDeliveryZonePoints });
+      setDeliveryZonePoints(zone?.polygon ?? draftDeliveryZonePoints);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo guardar la zona de entrega');
+      return;
     }
+    setIsEditingDeliveryZone(false);
+    toast.success('Zona de entrega guardada');
+  };
 
-    return Math.abs(parsedValue);
+  const removeDeliveryZonePolygon = async () => {
+    try {
+      await deleteDeliveryZone();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo eliminar la zona de entrega');
+      return;
+    }
+    setDeliveryZonePoints([]);
+    setDraftDeliveryZonePoints([]);
+    setIsEditingDeliveryZone(false);
+    toast.success('Zona de entrega eliminada');
+  };
+
+  // ── Interacción con órdenes ───────────────────────────────────────────────────
+
+  const parseMoneyValue = (moneyText: string) => {
+    const v = Number(moneyText.replace(/[^\d,.-]/g, '').replace(',', '.'));
+    return Number.isFinite(v) ? Math.abs(v) : 0;
   };
 
   const handleOpenDetail = (order: ActiveOrderItem) => {
-    if (suppressNextClick.current) {
-      suppressNextClick.current = false;
-      return;
-    }
-
+    if (suppressNextClick.current) { suppressNextClick.current = false; return; }
     setDetailOrder(order);
   };
 
-  const handleOpenStatusDialog = (order: ActiveOrderItem) => {
-    setStatusOrder(order);
-  };
+  const handleOpenStatusDialog = (order: ActiveOrderItem) => setStatusOrder(order);
 
   const handleContextMenu = (event: React.MouseEvent, order: ActiveOrderItem) => {
     event.preventDefault();
@@ -989,289 +448,118 @@ export function ActiveOrdersView() {
   };
 
   const handleLongPressEnd = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-    }
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
   };
 
   const handleChangeStatus = async (nextStatus: string) => {
-    if (!statusOrder) {
-      return;
-    }
+    if (!statusOrder) return;
 
     try {
       await transitionOrderStatus(statusOrder.id, statusOrder.status, nextStatus);
     } catch (error) {
-      if (error instanceof ApiError) {
-        toast.error(error.message);
-      } else {
-        toast.error('No se pudo actualizar el estado');
-      }
+      toast.error(error instanceof ApiError ? error.message : 'No se pudo actualizar el estado');
       return;
     }
 
     const normalizedNextStatus = getOrderStatusLabel(nextStatus);
     const isTerminalStatus = normalizedNextStatus === 'Entregado' || normalizedNextStatus === 'Cancelado';
 
-    setOrders((prev) => (
+    setOrders((prev) =>
       isTerminalStatus
-        ? prev.filter((order) => order.id !== statusOrder.id)
-        : prev.map((order) => (
-            order.id === statusOrder.id
-              ? { ...order, status: normalizedNextStatus }
-              : order
-          ))
-    ));
-
-    setDetailOrder((prev) => (
-      prev && prev.id === statusOrder.id
+        ? prev.filter((o) => o.id !== statusOrder.id)
+        : prev.map((o) => o.id === statusOrder.id ? { ...o, status: normalizedNextStatus } : o),
+    );
+    setDetailOrder((prev) =>
+      prev?.id === statusOrder.id
         ? isTerminalStatus ? null : { ...prev, status: normalizedNextStatus }
-        : prev
-    ));
+        : prev,
+    );
 
     setStatusOrder(null);
     void loadOrders();
     toast.success(`Estado actualizado a "${normalizedNextStatus}"`);
   };
 
-  const handleCreateOrder = async () => {
-    const loggedUser = getLoggedUser();
-    const storeId = Number(loggedUser?.storeId);
-    const customerId = Number(newOrderCustomerName.trim());
-    const userId = Number(newOrderUserId.trim());
-    const tableId = Number(newOrderTableId.trim());
-    const waiterId = Number(newOrderWaiterId.trim());
-    const address = newOrderAddress.trim();
-    const backendType: CreateOrderRequest['type'] = newOrderType === 'delivery' ? 'delivery' : 'dine-in';
-    const orderItems = selectedProductsWithQuantity.map((product) => ({
-      productId: product.id,
-      quantity: product.quantity,
-    }));
-
-    if (!Number.isInteger(userId) || userId <= 0) {
-      toast.error('Ingresá un User ID válido');
-      return;
-    }
-
-    if (!Number.isInteger(storeId) || storeId <= 0) {
-      toast.error('No se encontró un storeId válido en la sesión');
-      return;
-    }
-
-    if (newOrderType === 'delivery' && !address) {
-      toast.error('Ingresá la dirección de entrega');
-      return;
-    }
-
-    if (selectedProductsCount === 0) {
-      toast.error('Seleccioná al menos un producto');
-      return;
-    }
-
-    if (orderItems.length === 0) {
-      toast.error('Seleccioná al menos un producto');
-      return;
-    }
-
-    let geocodedAddress: GeocodedAddressResult | null = null;
-
-    if (newOrderType === 'delivery') {
-      if (deliveryAddressValidationState === 'valid' && validatedDeliveryAddressInput === address && validatedDeliveryAddressPoint) {
-        geocodedAddress = validatedDeliveryAddressPoint;
-      } else {
-        setIsValidatingAddress(true);
-        geocodedAddress = await validateDeliveryAddress(address);
-        setIsValidatingAddress(false);
-
-        if (!geocodedAddress) {
-          toast.error('La dirección no es válida para delivery');
-          return;
-        }
-      }
-    }
-
-    const orderPayload: CreateOrderRequest = {
-      storeId,
-      customerId: Number.isInteger(customerId) && customerId > 0 ? customerId : undefined,
-      customerName: !Number.isInteger(customerId) || customerId <= 0 ? newOrderCustomerName.trim() : undefined,
-      customerPhone: !Number.isInteger(customerId) || customerId <= 0 ? newOrderCustomerPhone.trim() : undefined,
-      userId,
-      type: backendType,
-      items: orderItems,
-      delivery_address: geocodedAddress?.formattedAddress,
-      delivery_latitude: geocodedAddress?.latitude,
-      delivery_longitude: geocodedAddress?.longitude,
-      delivery_date: newOrderType === 'delivery' ? (newOrderDeliveryDate || undefined) : undefined,
-      tableId: backendType === 'dine-in' && Number.isInteger(tableId) && tableId > 0 ? tableId : undefined,
-      waiterId: Number.isInteger(waiterId) && waiterId > 0 ? waiterId : undefined,
-    };
-
-    try {
-      await createBackendOrder(orderPayload);
-    } catch (error) {
-      if (error instanceof ApiError) {
-        toast.error(error.message);
-      } else {
-        toast.error('No se pudo crear la orden');
-      }
-      return;
-    }
-
-    resetOrderForm();
-    toast.success('Orden creada');
-    void loadOrders();
-  };
-
   const handleFinalizeOrder = async (order: ActiveOrderItem) => {
     const readyStatusLabel = getOrderStatusLabel('ready');
-
     if (getOrderStatusLabel(order.status) !== readyStatusLabel) {
       toast.error('La orden debe estar lista para servir antes de cobrarla');
       return;
     }
 
     const amount = parseMoneyValue(order.total);
-
-    if (amount <= 0) {
-      toast.error('No se pudo calcular el importe de la orden');
-      return;
-    }
+    if (amount <= 0) { toast.error('No se pudo calcular el importe de la orden'); return; }
 
     try {
-      await createCashMovement({
-        type: 'venta',
-        concept: `Orden ${order.id}`,
-        amount,
-        paymentMethod: finalizePaymentMethod,
-      });
+      await createCashMovement({ type: 'venta', concept: `Orden ${order.id}`, amount, paymentMethod: finalizePaymentMethod });
     } catch (error) {
-      if (error instanceof ApiError) {
-        toast.error(error.message);
-      } else {
-        toast.error('No se pudo registrar la venta en caja');
-      }
+      toast.error(error instanceof ApiError ? error.message : 'No se pudo registrar la venta en caja');
       return;
     }
 
     try {
       await finalizeOrder(order.id);
     } catch (error) {
-      if (error instanceof ApiError) {
-        toast.error(error.message);
-      } else {
-        toast.error('No se pudo completar la orden');
-      }
+      toast.error(error instanceof ApiError ? error.message : 'No se pudo completar la orden');
       return;
     }
 
-    setOrders((prev) => prev.filter((currentOrder) => currentOrder.id !== order.id));
+    setOrders((prev) => prev.filter((o) => o.id !== order.id));
     setDetailOrder(null);
-    setStatusOrder((prev) => (prev?.id === order.id ? null : prev));
+    setStatusOrder((prev) => prev?.id === order.id ? null : prev);
     void loadOrders();
     toast.success(`Orden ${order.id} finalizada`);
   };
 
+  // ── Prioridad visual ──────────────────────────────────────────────────────────
+
   const getOrderAgeMinutes = (createdAt: string) => {
     if (createdAt.includes('T')) {
-      const createdDate = new Date(createdAt);
-
-      if (Number.isNaN(createdDate.getTime())) {
-        return 0;
-      }
-
-      return Math.max(0, Math.floor((Date.now() - createdDate.getTime()) / 60000));
+      const d = new Date(createdAt);
+      return Number.isNaN(d.getTime()) ? 0 : Math.max(0, Math.floor((Date.now() - d.getTime()) / 60000));
     }
-
-    const [hoursText, minutesText] = createdAt.split(':');
-    const hours = Number(hoursText);
-    const minutes = Number(minutesText);
-
-    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-      return 0;
-    }
-
+    const [h, m] = createdAt.split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return 0;
     const now = new Date();
-    const createdDate = new Date(now);
-    createdDate.setHours(hours, minutes, 0, 0);
-
-    if (createdDate.getTime() > now.getTime()) {
-      createdDate.setDate(createdDate.getDate() - 1);
-    }
-
-    return Math.max(0, Math.floor((now.getTime() - createdDate.getTime()) / 60000));
+    const d = new Date(now);
+    d.setHours(h, m, 0, 0);
+    if (d.getTime() > now.getTime()) d.setDate(d.getDate() - 1);
+    return Math.max(0, Math.floor((now.getTime() - d.getTime()) / 60000));
   };
 
   const getOrderVisualPriority = (order: ActiveOrderItem): OrderVisualPriority => {
-    const ageMinutes = getOrderAgeMinutes(order.createdAt);
-
-    if (ageMinutes >= 45) {
-      return 'old';
-    }
-
-    if (ageMinutes >= 30) {
-      return 'delayed';
-    }
-
-    if (ageMinutes >= 15) {
-      return 'on-time';
-    }
-
+    const age = getOrderAgeMinutes(order.createdAt);
+    if (age >= 45) return 'old';
+    if (age >= 30) return 'delayed';
+    if (age >= 15) return 'on-time';
     return 'default';
   };
 
   const getOrderCardClass = (order: ActiveOrderItem) => {
-    const priority = getOrderVisualPriority(order);
-
-    if (priority === 'old') {
-      return 'border-red-500/70 bg-red-500/10';
-    }
-
-    if (priority === 'delayed') {
-      return 'border-yellow-500/70 bg-yellow-500/10';
-    }
-
-    if (priority === 'on-time') {
-      return 'border-green-500/70 bg-green-500/10';
-    }
-
+    const p = getOrderVisualPriority(order);
+    if (p === 'old') return 'border-red-500/70 bg-red-500/10';
+    if (p === 'delayed') return 'border-yellow-500/70 bg-yellow-500/10';
+    if (p === 'on-time') return 'border-green-500/70 bg-green-500/10';
     return 'border-orange-700 bg-card';
   };
 
   const getPriorityBadgeClass = (order: ActiveOrderItem) => {
-    const priority = getOrderVisualPriority(order);
-
-    if (priority === 'old') {
-      return 'bg-red-500 text-white text-xs';
-    }
-
-    if (priority === 'delayed') {
-      return 'bg-yellow-500 text-black text-xs';
-    }
-
-    if (priority === 'on-time') {
-      return 'bg-green-500 text-white text-xs';
-    }
-
+    const p = getOrderVisualPriority(order);
+    if (p === 'old') return 'bg-red-500 text-white text-xs';
+    if (p === 'delayed') return 'bg-yellow-500 text-black text-xs';
+    if (p === 'on-time') return 'bg-green-500 text-white text-xs';
     return 'bg-gray-600 text-white text-xs';
   };
 
   const getPriorityLabel = (order: ActiveOrderItem) => {
-    const priority = getOrderVisualPriority(order);
-
-    if (priority === 'old') {
-      return 'Antiguo';
-    }
-
-    if (priority === 'delayed') {
-      return 'Demorado';
-    }
-
-    if (priority === 'on-time') {
-      return 'En horario';
-    }
-
+    const p = getOrderVisualPriority(order);
+    if (p === 'old') return 'Antiguo';
+    if (p === 'delayed') return 'Demorado';
+    if (p === 'on-time') return 'En horario';
     return 'Recién ingresado';
   };
+
+  // ── Render ────────────────────────────────────────────────────────────────────
 
   const renderOrderCard = (order: ActiveOrderItem) => (
     <div
@@ -1317,13 +605,12 @@ export function ActiveOrdersView() {
             <Badge variant="secondary" className="bg-label-warning text-white">
               {orders.length}
             </Badge>
+            {/* ← Mismo botón, ahora abre CreateOrderDialog */}
             <Button size="sm" onClick={() => setIsCreateOrderDialogOpen(true)}>
               Nueva orden
             </Button>
           </div>
         </div>
-
-        
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="space-y-3">
@@ -1335,9 +622,7 @@ export function ActiveOrdersView() {
             </div>
             <div className="space-y-2">
               {deliveryOrders.length === 0 ? (
-                <div className="p-4 rounded-lg border card bg-card text-sm text-gray-400">
-                  Sin pedidos de delivery
-                </div>
+                <div className="p-4 rounded-lg border card bg-card text-sm text-gray-400">Sin pedidos de delivery</div>
               ) : (
                 deliveryOrders.map(renderOrderCard)
               )}
@@ -1353,9 +638,7 @@ export function ActiveOrdersView() {
             </div>
             <div className="space-y-2">
               {salonOrders.length === 0 ? (
-                <div className="p-4 rounded-lg border card bg-card text-sm text-gray-400">
-                  Sin pedidos en salón
-                </div>
+                <div className="p-4 rounded-lg border card bg-card text-sm text-gray-400">Sin pedidos en salón</div>
               ) : (
                 salonOrders.map(renderOrderCard)
               )}
@@ -1364,6 +647,7 @@ export function ActiveOrdersView() {
         </div>
       </div>
 
+      {/* ── Dialog detalle de orden ── */}
       <Dialog open={!!detailOrder} onOpenChange={() => setDetailOrder(null)}>
         <DialogContent className="bg-card card text-white">
           <DialogHeader>
@@ -1373,10 +657,7 @@ export function ActiveOrdersView() {
             <div className="space-y-3 text-sm">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-gray-400">Tipo</span>
-                <Badge
-                  variant="secondary"
-                  className={detailOrder.type === 'delivery' ? 'bg-label-info text-white text-xs' : 'bg-label-success text-white text-xs'}
-                >
+                <Badge variant="secondary" className={detailOrder.type === 'delivery' ? 'bg-label-info text-white text-xs' : 'bg-label-success text-white text-xs'}>
                   {detailOrder.type === 'delivery' ? 'Delivery' : 'Salón'}
                 </Badge>
               </div>
@@ -1422,10 +703,7 @@ export function ActiveOrdersView() {
               </div>
               <div className="space-y-2 pt-2 border-t border-orange-700">
                 <p className="text-gray-400">Finalizar orden</p>
-                <Select
-                  value={finalizePaymentMethod}
-                  onValueChange={(value) => setFinalizePaymentMethod(value as PaymentMethod)}
-                >
+                <Select value={finalizePaymentMethod} onValueChange={(v) => setFinalizePaymentMethod(v as PaymentMethod)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Método de pago" />
                   </SelectTrigger>
@@ -1444,6 +722,7 @@ export function ActiveOrdersView() {
         </DialogContent>
       </Dialog>
 
+      {/* ── Dialog cambio de estado ── */}
       <Dialog open={!!statusOrder} onOpenChange={() => setStatusOrder(null)}>
         <DialogContent className="bg-card border-orange-700 text-white">
           <DialogHeader>
@@ -1468,249 +747,14 @@ export function ActiveOrdersView() {
         </DialogContent>
       </Dialog>
 
-      <Dialog
+      {/* ── CreateOrderDialog — reemplaza el Dialog anterior de "Nueva orden" ── */}
+      <CreateOrderDialog
         open={isCreateOrderDialogOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            resetOrderForm();
-            return;
-          }
-
-          setIsCreateOrderDialogOpen(true);
-        }}
-      >
-        <DialogContent className="bg-card card max-h-[90vh] overflow-hidden text-white">
-          <DialogHeader>
-            <DialogTitle>Nueva orden</DialogTitle>
-          </DialogHeader>
-
-          <div className="max-h-[calc(90vh-5rem)] space-y-3 overflow-y-auto pr-1">
-            <Select value={newOrderType} onValueChange={(value) => setNewOrderType(value as ActiveOrderItem['type'])}>
-              <SelectTrigger>
-                <SelectValue placeholder="Tipo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="delivery">Delivery</SelectItem>
-                <SelectItem value="salon">Salón</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Input
-              placeholder="Customer ID (opcional)"
-              value={newOrderCustomerName}
-              onChange={(event) => setNewOrderCustomerName(event.target.value)}
-            />
-
-            <Input
-              placeholder="Customer phone (opcional)"
-              value={newOrderCustomerPhone}
-              onChange={(event) => setNewOrderCustomerPhone(event.target.value)}
-            />
-
-            <Input
-              placeholder="Customer name (opcional)"
-              value={newOrderCustomerName}
-              onChange={(event) => setNewOrderCustomerName(event.target.value)}
-            />
-
-            <Input
-              placeholder="User ID (requerido)"
-              value={newOrderUserId}
-              onChange={(event) => setNewOrderUserId(event.target.value)}
-            />
-
-            {newOrderType === 'delivery' && (
-              <div className="space-y-2">
-                <Input
-                  placeholder="Dirección de entrega"
-                  value={newOrderAddress}
-                  onChange={(event) => setNewOrderAddress(event.target.value)}
-                />
-                {deliveryAddressValidationState !== 'idle' ? (
-                  <p
-                    className={`text-xs ${
-                      deliveryAddressValidationState === 'valid'
-                        ? 'text-emerald-300'
-                        : deliveryAddressValidationState === 'typing' || deliveryAddressValidationState === 'validating'
-                        ? 'text-amber-300'
-                        : 'text-red-300'
-                    }`}
-                  >
-                    {deliveryAddressValidationMessage}
-                  </p>
-                ) : null}
-
-                <Input
-                  type="datetime-local"
-                  placeholder="Fecha de entrega (opcional)"
-                  value={newOrderDeliveryDate}
-                  onChange={(event) => setNewOrderDeliveryDate(event.target.value)}
-                />
-              </div>
-            )}
-
-            {newOrderType === 'salon' ? (
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <Input
-                  placeholder="Table ID (opcional)"
-                  value={newOrderTableId}
-                  onChange={(event) => setNewOrderTableId(event.target.value)}
-                />
-                <Input
-                  placeholder="Waiter ID (opcional)"
-                  value={newOrderWaiterId}
-                  onChange={(event) => setNewOrderWaiterId(event.target.value)}
-                />
-              </div>
-            ) : null}
-
-            <Input
-              placeholder="Detalle"
-              value={newOrderDetail}
-              onChange={(event) => setNewOrderDetail(event.target.value)}
-            />
-
-            <div className="space-y-2 rounded-md border card bg-body p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-300">Productos</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400">
-                    {selectedProductsCount} items · Total: {currencyFormatter.format(selectedProductsTotal)}
-                  </span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 px-2 text-xs"
-                    onClick={clearSelectedProducts}
-                    disabled={selectedProductsCount === 0}
-                  >
-                    Limpiar carrito
-                  </Button>
-                </div>
-              </div>
-
-              <Input
-                placeholder="Buscar producto por nombre..."
-                value={productFilter}
-                onChange={(event) => setProductFilter(event.target.value)}
-                className="h-9"
-              />
-
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={categoryFilter === 'all' ? 'default' : 'outline'}
-                  onClick={() => setCategoryFilter('all')}
-                >
-                  Todas
-                </Button>
-                {availableCategories.map((category) => (
-                  <Button
-                    key={category.id}
-                    type="button"
-                    size="sm"
-                    variant={categoryFilter === category.id ? 'default' : 'outline'}
-                    onClick={() => setCategoryFilter(category.id)}
-                  >
-                    {category.name}
-                  </Button>
-                ))}
-              </div>
-
-              {availableProducts.length === 0 ? (
-                <p className="text-xs text-gray-500">No hay productos cargados</p>
-              ) : groupedFilteredProductEntries.length === 0 ? (
-                <p className="text-xs text-gray-500">No se encontraron productos con ese filtro</p>
-              ) : (
-                <div className="max-h-72 space-y-4 overflow-y-auto pr-1">
-                  {groupedFilteredProductEntries.map(([categoryName, categoryProducts]) => (
-                    <div key={categoryName} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-medium text-gray-300 uppercase tracking-wide">{categoryName}</p>
-                        <Badge variant="secondary" className="text-[10px]">
-                          {categoryProducts.length}
-                        </Badge>
-                      </div>
-
-                      <Carousel opts={{ align: 'start', dragFree: true }} className="px-10">
-                        <CarouselContent className="-ml-2">
-                          {categoryProducts.map((product) => {
-                            const quantity = selectedProductQuantities[product.id] ?? 0;
-
-                            return (
-                              <CarouselItem key={product.id} className="pl-2 basis-[82%] sm:basis-1/2">
-                                <div className="w-full rounded-md border border-orange-700 bg-card px-3 py-2">
-                                  <div className="min-w-0">
-                                    <p className="truncate text-sm text-white">{product.name}</p>
-                                    {product.description ? (
-                                      <p className="mt-0.5 line-clamp-2 text-xs text-gray-400">{product.description}</p>
-                                    ) : null}
-                                  </div>
-
-                                  <div className="mt-2 flex items-center justify-between gap-2">
-                                    <span className="text-xs text-gray-300">{currencyFormatter.format(product.price)}</span>
-                                    <span className="text-xs text-gray-400">Cantidad: {quantity}</span>
-                                  </div>
-
-                                  <div className="mt-2 flex items-center justify-end gap-2">
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => decrementProductQuantity(product.id)}
-                                      disabled={quantity === 0}
-                                    >
-                                      -
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      variant="secondary"
-                                      onClick={() => incrementProductQuantity(product.id)}
-                                    >
-                                      +
-                                    </Button>
-                                  </div>
-                                </div>
-                              </CarouselItem>
-                            );
-                          })}
-                        </CarouselContent>
-                        <CarouselPrevious className="-left-1 h-7 w-7 border-orange-600 bg-body text-white hover:bg-card" />
-                        <CarouselNext className="-right-1 h-7 w-7 border-orange-600 bg-body text-white hover:bg-card" />
-                      </Carousel>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <Input
-              placeholder="Observaciones (opcional)"
-              value={newOrderNotes}
-              onChange={(event) => setNewOrderNotes(event.target.value)}
-            />
-
-            <Button
-              className="w-full"
-              onClick={() => void handleCreateOrder()}
-              disabled={
-                isValidatingAddress
-                || (newOrderType === 'delivery' && (
-                  deliveryAddressValidationState === 'validating'
-                  || deliveryAddressValidationState === 'outside_zone'
-                  || deliveryAddressValidationState === 'not_found'
-                  || deliveryAddressValidationState === 'error'
-                ))
-              }
-            >
-              {isValidatingAddress ? 'Validando dirección...' : 'Crear orden'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+        onClose={() => setIsCreateOrderDialogOpen(false)}
+        onCreated={() => { void loadOrders(); }}
+        availableProducts={availableProducts}
+        availableCategories={availableCategories}
+      />
     </div>
   );
 }

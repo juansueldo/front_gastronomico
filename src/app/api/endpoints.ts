@@ -90,4 +90,45 @@ export const endpoints = {
     listOAuthProviders: () => apiClient.get(`${API_VERSION}/integrations/oauth/providers`, { config: { cache: 'short' } }),
     startOAuthProvider: (provider: string) => apiClient.post(`${API_VERSION}/integrations/oauth/${encodeURIComponent(provider)}/start`, {}),
 
+    // Agregar estos dos endpoints a tu archivo api/endpoints.ts
+
+// Busca un cliente por teléfono. Retorna null si no existe.
+fetchCustomerByPhone: async (phone: string) => {
+  const res = await apiClient.get(`/customer/search/${encodeURIComponent(phone)}`);
+  // Ajustá la URL según tu backend. Si devuelve 404, retorná null:
+  if (res.status === 404) return null;
+  const data = await res.json();
+  // Mapeá la respuesta a CustomerData:
+  return {
+    id: data.id,
+    name: data.name,
+    phone: data.phone,
+    savedAddress: data.lastDeliveryAddress
+      ? {
+          street: data.lastDeliveryAddress.street,
+          number: data.lastDeliveryAddress.number,
+          locality: data.lastDeliveryAddress.locality,
+          crossStreets: data.lastDeliveryAddress.crossStreets,
+          latitude: data.lastDeliveryAddress.latitude,
+          longitude: data.lastDeliveryAddress.longitude,
+          formatted: data.lastDeliveryAddress.formatted,
+        }
+      : undefined,
+    orderHistory: (data.Orders ?? []).slice(0, 5).map((o: any) => ({
+      id: String(o.id),
+      date: new Date(o.createdAt).toLocaleDateString('es-AR'),
+      total: new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(o.total_amount),
+      items: (o.OrderItems ?? []).map((i: any) => i.Product?.name ?? 'Producto'),
+    })),
+  };
+},
+
+// Trae las localidades disponibles para el dropdown
+fetchLocalities: async () => {
+  const res = await apiClient.get('/locality'); // ajustá la ruta
+  const data = await res.json();
+  const rows = Array.isArray(data) ? data : data?.rows ?? data?.data ?? [];
+  return rows.map((l: any) => ({ id: String(l.id), name: l.name }));
+},
+
 };
