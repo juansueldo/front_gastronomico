@@ -25,6 +25,10 @@ export interface CashMovement {
   created_at?: string;
 }
 
+export interface FetchCashMovementsOptions {
+  sinceLastClosing?: boolean;
+}
+
 export interface CreateCashMovementRequest {
   type: BackendCashMovementType | LegacyCashMovementType;
   amount: number;
@@ -214,13 +218,87 @@ const resolveHeadquarterId = async (headquarterId?: string | number) => {
   return String(firstHeadquarter.id);
 };
 
+const getMovementTimestamp = (movement: Pick<CashMovement, 'movementDate' | 'createdAt' | 'created_at'>): number | null => {
+  const rawDate = movement.movementDate ?? movement.createdAt ?? movement.created_at;
+  if (!rawDate) {
+    return null;
+  }
+
+  const parsed = new Date(rawDate).getTime();
+  if (Number.isNaN(parsed)) {
+    return null;
+  }
+
+  return parsed;
+};
+
+export const filterMovementsSinceLastClosing = (movements: CashMovement[]): CashMovement[] => {
+  const lastClosingTimestamp = movements.reduce<number | null>((latest, movement) => {
+    if (movement.type !== 'closing') {
+      return latest;
+    }
+
+    const timestamp = getMovementTimestamp(movement);
+    if (timestamp === null) {
+      return latest;
+    }
+
+    if (latest === null || timestamp > latest) {
+      return timestamp;
+    }
+
+    return latest;
+  }, null);
+
+  if (lastClosingTimestamp === null) {
+    return movements;
+  }
+
+  return movements.filter((movement) => {
+    const timestamp = getMovementTimestamp(movement);
+
+    // Keep undated records visible to avoid hiding legacy rows unexpectedly.
+    if (timestamp === null) {
+      return true;
+    }
+
+    return timestamp > lastClosingTimestamp;
+  });
+};
+
+const resolveDateRange = (date: string) => {
+  const normalized = String(date ?? '').trim();
+
+  if (!normalized) {
+    return { from: '', to: '' };
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return {
+      from: `${normalized}T00:00:00.000`,
+      to: `${normalized}T23:59:59.999`,
+    };
+  }
+
+  return { from: normalized, to: normalized };
+};
+
 /**
  * Obtiene todos los movimientos de caja de una sede
  */
-export async function fetchCashMovements(headquarterId?: string | number): Promise<CashMovement[]> {
+export async function fetchCashMovements(
+  headquarterId?: string | number,
+  options?: FetchCashMovementsOptions
+): Promise<CashMovement[]> {
   const resolvedHeadquarterId = await resolveHeadquarterId(headquarterId);
   const data = await endpoints.fetchHeadquarterCashRegister(resolvedHeadquarterId);
-  return extractMovementRows(data).map(normalizeMovement);
+  const movements = extractMovementRows(data).map(normalizeMovement);
+
+  if (options?.sinceLastClosing) {
+    return filterMovementsSinceLastClosing(movements);
+  }
+
+  return movements;
 }
 
 /**
@@ -292,9 +370,21 @@ export async function getFinalizedCashMovementsByDate(
   date: string,
   headquarterId?: string | number
 ): Promise<CashMovement[]> {
+  const { from, to } = resolveDateRange(date);
+
   return listCashMovements({
     headquarterId,
-    from: date,
-    to: date,
+    from,
+    to,
   });
+}
+
+/**
+ * Obtiene movimientos de caja de una fecha concreta (dia calendario)
+ */
+export async function getCashMovementsByDate(
+  date: string,
+  headquarterId?: string | number
+): Promise<CashMovement[]> {
+  return getFinalizedCashMovementsByDate(date, headquarterId);
 }

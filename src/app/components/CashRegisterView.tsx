@@ -5,7 +5,7 @@ import { Input } from './ui/input';
 import {Dialog, DialogContent, DialogHeader, DialogTitle} from './ui/dialog';
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from './ui/select';
 import { toast } from 'sonner';
-import { ApiError, closeDailyCashMovements, createCashMovement, fetchCashMovements, type CashMovement, type PaymentMethod } from '../api';
+import { ApiError, closeDailyCashMovements, createCashMovement, fetchCashMovements, getCashMovementsByDate, type CashMovement, type PaymentMethod } from '../api';
 
 const currencyFormatter = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -47,27 +47,50 @@ const getPaymentMethodLabel = (paymentMethod: PaymentMethod) => {
 
 export function CashRegisterView() {
   const [movements, setMovements] = useState<CashMovement[]>([]);
+  const [isLoadingMovements, setIsLoadingMovements] = useState(false);
+  const [movementFilterMode, setMovementFilterMode] = useState<'current-shift' | 'date'>('current-shift');
+  const [selectedMovementDate, setSelectedMovementDate] = useState(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  });
   const [isManualDialogOpen, setIsManualDialogOpen] = useState(false);
   const [manualType, setManualType] = useState<'ingreso' | 'egreso'>('ingreso');
   const [manualConcept, setManualConcept] = useState('');
   const [manualAmount, setManualAmount] = useState('');
   const [manualPaymentMethod, setManualPaymentMethod] = useState<PaymentMethod>('efectivo');
 
-  useEffect(() => {
-    const loadMovements = async () => {
-      try {
-        const backendMovements = await fetchCashMovements();
-        setMovements(backendMovements);
-      } catch (error) {
-        if (error instanceof ApiError) {
-          toast.error(error.message);
-        } else {
-          toast.error('No se pudo cargar la caja');
-        }
-      }
-    };
+  const loadMovements = async (options?: {
+    mode?: 'current-shift' | 'date';
+    date?: string;
+  }) => {
+    const mode = options?.mode ?? movementFilterMode;
+    const date = options?.date ?? selectedMovementDate;
 
-    void loadMovements();
+    setIsLoadingMovements(true);
+    try {
+      if (mode === 'date') {
+        const backendMovements = await getCashMovementsByDate(date);
+        setMovements(backendMovements);
+      } else {
+        const backendMovements = await fetchCashMovements(undefined, { sinceLastClosing: true });
+        setMovements(backendMovements);
+      }
+    } catch (error) {
+      if (error instanceof ApiError) {
+        toast.error(error.message);
+      } else {
+        toast.error('No se pudieron cargar los movimientos de caja');
+      }
+    } finally {
+      setIsLoadingMovements(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadMovements({ mode: 'current-shift' });
   }, []);
 
   const totalSales = movements
@@ -112,8 +135,7 @@ export function CashRegisterView() {
         paymentMethod: manualPaymentMethod,
       });
 
-      const backendMovements = await fetchCashMovements();
-      setMovements(backendMovements);
+      await loadMovements();
     } catch (error) {
       if (error instanceof ApiError) {
         toast.error(error.message);
@@ -132,8 +154,7 @@ export function CashRegisterView() {
   const handleCloseCashRegister = async () => {
     try {
       await closeDailyCashMovements(new Date().toISOString(), undefined, Math.max(expectedCash, 0));
-      const backendMovements = await fetchCashMovements();
-      setMovements(backendMovements);
+      await loadMovements();
       toast.success('Cierre de caja registrado');
     } catch (error) {
       if (error instanceof ApiError) {
@@ -150,7 +171,11 @@ export function CashRegisterView() {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h1 className="text-xl md:text-2xl font-semibold text-white">Caja</h1>
-            <p className="text-sm text-gray-400">Turno actual abierto desde 18:00</p>
+            <p className="text-sm text-gray-400">
+              {movementFilterMode === 'current-shift'
+                ? 'Mostrando movimientos desde el último cierre'
+                : `Mostrando movimientos del ${new Date(`${selectedMovementDate}T00:00:00`).toLocaleDateString('es-AR')}`}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="bg-label-success text-white">Caja abierta</Badge>
@@ -159,6 +184,45 @@ export function CashRegisterView() {
             </Button>
             <Button size="sm" onClick={() => void handleCloseCashRegister()}>Cierre de caja</Button>
           </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select
+            value={movementFilterMode}
+            onValueChange={(value) => {
+              const nextMode = value as 'current-shift' | 'date';
+              setMovementFilterMode(nextMode);
+              if (nextMode === 'current-shift') {
+                void loadMovements({ mode: nextMode });
+              }
+            }}
+          >
+            <SelectTrigger className="w-[260px]">
+              <SelectValue placeholder="Filtrar movimientos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="current-shift">Desde último cierre</SelectItem>
+              <SelectItem value="date">Por fecha</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {movementFilterMode === 'date' && (
+            <Input
+              type="date"
+              value={selectedMovementDate}
+              onChange={(event) => setSelectedMovementDate(event.target.value)}
+              className="w-[190px]"
+            />
+          )}
+
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void loadMovements()}
+            disabled={isLoadingMovements || (movementFilterMode === 'date' && !selectedMovementDate)}
+          >
+            {isLoadingMovements ? 'Cargando...' : 'Actualizar'}
+          </Button>
         </div>
 
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
@@ -182,7 +246,9 @@ export function CashRegisterView() {
 
         <div className="rounded-lg border card bg-card">
           <div className="px-4 py-3 border-b border-[--border] flex items-center justify-between">
-            <h2 className="text-sm font-medium text-white">Movimientos del turno</h2>
+            <h2 className="text-sm font-medium text-white">
+              {movementFilterMode === 'current-shift' ? 'Movimientos del turno' : 'Movimientos por fecha'}
+            </h2>
             <Badge variant="secondary" className="bg-label-secondary text-white text-xs">
               {movements.length} movimientos
             </Badge>

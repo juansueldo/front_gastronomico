@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Building2, ClipboardList, LayoutGrid, Package } from 'lucide-react';
+import { Building2, ClipboardList, LayoutGrid, Package, TrendingUp, Wallet } from 'lucide-react';
 import { AppLayout } from './AppLayout';
 import { fetchProducts } from '../api/catalog';
 import { fetchActiveOrders } from '../api/orders';
 import { fetchTables } from '../api/tables';
 import { listHeadquarters } from '../api/headquarter';
+import { fetchCashMovements, type CashMovement } from '../api/cash';
 import { DashboardMetricCard } from './dashboard/DashboardMetricCard';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
@@ -13,6 +14,8 @@ interface DashboardMetrics {
   products: number;
   tables: number;
   headquarters: number;
+  totalCash: number;
+  salesIncome: number;
 }
 
 const initialMetrics: DashboardMetrics = {
@@ -20,6 +23,21 @@ const initialMetrics: DashboardMetrics = {
   products: 0,
   tables: 0,
   headquarters: 0,
+  totalCash: 0,
+  salesIncome: 0,
+};
+
+const currencyFormatter = new Intl.NumberFormat('es-AR', {
+  style: 'currency',
+  currency: 'ARS',
+  maximumFractionDigits: 0,
+});
+
+const isSaleMovement = (movement: CashMovement) => {
+  const normalizedDescription = movement.description.toLowerCase();
+  return movement.legacyType === 'venta'
+    || normalizedDescription.startsWith('orden ')
+    || normalizedDescription.startsWith('mesa ');
 };
 
 export function DashboardView() {
@@ -33,22 +51,32 @@ export function DashboardView() {
       setLoading(true);
 
       try {
-        const [orders, products, tables, headquarters] = await Promise.all([
+        const [orders, products, tables, headquarters, cashMovements] = await Promise.all([
           fetchActiveOrders(),
           fetchProducts(),
           fetchTables(),
           listHeadquarters({ page: 1, pageSize: 1 }),
+          fetchCashMovements(undefined, { sinceLastClosing: true }),
         ]);
 
         if (cancelled) {
           return;
         }
 
+        const totalCash = cashMovements
+          .filter((movement) => movement.paymentMethod === 'efectivo')
+          .reduce((accumulator, movement) => accumulator + movement.amount, 0);
+        const salesIncome = cashMovements
+          .filter(isSaleMovement)
+          .reduce((accumulator, movement) => accumulator + Math.abs(movement.amount), 0);
+
         setMetrics({
           activeOrders: orders.length,
           products: products.length,
           tables: tables.length,
           headquarters: headquarters.total,
+          totalCash,
+          salesIncome,
         });
       } catch {
         if (!cancelled) {
@@ -105,6 +133,20 @@ export function DashboardView() {
               description={loading ? 'Actualizando metricas...' : 'Sucursales disponibles'}
               icon={Building2}
               accentClassName="bg-gradient-to-br from-card to-amber-950/30"
+            />
+            <DashboardMetricCard
+              title="Total en caja"
+              value={currencyFormatter.format(metrics.totalCash)}
+              description={loading ? 'Actualizando metricas...' : 'Efectivo acumulado del turno actual'}
+              icon={Wallet}
+              accentClassName="bg-gradient-to-br from-card to-lime-950/30"
+            />
+            <DashboardMetricCard
+              title="Ingresos por ventas"
+              value={currencyFormatter.format(metrics.salesIncome)}
+              description={loading ? 'Actualizando metricas...' : 'Ventas cobradas desde el ultimo cierre'}
+              icon={TrendingUp}
+              accentClassName="bg-gradient-to-br from-card to-sky-950/30"
             />
           </div>
 

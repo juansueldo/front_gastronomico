@@ -2,6 +2,7 @@
 // Puedes importar y usar estas funciones en tus hooks o vistas
 
 import { apiClient } from './client';
+import { isApiError } from './errors';
 import { API_VERSION } from './types';
 
 type Payload = Record<string, unknown>;
@@ -94,41 +95,109 @@ export const endpoints = {
 
 // Busca un cliente por teléfono. Retorna null si no existe.
 fetchCustomerByPhone: async (phone: string) => {
-  const res = await apiClient.get(`/customer/search/${encodeURIComponent(phone)}`);
-  // Ajustá la URL según tu backend. Si devuelve 404, retorná null:
-  if (res.status === 404) return null;
-  const data = await res.json();
-  // Mapeá la respuesta a CustomerData:
-  return {
-    id: data.id,
-    name: data.name,
-    phone: data.phone,
-    savedAddress: data.lastDeliveryAddress
-      ? {
-          street: data.lastDeliveryAddress.street,
-          number: data.lastDeliveryAddress.number,
-          locality: data.lastDeliveryAddress.locality,
-          crossStreets: data.lastDeliveryAddress.crossStreets,
-          latitude: data.lastDeliveryAddress.latitude,
-          longitude: data.lastDeliveryAddress.longitude,
-          formatted: data.lastDeliveryAddress.formatted,
-        }
-      : undefined,
-    orderHistory: (data.Orders ?? []).slice(0, 5).map((o: any) => ({
-      id: String(o.id),
-      date: new Date(o.createdAt).toLocaleDateString('es-AR'),
-      total: new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(o.total_amount),
-      items: (o.OrderItems ?? []).map((i: any) => i.Product?.name ?? 'Producto'),
-    })),
-  };
+  try {
+    const payload = await apiClient.get<any>(`${API_VERSION}/customer/search`, {
+      params: { phone },
+      config: { cache: 'short' },
+    });
+    const data = payload?.customer ?? payload;
+
+    if (!data) return null;
+    const normalizedName = String(
+      data.name
+      ?? ''
+    ).trim();
+    const normalizedPhone = String(
+      data.phone
+      ?? data.phoneNumber
+      ?? data.customerPhone
+      ?? phone
+      ?? ''
+    ).trim();
+
+    return {
+      id: data.id,
+      name: normalizedName || 'Cliente',
+      phone: normalizedPhone,
+      savedAddress: data.lastDeliveryAddress
+        ? {
+            street: data.lastDeliveryAddress.street,
+            number: data.lastDeliveryAddress.number,
+            locality: data.lastDeliveryAddress.locality,
+            crossStreets: data.lastDeliveryAddress.crossStreets,
+            latitude: data.lastDeliveryAddress.latitude,
+            longitude: data.lastDeliveryAddress.longitude,
+            formatted: data.lastDeliveryAddress.formatted,
+          }
+        : undefined,
+      orderHistory: (data.Orders ?? data.orders ?? []).slice(0, 5).map((o: any) => ({
+        id: String(o.id),
+        date: new Date(o.createdAt ?? o.created_at).toLocaleDateString('es-AR'),
+        total: new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(
+          Number(o.total_amount ?? o.total ?? 0)
+        ),
+        items: (o.OrderItems ?? o.orderItems ?? []).map((i: any) => i.Product?.name ?? i.product?.name ?? 'Producto'),
+      })),
+    };
+  } catch (error) {
+    if (isApiError(error) && error.statusCode === 404) {
+      return null;
+    }
+    throw error;
+  }
 },
 
 // Trae las localidades disponibles para el dropdown
 fetchLocalities: async () => {
-  const res = await apiClient.get('/locality'); // ajustá la ruta
-  const data = await res.json();
-  const rows = Array.isArray(data) ? data : data?.rows ?? data?.data ?? [];
-  return rows.map((l: any) => ({ id: String(l.id), name: l.name }));
+  const candidates = [
+    `${API_VERSION}/localities`,
+    '/locality',
+    `${API_VERSION}/locality`,
+    '/localities',
+  ];
+
+  let payload: any = null;
+  let lastError: unknown = null;
+
+  for (const path of candidates) {
+    try {
+      payload = await apiClient.get<any>(path, { config: { cache: 'short' } });
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (!payload) {
+    throw lastError ?? new Error('No se pudieron cargar las localidades');
+  }
+
+  const rows = Array.isArray(payload)
+    ? payload
+    : payload?.rows
+      ?? payload?.data
+      ?? payload?.localities
+      ?? payload?.locality
+      ?? [];
+
+  const normalized = rows
+    .map((locality: any) => {
+      const rawName = locality?.name ?? locality?.locality ?? locality?.label ?? locality?.description ?? '';
+      const name = String(rawName ?? '').trim();
+      const rawId = locality?.id ?? locality?.localityId ?? locality?.locality_id ?? locality?.code ?? name;
+      const id = String(rawId ?? '').trim();
+      return { id, name };
+    })
+    .filter((item: { id: string; name: string }) => item.id.length > 0 && item.name.length > 0);
+
+  const uniqueById = new Map<string, { id: string; name: string }>();
+  normalized.forEach((item: { id: string; name: string }) => {
+    if (!uniqueById.has(item.id)) {
+      uniqueById.set(item.id, item);
+    }
+  });
+
+  return Array.from(uniqueById.values());
 },
 
 };

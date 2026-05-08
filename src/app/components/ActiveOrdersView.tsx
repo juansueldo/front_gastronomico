@@ -424,8 +424,37 @@ export function ActiveOrdersView() {
   // ── Interacción con órdenes ───────────────────────────────────────────────────
 
   const parseMoneyValue = (moneyText: string) => {
-    const v = Number(moneyText.replace(/[^\d,.-]/g, '').replace(',', '.'));
-    return Number.isFinite(v) ? Math.abs(v) : 0;
+    const cleaned = String(moneyText ?? '').replace(/[^\d,.-]/g, '').trim();
+    if (!cleaned) {
+      return 0;
+    }
+
+    const lastComma = cleaned.lastIndexOf(',');
+    const lastDot = cleaned.lastIndexOf('.');
+    const decimalIndex = Math.max(lastComma, lastDot);
+
+    let integerPart = cleaned;
+    let decimalPart = '';
+
+    // If separator has 1-2 digits to the right, treat it as decimal separator.
+    if (decimalIndex !== -1) {
+      const digitsAfterSeparator = cleaned.length - decimalIndex - 1;
+      if (digitsAfterSeparator > 0 && digitsAfterSeparator <= 2) {
+        integerPart = cleaned.slice(0, decimalIndex);
+        decimalPart = cleaned.slice(decimalIndex + 1);
+      }
+    }
+
+    const normalizedInteger = integerPart
+      .replace(/[.,]/g, '')
+      .replace(/(?!^)-/g, '');
+    const normalizedDecimal = decimalPart.replace(/[^\d]/g, '');
+    const normalized = normalizedDecimal
+      ? `${normalizedInteger}.${normalizedDecimal}`
+      : normalizedInteger;
+
+    const value = Number(normalized);
+    return Number.isFinite(value) ? Math.abs(value) : 0;
   };
 
   const handleOpenDetail = (order: ActiveOrderItem) => {

@@ -97,6 +97,33 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
   maximumFractionDigits: 0,
 });
 
+function getNormalizedProductCategoryIds(product: ProductItem): string[] {
+  const row = product as ProductItem & {
+    categoryId?: string | number;
+    category_id?: string | number;
+    category_ids?: Array<string | number>;
+    categories?: Array<{ id?: string | number; categoryId?: string | number }>;
+  };
+
+  const collected: Array<string | number> = [];
+
+  if (Array.isArray(row.categoryIds)) collected.push(...row.categoryIds);
+  if (Array.isArray(row.category_ids)) collected.push(...row.category_ids);
+  if (row.categoryId !== undefined && row.categoryId !== null) collected.push(row.categoryId);
+  if (row.category_id !== undefined && row.category_id !== null) collected.push(row.category_id);
+
+  if (Array.isArray(row.categories)) {
+    row.categories.forEach((category) => {
+      const categoryRef = category?.id ?? category?.categoryId;
+      if (categoryRef !== undefined && categoryRef !== null) {
+        collected.push(categoryRef);
+      }
+    });
+  }
+
+  return [...new Set(collected.map((value) => String(value).trim()).filter(Boolean))];
+}
+
 async function geocodeStructuredAddress(
   street: string,
   number: string,
@@ -376,7 +403,8 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
   const filteredProducts = availableProducts.filter((p) => {
     const q = productFilter.trim().toLowerCase();
     const matchName = !q || p.name.toLowerCase().includes(q);
-    const matchCat = categoryFilter === 'all' || (p.categoryIds ?? []).includes(categoryFilter);
+    const productCategoryIds = getNormalizedProductCategoryIds(p);
+    const matchCat = categoryFilter === 'all' || productCategoryIds.includes(categoryFilter);
     return matchName && matchCat;
   });
 
@@ -510,15 +538,18 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
 
   const renderCustomerFound = () => {
     const c = customerFound!;
+    const displayName = (c.name ?? '').trim() || 'Cliente';
+    const avatarInitial = displayName.charAt(0).toUpperCase();
+    const displayPhone = (c.phone ?? '').trim() || phone;
     return (
       <div className="space-y-3 rounded-lg border border-orange-700/50 bg-orange-950/20 p-3">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-500/20 text-orange-400 text-sm font-bold">
-            {c.name.charAt(0).toUpperCase()}
+            {avatarInitial}
           </div>
           <div>
-            <p className="text-sm font-medium text-white">{c.name}</p>
-            <p className="text-xs text-gray-400">{c.phone}</p>
+            <p className="text-sm font-medium text-white">{displayName}</p>
+            <p className="text-xs text-gray-400">{displayPhone}</p>
           </div>
           <Badge className="ml-auto bg-emerald-600 text-white text-xs">Existente</Badge>
         </div>
@@ -754,9 +785,9 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
           <button
             key={cat.id}
             type="button"
-            onClick={() => setCategoryFilter(cat.id)}
+            onClick={() => setCategoryFilter(String(cat.id))}
             className={`rounded-full px-3 py-1 text-xs transition-colors ${
-              categoryFilter === cat.id ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+              categoryFilter === String(cat.id) ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
             }`}
           >
             {cat.name}
