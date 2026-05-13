@@ -65,6 +65,7 @@ interface CashRegisterSummaryResponse {
 }
 
 const DEFAULT_PAYMENT_METHOD: PaymentMethod = 'efectivo';
+const CASH_HEADQUARTER_STORAGE_KEY = 'cash:selected-headquarter-id';
 
 const normalizePaymentMethod = (value: unknown): PaymentMethod => {
   if (value === 'tarjeta' || value === 'transferencia' || value === 'efectivo') {
@@ -206,6 +207,17 @@ const normalizeMovement = (movement: BackendCashMovement): CashMovement => {
 const resolveHeadquarterId = async (headquarterId?: string | number) => {
   if (headquarterId !== undefined && headquarterId !== null && String(headquarterId).trim() !== '') {
     return String(headquarterId);
+  }
+
+  try {
+    if (typeof window !== 'undefined') {
+      const persistedHeadquarterId = localStorage.getItem(CASH_HEADQUARTER_STORAGE_KEY);
+      if (persistedHeadquarterId && persistedHeadquarterId.trim() !== '') {
+        return persistedHeadquarterId;
+      }
+    }
+  } catch {
+    // noop
   }
 
   const headquarters = await listHeadquarters({ page: 1, pageSize: 1 });

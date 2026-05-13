@@ -5,13 +5,23 @@ import { Input } from './ui/input';
 import {Dialog, DialogContent, DialogHeader, DialogTitle} from './ui/dialog';
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from './ui/select';
 import { toast } from 'sonner';
-import { ApiError, closeDailyCashMovements, createCashMovement, fetchCashMovements, getCashMovementsByDate, type CashMovement, type PaymentMethod } from '../api';
+import { ApiError, closeDailyCashMovements, createCashMovement, fetchCashMovements, getCashMovementsByDate, listCashMovements, type CashMovement, type PaymentMethod } from '../api';
+import { listHeadquarters, type Headquarter } from '../api/headquarter';
 
 const currencyFormatter = new Intl.NumberFormat('es-AR', {
   style: 'currency',
   currency: 'ARS',
   maximumFractionDigits: 0,
 });
+const CASH_HEADQUARTER_STORAGE_KEY = 'cash:selected-headquarter-id';
+
+const getStoredHeadquarterId = () => {
+  try {
+    return localStorage.getItem(CASH_HEADQUARTER_STORAGE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+};
 
 const getTypeBadgeClass = (type: CashMovement['type']) => {
   if (type === 'income' || type === 'opening') {
@@ -45,8 +55,25 @@ const getPaymentMethodLabel = (paymentMethod: PaymentMethod) => {
   return 'Transferencia';
 };
 
+const getMovementTimestamp = (movement: Pick<CashMovement, 'movementDate' | 'createdAt' | 'created_at'>): number | null => {
+  const rawDate = movement.movementDate ?? movement.createdAt ?? movement.created_at;
+  if (!rawDate) {
+    return null;
+  }
+
+  const parsedTimestamp = new Date(rawDate).getTime();
+  if (Number.isNaN(parsedTimestamp)) {
+    return null;
+  }
+
+  return parsedTimestamp;
+};
+
 export function CashRegisterView() {
   const [movements, setMovements] = useState<CashMovement[]>([]);
+  const [headquarters, setHeadquarters] = useState<Headquarter[]>([]);
+  const [isLoadingHeadquarters, setIsLoadingHeadquarters] = useState(false);
+  const [selectedHeadquarterId, setSelectedHeadquarterId] = useState(() => getStoredHeadquarterId());
   const [isLoadingMovements, setIsLoadingMovements] = useState(false);
   const [movementFilterMode, setMovementFilterMode] = useState<'current-shift' | 'date'>('current-shift');
   const [selectedMovementDate, setSelectedMovementDate] = useState(() => {
@@ -57,25 +84,37 @@ export function CashRegisterView() {
     return `${year}-${month}-${day}`;
   });
   const [isManualDialogOpen, setIsManualDialogOpen] = useState(false);
+  const [isOpeningDialogOpen, setIsOpeningDialogOpen] = useState(false);
   const [manualType, setManualType] = useState<'ingreso' | 'egreso'>('ingreso');
   const [manualConcept, setManualConcept] = useState('');
   const [manualAmount, setManualAmount] = useState('');
   const [manualPaymentMethod, setManualPaymentMethod] = useState<PaymentMethod>('efectivo');
+  const [openingAmount, setOpeningAmount] = useState('');
+  const [openingConcept, setOpeningConcept] = useState('Apertura de caja');
+  const [lastClosingAmount, setLastClosingAmount] = useState<number | null>(null);
+  const [isLoadingLastClosingAmount, setIsLoadingLastClosingAmount] = useState(false);
 
   const loadMovements = async (options?: {
     mode?: 'current-shift' | 'date';
     date?: string;
+    headquarterId?: string;
   }) => {
     const mode = options?.mode ?? movementFilterMode;
     const date = options?.date ?? selectedMovementDate;
+    const headquarterId = options?.headquarterId ?? selectedHeadquarterId;
+
+    if (!headquarterId) {
+      setMovements([]);
+      return;
+    }
 
     setIsLoadingMovements(true);
     try {
       if (mode === 'date') {
-        const backendMovements = await getCashMovementsByDate(date);
+        const backendMovements = await getCashMovementsByDate(date, headquarterId);
         setMovements(backendMovements);
       } else {
-        const backendMovements = await fetchCashMovements(undefined, { sinceLastClosing: true });
+        const backendMovements = await fetchCashMovements(headquarterId, { sinceLastClosing: true });
         setMovements(backendMovements);
       }
     } catch (error) {
@@ -89,9 +128,106 @@ export function CashRegisterView() {
     }
   };
 
+  const loadLastClosingAmount = async (headquarterId: string) => {
+    if (!headquarterId) {
+      setLastClosingAmount(null);
+      return;
+    }
+
+    setIsLoadingLastClosingAmount(true);
+    try {
+      const closingMovements = await listCashMovements({
+        headquarterId,
+        type: 'closing',
+      });
+
+      const latestClosing = closingMovements.reduce<CashMovement | null>((latest, movement) => {
+        if (movement.type !== 'closing') {
+          return latest;
+        }
+
+        const movementTimestamp = getMovementTimestamp(movement);
+        if (movementTimestamp === null) {
+          return latest;
+        }
+
+        if (!latest) {
+          return movement;
+        }
+
+        const latestTimestamp = getMovementTimestamp(latest);
+        if (latestTimestamp === null || movementTimestamp > latestTimestamp) {
+          return movement;
+        }
+
+        return latest;
+      }, null);
+
+      setLastClosingAmount(latestClosing ? Math.max(latestClosing.amount, 0) : null);
+    } catch {
+      // Si falla la carga de sugerencia no bloqueamos el flujo principal de caja.
+      setLastClosingAmount(null);
+    } finally {
+      setIsLoadingLastClosingAmount(false);
+    }
+  };
+
   useEffect(() => {
-    void loadMovements({ mode: 'current-shift' });
+    const initializeHeadquarters = async () => {
+      setIsLoadingHeadquarters(true);
+      try {
+        const result = await listHeadquarters({ page: 1, pageSize: 100 });
+        const rows = result.rows ?? [];
+        setHeadquarters(rows);
+
+        if (rows.length === 0) {
+          setSelectedHeadquarterId('');
+          setMovements([]);
+          toast.error('No hay sedes configuradas para operar la caja');
+          return;
+        }
+
+        const storedHeadquarterId = getStoredHeadquarterId();
+        const currentIsValid = selectedHeadquarterId && rows.some((item) => String(item.id) === selectedHeadquarterId);
+        const storedIsValid = storedHeadquarterId && rows.some((item) => String(item.id) === storedHeadquarterId);
+
+        const initialHeadquarterId = currentIsValid
+          ? selectedHeadquarterId
+          : storedIsValid
+            ? storedHeadquarterId
+            : String(rows[0].id);
+
+        setSelectedHeadquarterId(initialHeadquarterId);
+        await loadMovements({ mode: 'current-shift', headquarterId: initialHeadquarterId });
+        await loadLastClosingAmount(initialHeadquarterId);
+      } catch (error) {
+        if (error instanceof ApiError) {
+          toast.error(error.message);
+        } else {
+          toast.error('No se pudieron cargar las sedes');
+        }
+      } finally {
+        setIsLoadingHeadquarters(false);
+      }
+    };
+
+    void initializeHeadquarters();
   }, []);
+
+  useEffect(() => {
+    try {
+      if (selectedHeadquarterId) {
+        localStorage.setItem(CASH_HEADQUARTER_STORAGE_KEY, selectedHeadquarterId);
+      } else {
+        localStorage.removeItem(CASH_HEADQUARTER_STORAGE_KEY);
+      }
+    } catch {
+      // noop
+    }
+  }, [selectedHeadquarterId]);
+
+  const selectedHeadquarterName = headquarters.find((item) => String(item.id) === selectedHeadquarterId)?.name;
+  const hasOpeningInCurrentShift = movements.some((movement) => movement.type === 'opening');
 
   const totalSales = movements
     .filter((movement) => movement.legacyType === 'venta' || movement.description.toLowerCase().startsWith('orden ') || movement.description.toLowerCase().startsWith('mesa '))
@@ -127,12 +263,18 @@ export function CashRegisterView() {
       ? -Math.abs(parsedAmount)
       : Math.abs(parsedAmount);
 
+    if (!selectedHeadquarterId) {
+      toast.error('Seleccioná una sede para registrar movimientos');
+      return;
+    }
+
     try {
       await createCashMovement({
         type: manualType,
         concept: trimmedConcept,
         amount: normalizedAmount,
         paymentMethod: manualPaymentMethod,
+        headquarterId: selectedHeadquarterId,
       });
 
       await loadMovements();
@@ -151,10 +293,63 @@ export function CashRegisterView() {
     setIsManualDialogOpen(false);
   };
 
-  const handleCloseCashRegister = async () => {
+  const handleOpenCashRegister = async () => {
+    if (!selectedHeadquarterId) {
+      toast.error('Seleccioná una sede para abrir la caja');
+      return;
+    }
+
+    const parsedAmount = Number(openingAmount.replace(',', '.'));
+    const trimmedConcept = openingConcept.trim() || 'Apertura de caja';
+
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      toast.error('Ingresá un importe de apertura válido');
+      return;
+    }
+
     try {
-      await closeDailyCashMovements(new Date().toISOString(), undefined, Math.max(expectedCash, 0));
+      await createCashMovement({
+        type: 'opening',
+        concept: trimmedConcept,
+        amount: Math.abs(parsedAmount),
+        paymentMethod: 'efectivo',
+        headquarterId: selectedHeadquarterId,
+      });
+
       await loadMovements();
+      toast.success('Apertura de caja registrada');
+      setOpeningAmount('');
+      setOpeningConcept('Apertura de caja');
+      setIsOpeningDialogOpen(false);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        toast.error(error.message);
+      } else {
+        toast.error('No se pudo registrar la apertura de caja');
+      }
+    }
+  };
+
+  const handleOpenOpeningDialog = () => {
+    if (lastClosingAmount !== null) {
+      setOpeningAmount((currentValue) => currentValue.trim() !== '' ? currentValue : String(lastClosingAmount));
+    }
+
+    setIsOpeningDialogOpen(true);
+  };
+
+  const handleCloseCashRegister = async () => {
+    if (!selectedHeadquarterId) {
+      toast.error('Seleccioná una sede para cerrar la caja');
+      return;
+    }
+
+    const closingAmount = Math.max(expectedCash, 0);
+
+    try {
+      await closeDailyCashMovements(new Date().toISOString(), selectedHeadquarterId, closingAmount);
+      await loadMovements();
+      setLastClosingAmount(closingAmount);
       toast.success('Cierre de caja registrado');
     } catch (error) {
       if (error instanceof ApiError) {
@@ -172,21 +367,71 @@ export function CashRegisterView() {
           <div>
             <h1 className="text-xl md:text-2xl font-semibold text-white">Caja</h1>
             <p className="text-sm text-gray-400">
+              {selectedHeadquarterName ? `Sede: ${selectedHeadquarterName}. ` : ''}
               {movementFilterMode === 'current-shift'
                 ? 'Mostrando movimientos desde el último cierre'
                 : `Mostrando movimientos del ${new Date(`${selectedMovementDate}T00:00:00`).toLocaleDateString('es-AR')}`}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="bg-label-success text-white">Caja abierta</Badge>
-            <Button size="sm" variant="secondary" onClick={() => setIsManualDialogOpen(true)}>
+            <Badge
+              variant="secondary"
+              className={hasOpeningInCurrentShift ? 'bg-label-success text-white' : 'bg-label-danger text-white'}
+            >
+              {hasOpeningInCurrentShift ? 'Caja abierta' : 'Caja cerrada'}
+            </Badge>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleOpenOpeningDialog}
+              disabled={!selectedHeadquarterId || isLoadingHeadquarters}
+            >
+              Apertura de caja
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setIsManualDialogOpen(true)}
+              disabled={!selectedHeadquarterId || isLoadingHeadquarters || !hasOpeningInCurrentShift}
+            >
               Registrar movimiento
             </Button>
-            <Button size="sm" onClick={() => void handleCloseCashRegister()}>Cierre de caja</Button>
+            <Button
+              size="sm"
+              onClick={() => void handleCloseCashRegister()}
+              disabled={!selectedHeadquarterId || isLoadingHeadquarters || !hasOpeningInCurrentShift}
+            >
+              Cierre de caja
+            </Button>
           </div>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <Select
+            value={selectedHeadquarterId}
+            onValueChange={(value) => {
+              setSelectedHeadquarterId(value);
+              void loadMovements({
+                mode: movementFilterMode,
+                date: selectedMovementDate,
+                headquarterId: value,
+              });
+              void loadLastClosingAmount(value);
+            }}
+            disabled={isLoadingHeadquarters || headquarters.length === 0}
+          >
+            <SelectTrigger className="w-[280px]">
+              <SelectValue placeholder={isLoadingHeadquarters ? 'Cargando sedes...' : 'Seleccionar sede'} />
+            </SelectTrigger>
+            <SelectContent>
+              {headquarters.map((headquarter) => (
+                <SelectItem key={headquarter.id} value={String(headquarter.id)}>
+                  {headquarter.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Select
             value={movementFilterMode}
             onValueChange={(value) => {
@@ -219,7 +464,7 @@ export function CashRegisterView() {
             size="sm"
             variant="secondary"
             onClick={() => void loadMovements()}
-            disabled={isLoadingMovements || (movementFilterMode === 'date' && !selectedMovementDate)}
+            disabled={isLoadingMovements || !selectedHeadquarterId || (movementFilterMode === 'date' && !selectedMovementDate)}
           >
             {isLoadingMovements ? 'Cargando...' : 'Actualizar'}
           </Button>
@@ -324,6 +569,39 @@ export function CashRegisterView() {
 
               <Button className="w-full" onClick={handleAddManualMovement}>
                 Guardar movimiento
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isOpeningDialogOpen} onOpenChange={setIsOpeningDialogOpen}>
+          <DialogContent className="bg-card card text-white">
+            <DialogHeader>
+              <DialogTitle>Registrar apertura de caja</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <Input
+                placeholder="Concepto"
+                value={openingConcept}
+                onChange={(event) => setOpeningConcept(event.target.value)}
+              />
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Monto inicial"
+                value={openingAmount}
+                onChange={(event) => setOpeningAmount(event.target.value)}
+              />
+              {lastClosingAmount !== null && (
+                <p className="text-xs text-gray-400">
+                  Sugerido segun ultimo cierre: {currencyFormatter.format(lastClosingAmount)}
+                  {isLoadingLastClosingAmount ? ' (actualizando...)' : ''}
+                </p>
+              )}
+              <Button className="w-full" onClick={() => void handleOpenCashRegister()}>
+                Confirmar apertura
               </Button>
             </div>
           </DialogContent>

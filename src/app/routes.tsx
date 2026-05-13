@@ -23,6 +23,8 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { HeadquartersView } from './components/HeadquartersView';
 import { PublicRoute } from './components/PublicRoute';
 import { DeliveryZonesManager } from './components/DeliveryZonesManager';
+import { UsersView } from './components/UsersView';
+
 
 import { DashboardView } from './components/DashboardView';
 
@@ -199,6 +201,15 @@ function DeliveryZonesPage() {
     </ProtectedRoute>
   );
 }
+function UsersPage() {
+  return (
+    <ProtectedRoute allowedRoles={["admin"]}>
+      <AppLayout>
+        <UsersView />
+      </AppLayout>
+    </ProtectedRoute>
+  );
+}
 function IntegrationsPage() {
   return (
     <ProtectedRoute allowedRoles={["admin"]}>
@@ -319,5 +330,9 @@ export const router = createBrowserRouter([
   {
     path: '/delivery-zones',
     Component: DeliveryZonesPage,
+  },
+  {
+    path: '/users',
+    Component: UsersPage,
   },
 ]);

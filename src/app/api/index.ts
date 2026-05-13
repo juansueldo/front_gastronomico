@@ -52,6 +52,9 @@ export * from './oauth';
 // Delivery Zone API
 export * from './delivery-zone';
 
+// Users API
+export * from './user';
+
 // Agent Config API
 export * from './agent-config';
 

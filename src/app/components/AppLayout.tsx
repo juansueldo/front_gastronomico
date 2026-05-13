@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { LayoutDashboard, MessageSquare, Calendar, Settings, Building, MapPin, LogOut, Bot, Link2, Megaphone, Bell, MoreHorizontal, ClipboardList, LayoutGrid, Wallet, Tags, Package, ChefHat, Puzzle, Boxes, ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, Moon, SunMedium, Laptop, Languages, CircleUserRound } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Calendar, Settings, Building, MapPin, LogOut, Bot, Link2, Megaphone, Bell, MoreHorizontal, ClipboardList, LayoutGrid, Wallet, Tags, Package, ChefHat, Puzzle, Boxes, ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, Moon, SunMedium, Laptop, Languages, CircleUserRound, Users } from 'lucide-react';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
@@ -144,6 +144,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       category: 'Configuración',
       items: [
         { path: '/settings', icon: Settings, label: 'Configuración', allowedRoles: ['admin', 'manager', 'user'] },
+        { path: '/users', icon: Users, label: 'Usuarios', allowedRoles: ['admin'] },
       ],
     },
   ];
