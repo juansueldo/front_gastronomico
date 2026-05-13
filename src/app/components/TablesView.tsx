@@ -29,6 +29,8 @@ import {
   updateTable as updateBackendTable,
   updateTableStatus as updateBackendTableStatus,
 } from '../api';
+import { listHeadquarters, type Headquarter } from '../api/headquarter';
+import { getLoggedUser } from '../authStorage';
 
 interface TableItem {
   id: string;
@@ -80,6 +82,24 @@ const statusBadgeClasses: Record<TableItem['status'], string> = {
 const areaOptions: TableItem['area'][] = ['Salón principal', 'Patio', 'Barra'];
 const ACTIVE_TABLE_STATUS_ID = 1;
 const INACTIVE_TABLE_STATUS_ID = 2;
+const TABLES_HEADQUARTER_STORAGE_KEY = 'cash:selected-headquarter-id';
+
+const getStoredHeadquarterId = () => {
+  try {
+    return localStorage.getItem(TABLES_HEADQUARTER_STORAGE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+};
+
+const getLoggedUserHeadquarterId = () => {
+  const parsedHeadquarterId = Number(getLoggedUser()?.headquarterId);
+  if (Number.isInteger(parsedHeadquarterId) && parsedHeadquarterId > 0) {
+    return String(parsedHeadquarterId);
+  }
+
+  return '';
+};
 
 const getAreaFromDescription = (description: string | undefined): TableItem['area'] => {
   if (!description) {
@@ -174,6 +194,9 @@ const mapBackendTableToUi = (table: ApiTableItem, index: number): TableItem => {
 
 export function TablesView() {
   const [tables, setTables] = useState<TableItem[]>([]);
+  const [headquarters, setHeadquarters] = useState<Headquarter[]>([]);
+  const [isLoadingHeadquarters, setIsLoadingHeadquarters] = useState(false);
+  const [selectedHeadquarterId, setSelectedHeadquarterId] = useState(() => getLoggedUserHeadquarterId() || getStoredHeadquarterId());
   const [detailTable, setDetailTable] = useState<TableItem | null>(null);
   const [actionTable, setActionTable] = useState<TableItem | null>(null);
   const [isCreateTableDialogOpen, setIsCreateTableDialogOpen] = useState(false);
@@ -198,16 +221,50 @@ export function TablesView() {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressNextClick = useRef(false);
 
-  const loadTables = async () => {
-    const backendTables = await fetchTables();
+  const loadTables = async (headquarterId?: string) => {
+    const resolvedHeadquarterId = headquarterId ?? selectedHeadquarterId;
+    if (!resolvedHeadquarterId) {
+      setTables([]);
+      return;
+    }
+
+    const backendTables = await fetchTables(resolvedHeadquarterId);
     setTables(backendTables.map(mapBackendTableToUi));
   };
 
   useEffect(() => {
     const loadInitialData = async () => {
       try {
+        setIsLoadingHeadquarters(true);
+        const headquarterResult = await listHeadquarters({ page: 1, pageSize: 100 });
+        const headquarterRows = headquarterResult.rows ?? [];
+        setHeadquarters(headquarterRows);
+
+        if (headquarterRows.length === 0) {
+          setSelectedHeadquarterId('');
+          setTables([]);
+          toast.error('No hay sedes configuradas para operar mesas');
+          return;
+        }
+
+        const loggedUserHeadquarterId = getLoggedUserHeadquarterId();
+        const storedHeadquarterId = getStoredHeadquarterId();
+        const loggedUserIsValid = loggedUserHeadquarterId && headquarterRows.some((item) => String(item.id) === loggedUserHeadquarterId);
+        const currentIsValid = selectedHeadquarterId && headquarterRows.some((item) => String(item.id) === selectedHeadquarterId);
+        const storedIsValid = storedHeadquarterId && headquarterRows.some((item) => String(item.id) === storedHeadquarterId);
+
+        const initialHeadquarterId = loggedUserIsValid
+          ? loggedUserHeadquarterId
+          : currentIsValid
+            ? selectedHeadquarterId
+          : storedIsValid
+            ? storedHeadquarterId
+            : String(headquarterRows[0].id);
+
+        setSelectedHeadquarterId(initialHeadquarterId);
+
         const [_, products] = await Promise.all([
-          loadTables(),
+          loadTables(initialHeadquarterId),
           fetchProducts(),
         ]);
 
@@ -221,11 +278,25 @@ export function TablesView() {
         } else {
           toast.error('No se pudieron cargar las mesas y productos');
         }
+      } finally {
+        setIsLoadingHeadquarters(false);
       }
     };
 
     void loadInitialData();
   }, []);
+
+  useEffect(() => {
+    try {
+      if (selectedHeadquarterId) {
+        localStorage.setItem(TABLES_HEADQUARTER_STORAGE_KEY, selectedHeadquarterId);
+      } else {
+        localStorage.removeItem(TABLES_HEADQUARTER_STORAGE_KEY);
+      }
+    } catch {
+      // noop
+    }
+  }, [selectedHeadquarterId]);
 
   useEffect(() => {
     if (!selectedProductId && availableProducts.length > 0) {
@@ -237,6 +308,7 @@ export function TablesView() {
   const occupiedCount = tables.filter((table) => table.status === 'ocupada').length;
   const closingCount = tables.filter((table) => table.status === 'por-cerrar').length;
   const reservedCount = tables.filter((table) => table.status === 'reservada').length;
+  const selectedHeadquarterName = headquarters.find((item) => String(item.id) === selectedHeadquarterId)?.name;
 
   const getTableTotalAmount = (table: TableItem) => table.totalAmount ?? 0;
 
@@ -349,6 +421,11 @@ export function TablesView() {
       return;
     }
 
+    if (!selectedHeadquarterId) {
+      toast.error('Seleccioná una sede para cobrar la mesa');
+      return;
+    }
+
     const totalAmount = getTableTotalAmount(actionTable);
 
     if (totalAmount <= 0) {
@@ -362,6 +439,7 @@ export function TablesView() {
         concept: `Mesa ${actionTable.number}`,
         amount: totalAmount,
         paymentMethod,
+        headquarterId: selectedHeadquarterId,
       });
     } catch (error) {
       if (error instanceof ApiError) {
@@ -412,9 +490,15 @@ export function TablesView() {
       return;
     }
 
+    if (!selectedHeadquarterId) {
+      toast.error('Seleccioná una sede para mover la mesa');
+      return;
+    }
+
     try {
       await updateBackendTable(actionTable.id, {
         location: nextAreaForMove,
+        headquarterId: selectedHeadquarterId,
         metadata: {
           waiter: actionTable.waiter === 'Sin asignar' ? undefined : actionTable.waiter,
           area: nextAreaForMove,
@@ -434,6 +518,11 @@ export function TablesView() {
   };
 
   const handleCreateTable = async () => {
+    if (!selectedHeadquarterId) {
+      toast.error('Seleccioná una sede para crear la mesa');
+      return;
+    }
+
     const waiter = newTableWaiter.trim();
     const capacity = Number(newTableCapacity.trim());
     const parsedTableNumber = Number(newTableNumber);
@@ -456,6 +545,7 @@ export function TablesView() {
         table_number: nextTableNumber,
         capacity: Number.isFinite(capacity) && capacity > 0 ? capacity : undefined,
         location: newTableArea,
+        headquarterId: selectedHeadquarterId,
         metadata: {
           waiter: waiter || undefined,
           area: newTableArea,
@@ -485,6 +575,11 @@ export function TablesView() {
       return;
     }
 
+    if (!selectedHeadquarterId) {
+      toast.error('Seleccioná una sede para editar la mesa');
+      return;
+    }
+
     const nextTableNumber = Number(editTableNumber.trim());
     const nextCapacity = Number(editTableCapacity.trim());
     const waiter = editTableWaiter.trim();
@@ -507,6 +602,7 @@ export function TablesView() {
         capacity: Number.isFinite(nextCapacity) && nextCapacity > 0 ? nextCapacity : undefined,
         location: editTableArea,
         description: description || undefined,
+        headquarterId: selectedHeadquarterId,
         metadata: {
           waiter: waiter || undefined,
           area: editTableArea,
@@ -636,15 +732,46 @@ export function TablesView() {
     <div className="h-full bg-body overflow-y-auto">
       <div className="p-4 md:p-6 space-y-6">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h1 className="text-xl md:text-2xl font-semibold text-white">Mesas</h1>
+          <div>
+            <h1 className="text-xl md:text-2xl font-semibold text-white">Mesas</h1>
+            {selectedHeadquarterName && (
+              <p className="text-sm text-gray-400">Sede: {selectedHeadquarterName}</p>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="bg-label-secondary text-white">
               Total: {tables.length}
             </Badge>
-            <Button size="sm" onClick={() => setIsCreateTableDialogOpen(true)}>
+            <Button
+              size="sm"
+              onClick={() => setIsCreateTableDialogOpen(true)}
+              disabled={!selectedHeadquarterId || isLoadingHeadquarters}
+            >
               Nueva mesa
             </Button>
           </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select
+            value={selectedHeadquarterId}
+            onValueChange={(value) => {
+              setSelectedHeadquarterId(value);
+              void loadTables(value);
+            }}
+            disabled={isLoadingHeadquarters || headquarters.length === 0}
+          >
+            <SelectTrigger className="w-[300px]">
+              <SelectValue placeholder={isLoadingHeadquarters ? 'Cargando sedes...' : 'Seleccionar sede'} />
+            </SelectTrigger>
+            <SelectContent>
+              {headquarters.map((headquarter) => (
+                <SelectItem key={headquarter.id} value={String(headquarter.id)}>
+                  {headquarter.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">

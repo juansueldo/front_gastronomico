@@ -8,6 +8,7 @@ import { listHeadquarters } from '../api/headquarter';
 import { fetchCashMovements, type CashMovement } from '../api/cash';
 import { DashboardMetricCard } from './dashboard/DashboardMetricCard';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { getLoggedUser } from '../authStorage';
 
 interface DashboardMetrics {
   activeOrders: number;
@@ -32,12 +33,81 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
   currency: 'ARS',
   maximumFractionDigits: 0,
 });
+const DASHBOARD_HEADQUARTER_STORAGE_KEY = 'cash:selected-headquarter-id';
 
 const isSaleMovement = (movement: CashMovement) => {
   const normalizedDescription = movement.description.toLowerCase();
   return movement.legacyType === 'venta'
     || normalizedDescription.startsWith('orden ')
     || normalizedDescription.startsWith('mesa ');
+};
+
+const getEntityHeadquarterId = (entity: unknown): number | null => {
+  if (!entity || typeof entity !== 'object') {
+    return null;
+  }
+
+  const candidate = entity as Record<string, unknown>;
+  const parsedHeadquarterId = Number(
+    candidate.headquarterId
+    ?? candidate.headquarter_id
+    ?? (candidate.headquarter as Record<string, unknown> | undefined)?.id
+    ?? (candidate.Headquarter as Record<string, unknown> | undefined)?.id
+    ?? (candidate.metadata as Record<string, unknown> | undefined)?.headquarterId
+    ?? (candidate.metadata as Record<string, unknown> | undefined)?.headquarter_id
+  );
+
+  if (!Number.isInteger(parsedHeadquarterId) || parsedHeadquarterId <= 0) {
+    return null;
+  }
+
+  return parsedHeadquarterId;
+};
+
+const getLoggedUserHeadquarterId = (): number | null => {
+  const loggedUser = getLoggedUser();
+  if (!loggedUser || typeof loggedUser !== 'object') {
+    return null;
+  }
+
+  const candidate = loggedUser as Record<string, unknown>;
+  const parsedHeadquarterId = Number(
+    candidate.headquarterId
+    ?? candidate.headquarter_id
+    ?? (candidate.headquarter as Record<string, unknown> | undefined)?.id
+    ?? (candidate.Headquarter as Record<string, unknown> | undefined)?.id
+    ?? (candidate.userHeadquarterId as unknown)
+  );
+
+  if (!Number.isInteger(parsedHeadquarterId) || parsedHeadquarterId <= 0) {
+    return null;
+  }
+
+  return parsedHeadquarterId;
+};
+
+const getStoredHeadquarterId = (): number | null => {
+  try {
+    const persistedHeadquarterId = localStorage.getItem(DASHBOARD_HEADQUARTER_STORAGE_KEY);
+    const parsedHeadquarterId = Number(persistedHeadquarterId);
+
+    if (!Number.isInteger(parsedHeadquarterId) || parsedHeadquarterId <= 0) {
+      return null;
+    }
+
+    return parsedHeadquarterId;
+  } catch {
+    return null;
+  }
+};
+
+const resolveDashboardHeadquarterId = (): number | null => {
+  const loggedUserHeadquarterId = getLoggedUserHeadquarterId();
+  if (loggedUserHeadquarterId) {
+    return loggedUserHeadquarterId;
+  }
+
+  return getStoredHeadquarterId();
 };
 
 export function DashboardView() {
@@ -51,17 +121,40 @@ export function DashboardView() {
       setLoading(true);
 
       try {
+        const userHeadquarterId = resolveDashboardHeadquarterId();
+
         const [orders, products, tables, headquarters, cashMovements] = await Promise.all([
           fetchActiveOrders(),
           fetchProducts(),
-          fetchTables(),
-          listHeadquarters({ page: 1, pageSize: 1 }),
-          fetchCashMovements(undefined, { sinceLastClosing: true }),
+          userHeadquarterId ? fetchTables(userHeadquarterId) : Promise.resolve([]),
+          listHeadquarters({ page: 1, pageSize: 100 }),
+          userHeadquarterId ? fetchCashMovements(userHeadquarterId, { sinceLastClosing: true }) : Promise.resolve([]),
         ]);
 
         if (cancelled) {
           return;
         }
+
+        const scopedOrders = (() => {
+          if (!userHeadquarterId) {
+            return orders;
+          }
+
+          const hasHeadquarterInfo = orders.some((order) => getEntityHeadquarterId(order) !== null);
+          if (!hasHeadquarterInfo) {
+            return orders;
+          }
+
+          return orders.filter((order) => getEntityHeadquarterId(order) === userHeadquarterId);
+        })();
+
+        const scopedHeadquartersCount = (() => {
+          if (!userHeadquarterId) {
+            return headquarters.total;
+          }
+
+          return headquarters.rows.some((headquarter) => Number(headquarter.id) === userHeadquarterId) ? 1 : 0;
+        })();
 
         const totalCash = cashMovements
           .filter((movement) => movement.paymentMethod === 'efectivo')
@@ -71,10 +164,10 @@ export function DashboardView() {
           .reduce((accumulator, movement) => accumulator + Math.abs(movement.amount), 0);
 
         setMetrics({
-          activeOrders: orders.length,
+          activeOrders: scopedOrders.length,
           products: products.length,
           tables: tables.length,
-          headquarters: headquarters.total,
+          headquarters: scopedHeadquartersCount,
           totalCash,
           salesIncome,
         });

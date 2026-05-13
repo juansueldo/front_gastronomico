@@ -20,6 +20,7 @@ export interface TableItem {
   location?: string;
   metadata?: TableMetadata;
   statusId?: number;
+  headquarterId?: number;
   active: boolean;
 }
 
@@ -30,6 +31,7 @@ export interface CreateTableRequest {
   location?: string;
   description?: string;
   metadata?: TableMetadata;
+  headquarterId?: string | number;
 }
 
 export interface UpdateTableRequest {
@@ -39,6 +41,7 @@ export interface UpdateTableRequest {
   location?: string;
   description?: string;
   metadata?: TableMetadata;
+  headquarterId?: string | number;
 }
 
 interface RawTableItem {
@@ -52,6 +55,10 @@ interface RawTableItem {
   metadata?: TableMetadata | null;
   statusId?: string | number;
   status_id?: string | number;
+  headquarterId?: string | number;
+  headquarter_id?: string | number;
+  headquarter?: { id?: string | number } | null;
+  Headquarter?: { id?: string | number } | null;
   active?: boolean;
 }
 
@@ -118,6 +125,17 @@ const normalizeTable = (item: RawTableItem): TableItem => {
     location: item.location ?? undefined,
     metadata,
     statusId,
+    headquarterId: (() => {
+      const parsedHeadquarterId = Number(
+        item.headquarterId
+        ?? item.headquarter_id
+        ?? item.headquarter?.id
+        ?? item.Headquarter?.id
+        ?? item.metadata?.headquarterId
+        ?? item.metadata?.headquarter_id
+      );
+      return Number.isInteger(parsedHeadquarterId) && parsedHeadquarterId > 0 ? parsedHeadquarterId : undefined;
+    })(),
     active: item.active ?? statusId === 1,
   };
 };
@@ -125,9 +143,28 @@ const normalizeTable = (item: RawTableItem): TableItem => {
 /**
  * Obtiene todas las mesas
  */
-export async function fetchTables(): Promise<TableItem[]> {
-  const data = await endpoints.fetchTablesLegacy();
-  return extractTables(data).map(normalizeTable);
+export async function fetchTables(headquarterId?: string | number): Promise<TableItem[]> {
+  const parsedHeadquarterId = Number(headquarterId);
+  const params = Number.isInteger(parsedHeadquarterId) && parsedHeadquarterId > 0
+    ? {
+      headquarterId: parsedHeadquarterId,
+      headquarter_id: parsedHeadquarterId,
+      headquarter: parsedHeadquarterId,
+    }
+    : undefined;
+  const data = await endpoints.fetchTablesLegacy(params);
+  const normalizedTables = extractTables(data).map(normalizeTable);
+
+  if (!Number.isInteger(parsedHeadquarterId) || parsedHeadquarterId <= 0) {
+    return normalizedTables;
+  }
+
+  const hasHeadquarterInfo = normalizedTables.some((table) => Number.isInteger(Number(table.headquarterId)) && Number(table.headquarterId) > 0);
+  if (!hasHeadquarterInfo) {
+    return normalizedTables;
+  }
+
+  return normalizedTables.filter((table) => Number(table.headquarterId) === parsedHeadquarterId);
 }
 
 /**
@@ -150,16 +187,32 @@ export async function getTable(tableId: string): Promise<TableItem> {
  * Crea una nueva mesa
  */
 export async function createTable(tableData: CreateTableRequest): Promise<any> {
-  return endpoints.createTable(tableData);
+  const parsedHeadquarterId = Number(tableData.headquarterId);
+  const normalizedHeadquarterId = Number.isInteger(parsedHeadquarterId) && parsedHeadquarterId > 0
+    ? parsedHeadquarterId
+    : undefined;
+
+  return endpoints.createTable({
+    ...tableData,
+    headquarterId: normalizedHeadquarterId,
+    headquarter_id: normalizedHeadquarterId,
+  });
 }
 
 /**
  * Actualiza una mesa
  */
 export async function updateTable(tableId: string, data: UpdateTableRequest): Promise<any> {
+  const parsedHeadquarterId = Number(data.headquarterId);
+  const normalizedHeadquarterId = Number.isInteger(parsedHeadquarterId) && parsedHeadquarterId > 0
+    ? parsedHeadquarterId
+    : undefined;
+
   return endpoints.updateTable(tableId, {
     id: tableId,
     ...data,
+    headquarterId: normalizedHeadquarterId,
+    headquarter_id: normalizedHeadquarterId,
   });
 }
 

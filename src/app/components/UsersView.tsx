@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Mail, Shield, UserCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createUser, deleteUser, listUsers, updateUser, type AppUser, type CreateUserRequest, type UpdateUserRequest } from '../api/user';
@@ -13,6 +13,7 @@ import {
 import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { type DataTableColumn, RemoteDataTable, createRowActionsColumn } from './ui/data-table';
+import { listHeadquarters, type Headquarter } from '../api/headquarter';
 
 const roleOptions = ['admin', 'manager', 'supervisor', 'user', 'agent'];
 
@@ -23,6 +24,7 @@ type UserFormState = {
   email: string;
   role: string;
   roleId?: number;
+  headquarterId: string;
   password: string;
 };
 
@@ -32,6 +34,7 @@ const emptyForm: UserFormState = {
   lastname: '',
   email: '',
   role: 'user',
+  headquarterId: '',
   password: '',
 };
 
@@ -48,6 +51,8 @@ export function UsersView() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [roleIdByName, setRoleIdByName] = useState<Record<string, number>>({});
+  const [headquarters, setHeadquarters] = useState<Headquarter[]>([]);
+  const [isLoadingHeadquarters, setIsLoadingHeadquarters] = useState(false);
 
   const loadUsers = useCallback(({ page, pageSize, search, sort }: {
     page: number;
@@ -90,10 +95,28 @@ export function UsersView() {
       email: user.email ?? '',
       role: user.role ?? 'user',
       roleId: user.roleId,
+      headquarterId: user.headquarterId ? String(user.headquarterId) : '',
       password: '',
     });
     setIsDialogOpen(true);
   };
+
+  useEffect(() => {
+    const loadHeadquarters = async () => {
+      setIsLoadingHeadquarters(true);
+      try {
+        const result = await listHeadquarters({ page: 1, pageSize: 100 });
+        setHeadquarters(result.rows ?? []);
+      } catch (nextError) {
+        const message = nextError instanceof Error ? nextError.message : 'No se pudieron cargar las sedes';
+        toast.error(message);
+      } finally {
+        setIsLoadingHeadquarters(false);
+      }
+    };
+
+    void loadHeadquarters();
+  }, []);
 
   const availableRoleOptions = useMemo(() => {
     const candidateRoles = [
@@ -148,6 +171,16 @@ export function UsersView() {
           <Shield className="h-4 w-4 text-gray-500" />
           <span>{user.role ?? 'Sin rol'}</span>
         </div>
+      ),
+    },
+    {
+      key: 'headquarterName',
+      header: 'Sede',
+      accessor: (user) => user.headquarterName ?? (user.headquarterId ? `Sede #${user.headquarterId}` : ''),
+      sortable: true,
+      className: 'text-gray-300',
+      cell: (user) => (
+        <span>{user.headquarterName ?? (user.headquarterId ? `Sede #${user.headquarterId}` : 'Sin sede')}</span>
       ),
     },
     createRowActionsColumn<AppUser>({
@@ -206,6 +239,10 @@ export function UsersView() {
     const email = form.email.trim();
     const role = form.role.trim().toLowerCase();
     const resolvedRoleId = form.roleId ?? roleIdByName[role];
+    const parsedHeadquarterId = Number(form.headquarterId);
+    const resolvedHeadquarterId = Number.isInteger(parsedHeadquarterId) && parsedHeadquarterId > 0
+      ? parsedHeadquarterId
+      : null;
     const password = form.password.trim();
 
     if (!username) {
@@ -215,6 +252,11 @@ export function UsersView() {
 
     if (!editingUserId && !password) {
       setError('Ingresá una contraseña para crear el usuario');
+      return;
+    }
+
+    if (!resolvedHeadquarterId) {
+      setError('Seleccioná una sede para el usuario');
       return;
     }
 
@@ -230,6 +272,7 @@ export function UsersView() {
           email: email || undefined,
           role: role || undefined,
           roleId: resolvedRoleId,
+          headquarterId: resolvedHeadquarterId,
         };
 
         if (password) {
@@ -247,6 +290,7 @@ export function UsersView() {
           email: email || undefined,
           role: role || undefined,
           roleId: resolvedRoleId,
+          headquarterId: resolvedHeadquarterId,
         };
 
         await createUser(payload);
@@ -336,6 +380,22 @@ export function UsersView() {
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Select
+                value={form.headquarterId}
+                onValueChange={(value) => handleFieldChange('headquarterId', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={isLoadingHeadquarters ? 'Cargando sedes...' : 'Sede *'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {headquarters.map((headquarter) => (
+                    <SelectItem key={headquarter.id} value={String(headquarter.id)}>
+                      {headquarter.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
                 value={form.role}
                 onValueChange={(value) => {
                   const normalizedRole = value.trim().toLowerCase();
@@ -358,9 +418,9 @@ export function UsersView() {
                 </SelectContent>
               </Select>
 
-              <Input
-                placeholder={editingUserId ? 'Nueva contraseña (opcional)' : 'Contraseña *'}
-                type="password"
+                <Input
+                  placeholder={editingUserId ? 'Nueva contraseña (opcional)' : 'Contraseña *'}
+                  type="password"
                 value={form.password}
                 onChange={(event) => handleFieldChange('password', event.target.value)}
               />

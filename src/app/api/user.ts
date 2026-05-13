@@ -10,6 +10,8 @@ export interface AppUser {
   email?: string;
   role?: string;
   roleId?: number;
+  headquarterId?: number;
+  headquarterName?: string;
   status?: string;
   active?: boolean;
 }
@@ -22,6 +24,7 @@ export interface CreateUserRequest {
   email?: string;
   role?: string;
   roleId?: number;
+  headquarterId?: string | number;
   status?: string;
 }
 
@@ -33,6 +36,7 @@ export interface UpdateUserRequest {
   email?: string;
   role?: string;
   roleId?: number;
+  headquarterId?: string | number;
   status?: string;
 }
 
@@ -72,6 +76,12 @@ interface RawUser {
   profile_id?: unknown;
   roleId?: unknown;
   role_id?: unknown;
+  headquarterId?: unknown;
+  headquarter_id?: unknown;
+  headquarter?: unknown;
+  Headquarter?: unknown;
+  headquarterName?: unknown;
+  headquarter_name?: unknown;
   status?: string;
   active?: boolean;
 }
@@ -108,6 +118,8 @@ function normalizeUser(item: RawUser): AppUser {
   const email = String(item.email ?? '').trim();
   const role = extractRoleName(item);
   const roleId = extractRoleId(item);
+  const headquarterId = extractHeadquarterId(item);
+  const headquarterName = extractHeadquarterName(item);
   const status = String(item.status ?? '').trim();
 
   return {
@@ -118,9 +130,60 @@ function normalizeUser(item: RawUser): AppUser {
     email: email || undefined,
     role: role || undefined,
     roleId,
+    headquarterId,
+    headquarterName,
     status: status || undefined,
     active: typeof item.active === 'boolean' ? item.active : undefined,
   };
+}
+
+function extractHeadquarterId(item: RawUser): number | undefined {
+  const directCandidates = [item.headquarterId, item.headquarter_id];
+  for (const candidate of directCandidates) {
+    const parsed = Number(candidate);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  const nestedCandidates = [item.headquarter, item.Headquarter];
+  for (const nestedCandidate of nestedCandidates) {
+    if (!nestedCandidate || typeof nestedCandidate !== 'object') {
+      continue;
+    }
+
+    const nestedObject = nestedCandidate as Record<string, unknown>;
+    const parsed = Number(nestedObject.id ?? nestedObject.headquarterId ?? nestedObject.headquarter_id);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  return undefined;
+}
+
+function extractHeadquarterName(item: RawUser): string | undefined {
+  const directName = [item.headquarterName, item.headquarter_name]
+    .find((value) => typeof value === 'string' && String(value).trim().length > 0);
+  if (typeof directName === 'string') {
+    return directName.trim();
+  }
+
+  const nestedCandidates = [item.headquarter, item.Headquarter];
+  for (const nestedCandidate of nestedCandidates) {
+    if (!nestedCandidate || typeof nestedCandidate !== 'object') {
+      continue;
+    }
+
+    const nestedObject = nestedCandidate as Record<string, unknown>;
+    const nameCandidate = nestedObject.name ?? nestedObject.description;
+
+    if (typeof nameCandidate === 'string' && nameCandidate.trim()) {
+      return nameCandidate.trim();
+    }
+  }
+
+  return undefined;
 }
 
 function extractRoleName(item: RawUser): string {
@@ -289,21 +352,35 @@ export async function listUsers(params: ListUsersParams = {}): Promise<UserListR
 }
 
 export function createUser(data: CreateUserRequest) {
+  const parsedHeadquarterId = Number(data.headquarterId);
+  const normalizedHeadquarterId = Number.isInteger(parsedHeadquarterId) && parsedHeadquarterId > 0
+    ? parsedHeadquarterId
+    : undefined;
+
   return endpoints.createUser({
     ...data,
     rol: data.role,
     roleName: data.role,
     role_id: data.roleId,
+    headquarterId: normalizedHeadquarterId,
+    headquarter_id: normalizedHeadquarterId,
   });
 }
 
 export function updateUser(id: string, data: UpdateUserRequest) {
+  const parsedHeadquarterId = Number(data.headquarterId);
+  const normalizedHeadquarterId = Number.isInteger(parsedHeadquarterId) && parsedHeadquarterId > 0
+    ? parsedHeadquarterId
+    : undefined;
+
   return endpoints.updateUser(id, {
     id,
     ...data,
     rol: data.role,
     roleName: data.role,
     role_id: data.roleId,
+    headquarterId: normalizedHeadquarterId,
+    headquarter_id: normalizedHeadquarterId,
   });
 }
 

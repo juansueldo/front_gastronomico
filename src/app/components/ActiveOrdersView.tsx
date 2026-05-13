@@ -43,6 +43,7 @@ interface ActiveOrderItem {
   id: string;
   contactId: number;
   type: 'delivery' | 'salon';
+  headquarterId?: number;
   customerName: string;
   address?: string;
   latitude?: number;
@@ -145,6 +146,10 @@ export function ActiveOrdersView() {
 
     const backendType = String(order?.type ?? '');
     const normalizedType: ActiveOrderItem['type'] = backendType === 'delivery' ? 'delivery' : 'salon';
+    const parsedHeadquarterId = Number(order?.headquarterId ?? order?.headquarter_id ?? order?.Headquarter?.id);
+    const normalizedHeadquarterId = Number.isInteger(parsedHeadquarterId) && parsedHeadquarterId > 0
+      ? parsedHeadquarterId
+      : undefined;
 
     const normalizedItems = Array.isArray(order?.items)
       ? order.items.map((item: any) => String(item))
@@ -167,6 +172,7 @@ export function ActiveOrdersView() {
       id: String(order?.id ?? order?.order_number ?? crypto.randomUUID()),
       contactId: Number(order?.contactId ?? order?.customerId ?? 0),
       type: normalizedType,
+      headquarterId: normalizedHeadquarterId,
       customerName: String(customerName),
       address: order?.address ?? order?.delivery_address ?? undefined,
       latitude: order?.latitude ?? order?.delivery_latitude ?? undefined,
@@ -520,7 +526,13 @@ export function ActiveOrdersView() {
     if (amount <= 0) { toast.error('No se pudo calcular el importe de la orden'); return; }
 
     try {
-      await createCashMovement({ type: 'venta', concept: `Orden ${order.id}`, amount, paymentMethod: finalizePaymentMethod });
+      await createCashMovement({
+        type: 'venta',
+        concept: `Orden ${order.id}`,
+        amount,
+        paymentMethod: finalizePaymentMethod,
+        headquarterId: order.headquarterId,
+      });
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : 'No se pudo registrar la venta en caja');
       return;

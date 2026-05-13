@@ -26,6 +26,7 @@ import {
   type ProductItem,
 } from '../../api';
 import { endpoints } from '../../api/endpoints';
+import { listHeadquarters, type Headquarter } from '../../api/headquarter';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -96,6 +97,15 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
   currency: 'ARS',
   maximumFractionDigits: 0,
 });
+const ORDER_HEADQUARTER_STORAGE_KEY = 'cash:selected-headquarter-id';
+
+const getStoredHeadquarterId = () => {
+  try {
+    return localStorage.getItem(ORDER_HEADQUARTER_STORAGE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+};
 
 function getNormalizedProductCategoryIds(product: ProductItem): string[] {
   const row = product as ProductItem & {
@@ -243,6 +253,9 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
 
   // Misc
   const [newOrderUserId, setNewOrderUserId] = useState('');
+  const [headquarters, setHeadquarters] = useState<Headquarter[]>([]);
+  const [selectedHeadquarterId, setSelectedHeadquarterId] = useState(() => getStoredHeadquarterId());
+  const [isLoadingHeadquarters, setIsLoadingHeadquarters] = useState(false);
   const [newOrderTableId, setNewOrderTableId] = useState('');
   const [newOrderWaiterId, setNewOrderWaiterId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -261,7 +274,66 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
     if (!open) return;
     const loggedUser = getLoggedUser();
     if (loggedUser?.id) setNewOrderUserId(String(loggedUser.id));
+    const userHeadquarterId = Number(loggedUser?.headquarterId);
+    if (Number.isInteger(userHeadquarterId) && userHeadquarterId > 0) {
+      setSelectedHeadquarterId(String(userHeadquarterId));
+    }
   }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const loadHeadquarters = async () => {
+      setIsLoadingHeadquarters(true);
+      try {
+        const result = await listHeadquarters({ page: 1, pageSize: 100 });
+        const rows = result.rows ?? [];
+        setHeadquarters(rows);
+
+        if (rows.length === 0) {
+          setSelectedHeadquarterId('');
+          return;
+        }
+
+        const userHeadquarterId = Number(getLoggedUser()?.headquarterId);
+        const userHeadquarterAsText = Number.isInteger(userHeadquarterId) && userHeadquarterId > 0
+          ? String(userHeadquarterId)
+          : '';
+        const storedHeadquarterId = getStoredHeadquarterId();
+        const currentIsValid = selectedHeadquarterId && rows.some((item) => String(item.id) === selectedHeadquarterId);
+        const userIsValid = userHeadquarterAsText && rows.some((item) => String(item.id) === userHeadquarterAsText);
+        const storedIsValid = storedHeadquarterId && rows.some((item) => String(item.id) === storedHeadquarterId);
+
+        const initialHeadquarterId = currentIsValid
+          ? selectedHeadquarterId
+          : userIsValid
+            ? userHeadquarterAsText
+            : storedIsValid
+              ? storedHeadquarterId
+              : String(rows[0].id);
+
+        setSelectedHeadquarterId(initialHeadquarterId);
+      } catch {
+        toast.error('No se pudieron cargar las sedes');
+      } finally {
+        setIsLoadingHeadquarters(false);
+      }
+    };
+
+    void loadHeadquarters();
+  }, [open]);
+
+  useEffect(() => {
+    try {
+      if (selectedHeadquarterId) {
+        localStorage.setItem(ORDER_HEADQUARTER_STORAGE_KEY, selectedHeadquarterId);
+      }
+    } catch {
+      // noop
+    }
+  }, [selectedHeadquarterId]);
 
   // Cargar localidades cuando llegamos al paso address
   useEffect(() => {
@@ -422,6 +494,16 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
       return;
     }
 
+    const parsedHeadquarterId = Number(selectedHeadquarterId);
+    const resolvedHeadquarterId = Number.isInteger(parsedHeadquarterId) && parsedHeadquarterId > 0
+      ? parsedHeadquarterId
+      : null;
+
+    if (orderType === 'dine-in' && !resolvedHeadquarterId) {
+      toast.error('Seleccioná una sede para el pedido de salón');
+      return;
+    }
+
     const loggedUser = getLoggedUser();
     const storeId = Number(loggedUser?.storeId);
 
@@ -432,6 +514,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
 
     const payload: CreateOrderRequest = {
       storeId,
+      headquarterId: resolvedHeadquarterId ?? undefined,
       customerId: customerFound?.id,
       customerName: !customerFound?.id ? newCustomerName.trim() : undefined,
       customerPhone: !customerFound?.id ? phone.trim() : undefined,
@@ -443,7 +526,6 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
       delivery_longitude: geocodedPoint?.longitude,
       tableId: orderType === 'dine-in' && newOrderTableId ? Number(newOrderTableId) : undefined,
       waiterId: newOrderWaiterId ? Number(newOrderWaiterId) : undefined,
-      //headquarterId: loggedUser?.headquarterId ?? 1,
     };
 
     setIsSubmitting(true);
@@ -606,31 +688,59 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
       </div>
 
       {orderType === 'dine-in' && (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-2">
           <div>
-            <FieldLabel>Mesa (opcional)</FieldLabel>
-            <Input
-              placeholder="ID de mesa"
-              value={newOrderTableId}
-              onChange={(e) => setNewOrderTableId(e.target.value)}
-              type="number"
-            />
+            <FieldLabel>Sede *</FieldLabel>
+            <Select value={selectedHeadquarterId} onValueChange={setSelectedHeadquarterId}>
+              <SelectTrigger>
+                <SelectValue placeholder={isLoadingHeadquarters ? 'Cargando sedes...' : 'Seleccioná una sede'} />
+              </SelectTrigger>
+              <SelectContent>
+                {headquarters.map((headquarter) => (
+                  <SelectItem key={headquarter.id} value={String(headquarter.id)}>
+                    {headquarter.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <div>
-            <FieldLabel>Mozo (opcional)</FieldLabel>
-            <Input
-              placeholder="ID de mozo"
-              value={newOrderWaiterId}
-              onChange={(e) => setNewOrderWaiterId(e.target.value)}
-              type="number"
-            />
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <FieldLabel>Mesa (opcional)</FieldLabel>
+              <Input
+                placeholder="ID de mesa"
+                value={newOrderTableId}
+                onChange={(e) => setNewOrderTableId(e.target.value)}
+                type="number"
+              />
+            </div>
+            <div>
+              <FieldLabel>Mozo (opcional)</FieldLabel>
+              <Input
+                placeholder="ID de mozo"
+                value={newOrderWaiterId}
+                onChange={(e) => setNewOrderWaiterId(e.target.value)}
+                type="number"
+              />
+            </div>
           </div>
         </div>
       )}
 
+      {orderType === 'dine-in' && !selectedHeadquarterId && (
+        <p className="text-xs text-yellow-400">Seleccioná una sede para continuar con el pedido de salón.</p>
+      )}
+
       <div className="flex gap-2">
         <Button variant="outline" className="flex-1" onClick={goBack}>← Atrás</Button>
-        <Button className="flex-1" onClick={goNext}>Continuar →</Button>
+        <Button
+          className="flex-1"
+          onClick={goNext}
+          disabled={orderType === 'dine-in' && !selectedHeadquarterId}
+        >
+          Continuar →
+        </Button>
       </div>
     </div>
   );

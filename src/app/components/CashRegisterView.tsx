@@ -7,6 +7,7 @@ import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from './u
 import { toast } from 'sonner';
 import { ApiError, closeDailyCashMovements, createCashMovement, fetchCashMovements, getCashMovementsByDate, listCashMovements, type CashMovement, type PaymentMethod } from '../api';
 import { listHeadquarters, type Headquarter } from '../api/headquarter';
+import { getLoggedUser } from '../authStorage';
 
 const currencyFormatter = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -21,6 +22,15 @@ const getStoredHeadquarterId = () => {
   } catch {
     return '';
   }
+};
+
+const getLoggedUserHeadquarterId = () => {
+  const parsedHeadquarterId = Number(getLoggedUser()?.headquarterId);
+  if (Number.isInteger(parsedHeadquarterId) && parsedHeadquarterId > 0) {
+    return String(parsedHeadquarterId);
+  }
+
+  return '';
 };
 
 const getTypeBadgeClass = (type: CashMovement['type']) => {
@@ -73,7 +83,7 @@ export function CashRegisterView() {
   const [movements, setMovements] = useState<CashMovement[]>([]);
   const [headquarters, setHeadquarters] = useState<Headquarter[]>([]);
   const [isLoadingHeadquarters, setIsLoadingHeadquarters] = useState(false);
-  const [selectedHeadquarterId, setSelectedHeadquarterId] = useState(() => getStoredHeadquarterId());
+  const [selectedHeadquarterId, setSelectedHeadquarterId] = useState(() => getLoggedUserHeadquarterId() || getStoredHeadquarterId());
   const [isLoadingMovements, setIsLoadingMovements] = useState(false);
   const [movementFilterMode, setMovementFilterMode] = useState<'current-shift' | 'date'>('current-shift');
   const [selectedMovementDate, setSelectedMovementDate] = useState(() => {
@@ -187,12 +197,16 @@ export function CashRegisterView() {
           return;
         }
 
+        const loggedUserHeadquarterId = getLoggedUserHeadquarterId();
         const storedHeadquarterId = getStoredHeadquarterId();
+        const loggedUserIsValid = loggedUserHeadquarterId && rows.some((item) => String(item.id) === loggedUserHeadquarterId);
         const currentIsValid = selectedHeadquarterId && rows.some((item) => String(item.id) === selectedHeadquarterId);
         const storedIsValid = storedHeadquarterId && rows.some((item) => String(item.id) === storedHeadquarterId);
 
-        const initialHeadquarterId = currentIsValid
-          ? selectedHeadquarterId
+        const initialHeadquarterId = loggedUserIsValid
+          ? loggedUserHeadquarterId
+          : currentIsValid
+            ? selectedHeadquarterId
           : storedIsValid
             ? storedHeadquarterId
             : String(rows[0].id);

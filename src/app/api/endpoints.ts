@@ -31,7 +31,7 @@ export const endpoints = {
   deleteProduct: (id: string) => apiClient.delete(`${API_VERSION}/product/${id}`),
 
     // --- TABLES ---
-    fetchTablesLegacy: () => apiClient.get(`${API_VERSION}/table`, { config: { cache: 'short' } }),
+    fetchTablesLegacy: (params?: QueryParams) => apiClient.get(`${API_VERSION}/table`, { params, config: { cache: 'short' } }),
     listTables: (params?: QueryParams) => apiClient.get(`${API_VERSION}/table`, { params }),
     getTable: (id: string) => apiClient.get(`${API_VERSION}/table/${id}`),
     createTable: (data: Payload) => apiClient.post(`${API_VERSION}/table`, data),
