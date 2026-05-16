@@ -722,7 +722,7 @@ export function PublicStorefrontView() {
 
                   <div className="mt-4">
                     <h2 className="text-xl font-black uppercase tracking-wide text-[#2f2f2f]">
-                      {selectedCategoryId === 'all' ? 'Catalogo' : (categoriesById[selectedCategoryId] ?? 'Categoria')}
+                      {selectedCategoryId === 'all' ? '' : (categoriesById[selectedCategoryId] ?? 'Categoria')}
                     </h2>
                   </div>
 
@@ -736,9 +736,9 @@ export function PublicStorefrontView() {
                         <div className="mt-4 space-y-6">
                           {groupedVisibleProducts.map((group) => (
                             <section key={group.categoryId}>
-                              <h3 className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-[#4b5563]">
+                              <h2 className="text-xl font-black uppercase tracking-wide text-[#2f2f2f]">
                                 {group.categoryName}
-                              </h3>
+                              </h2>
                               <div className="grid gap-3 md:grid-cols-2">
                                 {group.products.map((product) => renderProductCard(product))}
                               </div>
@@ -907,7 +907,7 @@ export function PublicStorefrontView() {
                         </p>
                       ) : null}
                       <div className="mt-4 border-t border-[#e4e4e4] pt-3">
-                        <p className="flex items-center justify-between text-2xl font-black text-[#2f2f2f]">
+                        <p className="flex items-center justify-between text-2md font-black text-[#2f2f2f]">
                           <span>Total</span>
                           <span className="text-[#ff5a2f]">{currencyFormatter.format(orderSuccessSummary?.total ?? 0)}</span>
                         </p>
@@ -1028,11 +1028,11 @@ export function PublicStorefrontView() {
             <button
               type="button"
               onClick={handleContinueCheckout}
-              className="text-xl font-extrabold !text-[#ffffff]"
+              className="text-md font-extrabold !text-[#ffffff]"
             >
               Continuar
             </button>
-            <p className="text-2xl font-black !text-[#ffffff]">{currencyFormatter.format(cartTotal)}</p>
+            <p className="text-2md font-black !text-[#ffffff]">{currencyFormatter.format(cartTotal)}</p>
           </div>
         </div>
       ) : null}
@@ -1059,9 +1059,9 @@ export function PublicStorefrontView() {
               </div>
 
               <div className="space-y-3 p-4">
-                <h3 className="text-4xl font-black text-[#2f2f2f]">{activeProduct.name}</h3>
+                <h3 className="text-xl font-black text-[#2f2f2f]">{activeProduct.name}</h3>
                 <p className="text-sm text-[#5f636b]">{activeProduct.description ?? 'Sin descripcion.'}</p>
-                <p className="text-4xl font-black text-[#ff5a2f]">{currencyFormatter.format(activeProduct.price)}</p>
+                <p className="text-xl font-black text-[#ff5a2f]">{currencyFormatter.format(activeProduct.price)}</p>
                 <p className="text-sm text-[#7a7a7a]">
                   Sin impuestos nacionales:
                   {' '}
@@ -1072,17 +1072,17 @@ export function PublicStorefrontView() {
                   <button
                     type="button"
                     onClick={() => setProductDialogQuantity((qty) => Math.max(1, qty - 1))}
-                    className="h-11 text-center text-3xl font-semibold text-[#4a4a4a]"
+                    className="h-11 text-center text-3md font-semibold text-[#4a4a4a]"
                   >
                     -
                   </button>
-                  <p className="h-11 border-x border-[#dfdfdf] text-center text-2xl font-bold leading-[44px] text-[#2f2f2f]">
+                  <p className="h-11 border-x border-[#dfdfdf] text-center text-2md font-bold leading-[44px] text-[#2f2f2f]">
                     {productDialogQuantity}
                   </p>
                   <button
                     type="button"
                     onClick={() => setProductDialogQuantity((qty) => qty + 1)}
-                    className="h-11 text-center text-3xl font-semibold text-[#4a4a4a]"
+                    className="h-11 text-center text-3md font-semibold text-[#4a4a4a]"
                   >
                     +
                   </button>
@@ -1091,7 +1091,7 @@ export function PublicStorefrontView() {
                 <button
                   type="button"
                   onClick={confirmProductSelection}
-                  className="flex h-12 w-full items-center justify-between rounded-2xl bg-[#ff5a2f] px-6 text-2xl font-black !text-[#ffffff]"
+                  className="flex h-12 w-full items-center justify-between rounded-2xl bg-[#ff5a2f] px-6 text-2md font-black !text-[#ffffff]"
                 >
                   <span>Agregar a mi pedido</span>
                   <span>{currencyFormatter.format(productDialogTotal)}</span>
