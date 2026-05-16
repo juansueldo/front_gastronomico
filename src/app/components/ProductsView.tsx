@@ -1,16 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { BookOpenText, Pencil, Plus, Trash2 } from 'lucide-react';
-import { toast } from 'sonner';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
 import { Checkbox } from './ui/checkbox';
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from './ui/dropdown-menu';
 import {
   Dialog,
   DialogContent,
@@ -21,14 +13,13 @@ import { type DataTableColumn, DataTable } from './ui/data-table';
 import { useProductsViewModel } from '../hooks/useProductsViewModel';
 import type { ProductItem } from '../api/product';
 import { ProductRecipeIngredientRow } from './products/ProductRecipeIngredientRow';
+import { ProductDialog } from './products/ProductDialog';
 
 const currencyFormatter = new Intl.NumberFormat('es-AR', {
   style: 'currency',
   currency: 'ARS',
   maximumFractionDigits: 0,
 });
-
-const TOTAL_CREATE_STEPS = 3;
 
 export function ProductsView() {
   const {
@@ -68,45 +59,6 @@ export function ProductsView() {
     setRecipeProduct,
     setRecipeIngredients,
   } = useProductsViewModel();
-  const [createStep, setCreateStep] = useState(1);
-  const isCreateMode = !editingProductId;
-
-  useEffect(() => {
-    if (isDialogOpen && isCreateMode) {
-      setCreateStep(1);
-    }
-  }, [isDialogOpen, isCreateMode]);
-
-  const handleProductDialogOpenChange = (open: boolean) => {
-    setIsDialogOpen(open);
-    if (!open) {
-      setCreateStep(1);
-    }
-  };
-
-  const handleNextCreateStep = () => {
-    if (createStep === 1) {
-      const trimmedName = name.trim();
-      const parsedPrice = Number(price.replace(',', '.'));
-
-      if (!trimmedName) {
-        toast.error('Ingresá el nombre del producto');
-        return;
-      }
-
-      if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
-        toast.error('Ingresá un precio válido');
-        return;
-      }
-    }
-
-    setCreateStep((currentStep) => Math.min(TOTAL_CREATE_STEPS, currentStep + 1));
-  };
-
-  const handlePreviousCreateStep = () => {
-    setCreateStep((currentStep) => Math.max(1, currentStep - 1));
-  };
-
   const getCategoryNames = (categoryId: number) => {
     return categories
       .filter((category) => category.id == categoryId)
@@ -207,182 +159,25 @@ export function ProductsView() {
         </div>
       </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={handleProductDialogOpenChange}>
-        <DialogContent className="bg-card border-orange-700 text-white">
-          <DialogHeader>
-            <DialogTitle>{editingProductId ? 'Editar producto' : 'Nuevo producto'}</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-3">
-            {isCreateMode ? (
-              <div className="space-y-2">
-                <p className="text-xs uppercase tracking-wide text-gray-400">Paso {createStep} de {TOTAL_CREATE_STEPS}</p>
-                <div className="grid grid-cols-3 gap-2">
-                  <Badge variant="secondary" className={createStep >= 1 ? 'justify-center bg-label-secondary text-white' : 'justify-center bg-body text-gray-400'}>Datos</Badge>
-                  <Badge variant="secondary" className={createStep >= 2 ? 'justify-center bg-label-secondary text-white' : 'justify-center bg-body text-gray-400'}>Imagen</Badge>
-                  <Badge variant="secondary" className={createStep >= 3 ? 'justify-center bg-label-secondary text-white' : 'justify-center bg-body text-gray-400'}>Categorías</Badge>
-                </div>
-              </div>
-            ) : null}
-
-            {!isCreateMode || createStep === 1 ? (
-              <div className="space-y-3">
-                <Input
-                  placeholder="Nombre"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                />
-                <Input
-                  placeholder="Descripción (opcional)"
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                />
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="Precio"
-                  value={price}
-                  onChange={(event) => setPrice(event.target.value)}
-                />
-              </div>
-            ) : null}
-
-            {!isCreateMode || createStep === 2 ? (
-              <div className="space-y-2">
-                <p className="text-sm text-gray-300">Imagen del producto (opcional)</p>
-                <Input
-                  type="file"
-                  accept="image/*"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0] ?? null;
-                    void handleProductImageChange(file);
-                  }}
-                />
-
-                {imagePreviewUrl ? (
-                  <div className="space-y-2">
-                    <div className="h-40 w-full overflow-hidden rounded-md border border-orange-700 bg-body">
-                      <img
-                        src={imagePreviewUrl}
-                        alt="Vista previa del producto"
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="border-orange-600 bg-transparent text-white hover:bg-gray-700"
-                      onClick={clearSelectedProductImage}
-                    >
-                      Quitar imagen
-                    </Button>
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-500">No hay imagen seleccionada</p>
-                )}
-              </div>
-            ) : null}
-
-            {!isCreateMode || createStep === 3 ? (
-              <div className="space-y-3 rounded-md border border-orange-700 bg-body p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm text-gray-300">Categorías</p>
-                  {categories.length > 0 ? (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button type="button" size="sm" variant="outline" className="border-orange-600 bg-transparent text-white hover:bg-gray-700">
-                          Seleccionar categorías
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="max-h-72 w-64 overflow-y-auto border-orange-700 bg-card text-white">
-                        {categories.map((category) => (
-                          <DropdownMenuCheckboxItem
-                            key={category.id}
-                            checked={selectedCategoryIds.includes(category.id)}
-                            onCheckedChange={() => toggleCategory(category.id)}
-                            className="cursor-pointer"
-                          >
-                            {category.name}
-                          </DropdownMenuCheckboxItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  ) : null}
-                </div>
-
-                {categories.length === 0 ? (
-                  <p className="text-xs text-gray-500">Primero creá categorías</p>
-                ) : selectedCategoryIds.length === 0 ? (
-                  <p className="text-xs text-gray-500">Seleccioná al menos una categoría</p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {selectedCategoryIds.map((categoryId) => {
-                      const category = categories.find((item) => item.id === categoryId);
-
-                      if (!category) {
-                        return null;
-                      }
-
-                      return (
-                        <Badge
-                          key={category.id}
-                          variant="secondary"
-                          className="cursor-pointer bg-label-secondary text-white"
-                          onClick={() => removeCategorySelection(category.id)}
-                        >
-                          {category.name}
-                        </Badge>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <div className="space-y-2 border-t border-orange-700/50 pt-3">
-                  {categories.map((category) => (
-                    <label key={category.id} className="flex items-center gap-2 text-sm text-white cursor-pointer">
-                      <Checkbox
-                        checked={selectedCategoryIds.includes(category.id)}
-                        onCheckedChange={() => toggleCategory(category.id)}
-                      />
-                      <span>{category.name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {isCreateMode ? (
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-orange-600 bg-transparent text-white hover:bg-gray-700"
-                  onClick={handlePreviousCreateStep}
-                  disabled={createStep === 1}
-                >
-                  Atrás
-                </Button>
-
-                {createStep < TOTAL_CREATE_STEPS ? (
-                  <Button type="button" className="flex-1" onClick={handleNextCreateStep}>
-                    Siguiente
-                  </Button>
-                ) : (
-                  <Button type="button" className="flex-1" onClick={() => { void handleSaveProduct(); }}>
-                    Crear producto
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <Button className="w-full" onClick={() => { void handleSaveProduct(); }}>
-                Guardar cambios
-              </Button>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ProductDialog
+        open={isDialogOpen}
+        onOpenChange={setIsDialogOpen}
+        editingProductId={editingProductId}
+        name={name}
+        onNameChange={setName}
+        description={description}
+        onDescriptionChange={setDescription}
+        price={price}
+        onPriceChange={setPrice}
+        imagePreviewUrl={imagePreviewUrl}
+        onProductImageChange={handleProductImageChange}
+        onClearProductImage={clearSelectedProductImage}
+        categories={categories}
+        selectedCategoryIds={selectedCategoryIds}
+        onToggleCategory={toggleCategory}
+        onRemoveCategorySelection={removeCategorySelection}
+        onSaveProduct={handleSaveProduct}
+      />
 
       <Dialog
         open={isRecipeDialogOpen}

@@ -31,6 +31,30 @@ const readFileAsDataUrl = (file: File): Promise<string> => (
   })
 );
 
+const normalizeProductCategoryIds = (product: ProductItem): string[] => {
+  const row = product as ProductItem & {
+    category_ids?: Array<string | number>;
+    categoryId?: string | number;
+    categoryIds?: Array<string | number>;
+  };
+
+  const collected: Array<string | number> = [];
+
+  if (Array.isArray(row.categoryIds)) {
+    collected.push(...row.categoryIds);
+  }
+
+  if (Array.isArray(row.category_ids)) {
+    collected.push(...row.category_ids);
+  }
+
+  if (row.categoryId !== undefined && row.categoryId !== null && row.categoryId !== '') {
+    collected.push(row.categoryId);
+  }
+
+  return [...new Set(collected.map((value) => String(value).trim()).filter(Boolean))];
+};
+
 export function useProductsViewModel() {
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
@@ -206,7 +230,7 @@ export function useProductsViewModel() {
     setPrice(String(product.price));
     setImageBase64(null);
     setImagePreviewUrl(productWithImage.image ?? productWithImage.imageUrl ?? productWithImage.image_url ?? null);
-    setSelectedCategoryIds(product.categoryIds ?? []);
+    setSelectedCategoryIds(normalizeProductCategoryIds(product));
     setIsDialogOpen(true);
   };
 
