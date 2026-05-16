@@ -42,6 +42,53 @@ function forceAuthExpirationFromSocket(reason: string) {
   expireAuthSession();
 }
 
+function getSocketErrorMessage(error: unknown): string {
+  if (!error) return '';
+
+  if (typeof error === 'string') {
+    return error.toLowerCase();
+  }
+
+  if (typeof error === 'object') {
+    const candidate = error as {
+      message?: unknown;
+      description?: unknown;
+      data?: { message?: unknown; error?: unknown; detail?: unknown; code?: unknown };
+    };
+
+    const fromMessage = typeof candidate.message === 'string' ? candidate.message : '';
+    const fromDescription = typeof candidate.description === 'string' ? candidate.description : '';
+    const fromDataMessage = typeof candidate.data?.message === 'string' ? candidate.data.message : '';
+    const fromDataError = typeof candidate.data?.error === 'string' ? candidate.data.error : '';
+    const fromDataDetail = typeof candidate.data?.detail === 'string' ? candidate.data.detail : '';
+    const fromDataCode = typeof candidate.data?.code === 'string' ? candidate.data.code : '';
+
+    return [fromMessage, fromDescription, fromDataMessage, fromDataError, fromDataDetail, fromDataCode]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+  }
+
+  return '';
+}
+
+function isAuthSocketError(error: unknown): boolean {
+  const message = getSocketErrorMessage(error);
+
+  return (
+    message.includes('unauthorized')
+    || message.includes('authentication')
+    || message.includes('auth failed')
+    || message.includes('auth_failure')
+    || message.includes('forbidden')
+    || message.includes('invalid token')
+    || message.includes('token expired')
+    || message.includes('jwt')
+    || message.includes('401')
+    || message.includes('403')
+  );
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function normalizeSender(sender: unknown): SenderType {
   return sender === 'agent' || sender === 'user' ? 'agent' : 'contact';
@@ -267,26 +314,15 @@ export function startRealtimeChannel() {
   });
 
   globalSocket.on('connect_error', (error) => {
-    const message = String((error as { message?: string })?.message ?? '').toLowerCase();
     console.error('[WS] connect_error:', error);
 
-    // Casos frecuentes de backend caído / conexión rechazada.
-    if (
-      message.includes('xhr poll error')
-      || message.includes('websocket error')
-      || message.includes('transport error')
-      || message.includes('connection refused')
-    ) {
-      forceAuthExpirationFromSocket(message || 'connect_error');
+    if (isAuthSocketError(error)) {
+      forceAuthExpirationFromSocket(getSocketErrorMessage(error) || 'connect_error_auth');
     }
   });
 
   globalSocket.on('disconnect', (reason) => {
     console.log('[WS] Desconectado:', reason);
-
-    if (reason === 'transport error' || reason === 'transport close' || reason === 'ping timeout') {
-      forceAuthExpirationFromSocket(reason);
-    }
   });
 }
 
@@ -331,20 +367,12 @@ export function useWebSocket(
 
     newSocket.on('disconnect', (reason) => {
       setConnected(false);
-      if (reason === 'transport error' || reason === 'transport close' || reason === 'ping timeout') {
-        forceAuthExpirationFromSocket(reason);
-      }
+      console.log('[WS] Desconectado:', reason);
     });
 
     newSocket.on('connect_error', (error) => {
-      const message = String((error as { message?: string })?.message ?? '').toLowerCase();
-      if (
-        message.includes('xhr poll error')
-        || message.includes('websocket error')
-        || message.includes('transport error')
-        || message.includes('connection refused')
-      ) {
-        forceAuthExpirationFromSocket(message || 'connect_error');
+      if (isAuthSocketError(error)) {
+        forceAuthExpirationFromSocket(getSocketErrorMessage(error) || 'connect_error_auth');
       }
     });
 

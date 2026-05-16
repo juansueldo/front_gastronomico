@@ -130,16 +130,14 @@ export class ApiClient {
       return (data?.data ?? data) as T;
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        expireAuthSession();
         throw ApiError.networkError();
       }
       if (error instanceof ApiError) {
-        if (error.isUnauthorized() || error.isNetworkError()) {
+        if (error.isUnauthorized()) {
           expireAuthSession();
         }
         throw error;
       }
-      expireAuthSession();
       throw ApiError.networkError();
     } finally {
       clearTimeout(timeoutId);
