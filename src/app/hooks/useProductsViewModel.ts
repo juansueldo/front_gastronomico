@@ -10,6 +10,27 @@ type RecipeIngredientDraft = {
   unit: string;
 };
 
+const readFileAsDataUrl = (file: File): Promise<string> => (
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        reject(new Error('No se pudo leer la imagen seleccionada'));
+        return;
+      }
+
+      resolve(reader.result);
+    };
+
+    reader.onerror = () => {
+      reject(new Error('No se pudo leer la imagen seleccionada'));
+    };
+
+    reader.readAsDataURL(file);
+  })
+);
+
 export function useProductsViewModel() {
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
@@ -18,6 +39,8 @@ export function useProductsViewModel() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [recipesByProductId, setRecipesByProductId] = useState<Record<string, ProductRecipeConfig>>({});
   const [isRecipeDialogOpen, setIsRecipeDialogOpen] = useState(false);
@@ -168,17 +191,49 @@ export function useProductsViewModel() {
     setName('');
     setDescription('');
     setPrice('');
+    setImageBase64(null);
+    setImagePreviewUrl(null);
     setSelectedCategoryIds([]);
     setIsDialogOpen(true);
   };
 
   const openEditDialog = (product: ProductItem) => {
+    const productWithImage = product as ProductItem & { imageUrl?: string; image_url?: string };
+
     setEditingProductId(product.id);
     setName(product.name);
     setDescription(product.description ?? '');
     setPrice(String(product.price));
+    setImageBase64(null);
+    setImagePreviewUrl(productWithImage.image ?? productWithImage.imageUrl ?? productWithImage.image_url ?? null);
     setSelectedCategoryIds(product.categoryIds ?? []);
     setIsDialogOpen(true);
+  };
+
+  const handleProductImageChange = async (file: File | null) => {
+    if (!file) {
+      setImageBase64(null);
+      setImagePreviewUrl(null);
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Seleccioná un archivo de imagen válido');
+      return;
+    }
+
+    try {
+      const base64Image = await readFileAsDataUrl(file);
+      setImageBase64(base64Image);
+      setImagePreviewUrl(base64Image);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo procesar la imagen');
+    }
+  };
+
+  const clearSelectedProductImage = () => {
+    setImageBase64(null);
+    setImagePreviewUrl(null);
   };
 
   const toggleCategory = (categoryId: string) => {
@@ -218,6 +273,7 @@ export function useProductsViewModel() {
           name: trimmedName,
           description: description.trim() || undefined,
           price: parsedPrice,
+          image: imageBase64 ?? undefined,
           categoryIds: selectedCategoryIds,
           categoryId: selectedCategoryIds[0],
         });
@@ -227,6 +283,7 @@ export function useProductsViewModel() {
           name: trimmedName,
           description: description.trim() || undefined,
           price: parsedPrice,
+          image: imageBase64 ?? undefined,
           categoryIds: selectedCategoryIds,
           categoryId: selectedCategoryIds[0],
         });
@@ -271,6 +328,7 @@ export function useProductsViewModel() {
     setDescription,
     price,
     setPrice,
+    imagePreviewUrl,
     selectedCategoryIds,
     recipesByProductId,
     isRecipeDialogOpen,
@@ -288,6 +346,8 @@ export function useProductsViewModel() {
     openEditDialog,
     toggleCategory,
     removeCategorySelection,
+    handleProductImageChange,
+    clearSelectedProductImage,
     handleSaveProduct,
     handleDeleteProduct,
     setRecipeProduct,       // agregar
