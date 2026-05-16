@@ -46,7 +46,7 @@ export default function App() {
     };
 
     const handleAuthExpired = () => {
-      toast.error('Tu sesion expiro. Volve a iniciar sesion.');
+      toast.error('Tu sesión finalizó o hubo un problema de conexión. Volvé a iniciar sesión.');
       void router.navigate('/login', { replace: true });
     };
 

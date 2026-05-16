@@ -87,6 +87,9 @@ export const endpoints = {
     closeDailyCashMovements: (date: string) => apiClient.post(`${API_VERSION}/cash-movements/close-daily`, { date }),
     fetchFinalizedCashMovementsByDate: (date: string) => apiClient.get(`${API_VERSION}/cash-movements/finalized/by-date`, { params: { date } }),
 
+    // --- NOTIFICATIONS ---
+    fetchNotifications: (id: string, params?: QueryParams) => apiClient.get(`${API_VERSION}/notifications/${id}`, { params, config: { cache: 'short' } }),
+    listNotifications: (params?: QueryParams) => apiClient.get(`${API_VERSION}/notifications/`, { params }),
     // --- OAUTH / INTEGRATIONS ---
     listOAuthProviders: () => apiClient.get(`${API_VERSION}/integrations/oauth/providers`, { config: { cache: 'short' } }),
     startOAuthProvider: (provider: string) => apiClient.post(`${API_VERSION}/integrations/oauth/${encodeURIComponent(provider)}/start`, {}),

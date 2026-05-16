@@ -1,6 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { useEffect, useState } from 'react';
-import { getAuthSession, getStoreIdFromToken } from './authStorage';
+import { expireAuthSession, getAuthSession, getStoreIdFromToken } from './authStorage';
 import {
   dispatchAppNewMessage,
   dispatchAppNotification,
@@ -30,6 +30,17 @@ type Channel = (typeof ALL_CHANNELS)[number];
 
 // ─── Singleton global ────────────────────────────────────────────────────────
 let globalSocket: Socket | null = null;
+let hasForcedAuthExpiration = false;
+
+function forceAuthExpirationFromSocket(reason: string) {
+  if (hasForcedAuthExpiration) {
+    return;
+  }
+
+  hasForcedAuthExpiration = true;
+  console.error('[WS] sesión expirada por error de socket:', reason);
+  expireAuthSession();
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function normalizeSender(sender: unknown): SenderType {
@@ -199,6 +210,7 @@ function registerEventHandlers(socket: Socket) {
 // ─── startRealtimeChannel ─────────────────────────────────────────────────────
 export function startRealtimeChannel() {
   const session = getAuthSession();
+  hasForcedAuthExpiration = false;
   console.log(session?.user.token, 'session realtime');
   if (!session?.user.token) {
     console.warn('[WS] No hay sesión activa');
@@ -254,8 +266,27 @@ export function startRealtimeChannel() {
     });
   });
 
-  globalSocket.on('disconnect', () => {
-    console.log('[WS] Desconectado');
+  globalSocket.on('connect_error', (error) => {
+    const message = String((error as { message?: string })?.message ?? '').toLowerCase();
+    console.error('[WS] connect_error:', error);
+
+    // Casos frecuentes de backend caído / conexión rechazada.
+    if (
+      message.includes('xhr poll error')
+      || message.includes('websocket error')
+      || message.includes('transport error')
+      || message.includes('connection refused')
+    ) {
+      forceAuthExpirationFromSocket(message || 'connect_error');
+    }
+  });
+
+  globalSocket.on('disconnect', (reason) => {
+    console.log('[WS] Desconectado:', reason);
+
+    if (reason === 'transport error' || reason === 'transport close' || reason === 'ping timeout') {
+      forceAuthExpirationFromSocket(reason);
+    }
   });
 }
 
@@ -267,6 +298,7 @@ export function stopRealtimeChannel() {
     globalSocket = null;
     console.log('[WS] Canal detenido');
   }
+  hasForcedAuthExpiration = false;
 }
 
 // ─── Hook para componentes React ──────────────────────────────────────────────
@@ -280,6 +312,7 @@ export function useWebSocket(
 
   useEffect(() => {
     if (!token || !storeId) return;
+    hasForcedAuthExpiration = false;
 
     const newSocket = io(import.meta.env.VITE_API_URL, {
       auth: { token, storeId },
@@ -296,7 +329,24 @@ export function useWebSocket(
       channels.forEach((channel) => newSocket.emit('subscribe', { channel }));
     });
 
-    newSocket.on('disconnect', () => setConnected(false));
+    newSocket.on('disconnect', (reason) => {
+      setConnected(false);
+      if (reason === 'transport error' || reason === 'transport close' || reason === 'ping timeout') {
+        forceAuthExpirationFromSocket(reason);
+      }
+    });
+
+    newSocket.on('connect_error', (error) => {
+      const message = String((error as { message?: string })?.message ?? '').toLowerCase();
+      if (
+        message.includes('xhr poll error')
+        || message.includes('websocket error')
+        || message.includes('transport error')
+        || message.includes('connection refused')
+      ) {
+        forceAuthExpirationFromSocket(message || 'connect_error');
+      }
+    });
 
     setSocket(newSocket);
 

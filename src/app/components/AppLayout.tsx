@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { LayoutDashboard, MessageSquare, Calendar, Settings, Building, MapPin, LogOut, Bot, Link2, Megaphone, Bell, MoreHorizontal, ClipboardList, LayoutGrid, Wallet, Tags, Package, ChefHat, Puzzle, Boxes, ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, Moon, SunMedium, Laptop, Languages, CircleUserRound, Users } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Calendar, Settings, Building, MapPin, LogOut, Bot, Link2, Megaphone, Bell, MoreHorizontal, ClipboardList, LayoutGrid, Wallet, Tags, Package, ChefHat, Puzzle, Boxes, ChevronDown, ChevronLeft, ChevronRight, Moon, SunMedium, Laptop, Languages, CircleUserRound, Users } from 'lucide-react';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
@@ -232,7 +232,18 @@ export function AppLayout({ children }: AppLayoutProps) {
       <Toaster />
 
       {/* Desktop Sidebar */}
-      <div className={`hidden md:flex md:w-20 ${sidebarWidth} flex-col bg-card border-r border-gray-600 transition-all duration-300`}>
+      <div className={`relative hidden md:flex md:w-20 ${sidebarWidth} flex-col bg-card border-r border-gray-600 transition-all duration-300`}>
+        <button
+          onClick={toggleSidebar}
+          title={isSidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'}
+          className="absolute -right-3 top-16 z-20 hidden h-7 w-7 items-center justify-center rounded-full border border-gray-500 bg-card text-gray-300 shadow-md transition-colors hover:bg-orange-700 hover:text-white lg:flex"
+        >
+          {isSidebarCollapsed ? (
+            <ChevronRight className="h-4 w-4" />
+          ) : (
+            <ChevronLeft className="h-4 w-4" />
+          )}
+        </button>
 
         {/* User Profile */}
         <div className="p-4 border-b border-gray-600">
@@ -243,7 +254,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="flex w-full items-center gap-3 rounded-lg px-2 py-1 text-left transition-colors hover:bg-orange-700/40"
+                  className="flex w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-white/10"
                 >
                   <div className="relative shrink-0">
                     <Avatar className="h-10 w-10">
@@ -406,22 +417,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           ))}
         </nav>
 
-        {/* Bottom actions: collapse toggle */}
-        <div className="p-4 border-t border-gray-600 space-y-1">
-          {/* Toggle sidebar collapse — only visible on lg+ */}
-          <button
-            onClick={toggleSidebar}
-            title={isSidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'}
-            className={`w-full hidden lg:flex items-center rounded-lg py-3 text-gray-400 transition-colors hover:bg-orange-700 hover:text-white ${
-              showLabels ? 'justify-start gap-3 px-4' : 'justify-center px-0'
-            }`}
-          >
-            {isSidebarCollapsed
-              ? <PanelLeftOpen className="h-5 w-5 shrink-0" />
-              : <PanelLeftClose className="h-5 w-5 shrink-0" />}
-            {showLabels && <span className="hidden lg:block">Colapsar menú</span>}
-          </button>
-        </div>
+        
       </div>
 
       {/* Main Content */}
