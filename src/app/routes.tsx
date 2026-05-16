@@ -229,10 +229,23 @@ function UnauthorizedPage() {
   );
 }
 
+function NotFoundPage() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+      <h1 style={{ fontSize: 32, color: '#e53e3e', marginBottom: 16 }}>404</h1>
+      <p style={{ fontSize: 18 }}>La pagina que buscas no existe.</p>
+    </div>
+  );
+}
+
 export const router = createBrowserRouter([
     {
       path: '/unauthorized',
       Component: UnauthorizedPage,
+    },
+    {
+      path: '/404',
+      Component: NotFoundPage,
     },
   {
     path: '/login',
@@ -334,5 +347,9 @@ export const router = createBrowserRouter([
   {
     path: '/users',
     Component: UsersPage,
+  },
+  {
+    path: '*',
+    Component: NotFoundPage,
   },
 ]);

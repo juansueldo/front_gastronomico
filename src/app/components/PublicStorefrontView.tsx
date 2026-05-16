@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router';
-import { Clock3, Instagram, Mail, MapPin, MessageCircle, Phone, Search, Store } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useParams } from 'react-router';
+import { CheckCircle2, ChevronLeft, Clock3, Instagram, Mail, MapPin, MessageCircle, Phone, Search, ShoppingBag, Store, Trash2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Dialog, DialogContent } from './ui/dialog';
 import { toast } from 'sonner';
 import {
   createPublicStoreOrder,
@@ -13,12 +14,32 @@ import {
   type PublicStoreHeadquarter,
   type PublicStoreProduct,
 } from '../storefrontApi';
+import { isApiError } from '../api/errors';
+
+type StoreLoadState = 'idle' | 'loading' | 'ready' | 'not-found' | 'error';
+type CheckoutStep = 'menu' | 'checkout' | 'success';
+type PaymentMethod = '' | 'transfer' | 'cash';
+type StoreScheduleOption = {
+  id: string;
+  label: string;
+};
+type OrderSuccessSummary = {
+  customerName: string;
+  total: number;
+  itemsCount: number;
+  paymentLabel: string;
+  orderType: 'delivery' | 'pickup';
+  address?: string;
+  pickupHeadquarterName?: string;
+};
 
 const currencyFormatter = new Intl.NumberFormat('es-AR', {
   style: 'currency',
   currency: 'ARS',
   maximumFractionDigits: 0,
 });
+
+const PRODUCT_BATCH_SIZE = 12;
 
 export function PublicStorefrontView() {
   const { slug = '' } = useParams<{ slug: string }>();
@@ -34,10 +55,28 @@ export function PublicStorefrontView() {
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
   const [selectedHeadquarterId, setSelectedHeadquarterId] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliveryAddressExtra, setDeliveryAddressExtra] = useState('');
   const [notes, setNotes] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('');
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>('menu');
+  const [orderSuccessSummary, setOrderSuccessSummary] = useState<OrderSuccessSummary | null>(null);
   const [storeDefaultHeadquarterId, setStoreDefaultHeadquarterId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [storeLoadState, setStoreLoadState] = useState<StoreLoadState>('idle');
+  const [selectedScheduleId, setSelectedScheduleId] = useState('asap');
+  const [activeProduct, setActiveProduct] = useState<PublicStoreProduct | null>(null);
+  const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
+  const [productDialogQuantity, setProductDialogQuantity] = useState(1);
+  const [visibleProductsCount, setVisibleProductsCount] = useState(PRODUCT_BATCH_SIZE);
+  const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
+  const scheduleOptions = useMemo<StoreScheduleOption[]>(
+    () => [
+      { id: 'asap', label: 'Lo antes posible' },
+    ],
+    [],
+  );
 
   const categoryEntries = useMemo(
     () => Object.entries(categoriesById).sort(([, leftName], [, rightName]) => leftName.localeCompare(rightName, 'es')),
@@ -83,13 +122,61 @@ export function PublicStorefrontView() {
 
   const pickupHeadquarter = headquarters.find((headquarter) => headquarter.id === selectedHeadquarterId);
   const fallbackHeadquarter = headquarters.find((headquarter) => headquarter.id === storeDefaultHeadquarterId) ?? headquarters[0];
+  const selectedSchedule = scheduleOptions.find((option) => option.id === selectedScheduleId) ?? scheduleOptions[0];
+  const productDialogTotal = (activeProduct?.price ?? 0) * productDialogQuantity;
+  const canConfirmCheckout = (
+    customerName.trim().length > 0
+    && customerPhone.trim().length > 0
+    && paymentMethod !== ''
+    && (orderType !== 'delivery' || deliveryAddress.trim().length > 0)
+  );
+  const visibleProducts = filteredProducts.slice(0, visibleProductsCount);
+  const hasMoreProducts = visibleProductsCount < filteredProducts.length;
+  const groupedVisibleProducts = useMemo(() => {
+    const categoryOrder = new Map(categoryEntries.map(([categoryId], index) => [categoryId, index]));
+    const groups = new Map<string, { categoryId: string; categoryName: string; products: PublicStoreProduct[] }>();
+
+    visibleProducts.forEach((product) => {
+      const firstKnownCategoryId = product.categoryIds.find((categoryId) => Boolean(categoriesById[categoryId]));
+      const groupCategoryId = firstKnownCategoryId ?? product.categoryIds[0] ?? 'uncategorized';
+      const groupCategoryName = categoriesById[groupCategoryId]
+        ?? (groupCategoryId === 'uncategorized' ? 'Sin categoria' : `Categoria ${groupCategoryId}`);
+
+      if (!groups.has(groupCategoryId)) {
+        groups.set(groupCategoryId, {
+          categoryId: groupCategoryId,
+          categoryName: groupCategoryName,
+          products: [],
+        });
+      }
+
+      groups.get(groupCategoryId)?.products.push(product);
+    });
+
+    return Array.from(groups.values()).sort((left, right) => {
+      const leftOrder = categoryOrder.get(left.categoryId) ?? Number.MAX_SAFE_INTEGER;
+      const rightOrder = categoryOrder.get(right.categoryId) ?? Number.MAX_SAFE_INTEGER;
+
+      if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
+      }
+
+      return left.categoryName.localeCompare(right.categoryName, 'es');
+    });
+  }, [visibleProducts, categoryEntries, categoriesById]);
 
   const loadStore = async () => {
     if (!slug) {
+      setStoreLoadState('not-found');
       return;
     }
 
+    setStoreLoadState('loading');
     setIsLoading(true);
+    setStore(null);
+    setProducts([]);
+    setHeadquarters([]);
+    setCategoriesById({});
 
     try {
       const [storeData, productsData] = await Promise.all([
@@ -142,7 +229,14 @@ export function PublicStorefrontView() {
       });
 
       setCategoriesById(categoryMap);
+      setStoreLoadState('ready');
     } catch (error) {
+      if (isApiError(error) && error.statusCode === 404) {
+        setStoreLoadState('not-found');
+        return;
+      }
+
+      setStoreLoadState('error');
       toast.error(error instanceof Error ? error.message : 'No se pudo cargar la tienda');
     } finally {
       setIsLoading(false);
@@ -153,38 +247,154 @@ export function PublicStorefrontView() {
     void loadStore();
   }, [slug]);
 
-  const incrementProduct = (productId: string) => {
-    setCartQuantities((prev) => ({
-      ...prev,
-      [productId]: (prev[productId] ?? 0) + 1,
-    }));
+  useEffect(() => {
+    setVisibleProductsCount(PRODUCT_BATCH_SIZE);
+  }, [slug, searchTerm, selectedCategoryId, products.length]);
+
+  useEffect(() => {
+    const target = loadMoreTriggerRef.current;
+
+    if (!target || !hasMoreProducts) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry?.isIntersecting) {
+          setVisibleProductsCount((current) => Math.min(current + PRODUCT_BATCH_SIZE, filteredProducts.length));
+        }
+      },
+      {
+        root: null,
+        rootMargin: '0px 0px 160px 0px',
+        threshold: 0,
+      },
+    );
+
+    observer.observe(target);
+
+    return () => observer.disconnect();
+  }, [hasMoreProducts, filteredProducts.length]);
+
+  useEffect(() => {
+    if (cartItemsCount === 0 && checkoutStep === 'checkout') {
+      setCheckoutStep('menu');
+    }
+  }, [cartItemsCount, checkoutStep]);
+
+  if (storeLoadState === 'not-found') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#e6e6e6] px-4">
+        <div className="flex w-full max-w-xl flex-col items-center text-center">
+          <p className="text-5xl font-black tracking-[0.28em] text-[#ff5a2f]">Cloud Cook</p>
+          <h1 className="mt-8 text-2xl font-extrabold uppercase tracking-[0.15em] text-[#2f2f2f] md:text-3xl">
+            Tienda no encontrada
+          </h1>
+          <p className="mt-3 text-sm text-[#6e6e6e] md:text-base">
+            No encontramos la tienda
+            {' '}
+            <span className="font-semibold text-[#454545]">{slug || 'solicitada'}</span>
+            . Verifica el enlace e intenta nuevamente.
+          </p>
+
+          <div className="mt-10 relative flex h-52 w-52 items-center justify-center">
+            <div className="absolute h-44 w-44 rounded-full border-[12px] border-[#c9cbd1] bg-[#dde0e6]" />
+            <div className="absolute h-24 w-24 rounded-full border-4 border-[#b8bcc5] bg-[#f4f5f8] shadow-sm flex items-center justify-center">
+              <Store className="h-10 w-10 text-[#9ea3ae]" />
+            </div>
+            <Search className="absolute bottom-4 right-5 h-11 w-11 text-[#bcc0c8]" />
+            <span className="absolute -left-1 top-7 h-3.5 w-3.5 rotate-45 rounded-sm bg-[#ffba2f]" />
+            <span className="absolute right-3 top-5 h-3.5 w-3.5 rotate-45 rounded-sm bg-[#ff6a35]" />
+          </div>
+
+          <Button asChild className="mt-8 h-11 rounded-xl bg-[#ff5a2f] px-6 !text-[#ffffff] hover:bg-[#e94d26]">
+            <Link to="/">Volver al inicio</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (storeLoadState === 'loading' || storeLoadState === 'idle') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#e6e6e6] px-4 text-center">
+        <p className="rounded-xl border border-[#dddddd] bg-white px-5 py-3 text-sm text-[#666666]">
+          Cargando tienda...
+        </p>
+      </div>
+    );
+  }
+
+  if (storeLoadState === 'error') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#e6e6e6] px-4 text-center">
+        <p className="rounded-xl border border-[#dddddd] bg-white px-5 py-3 text-sm text-[#666666]">
+          No se pudo cargar la tienda. Intenta de nuevo en unos segundos.
+        </p>
+      </div>
+    );
+  }
+
+  const openProductDialog = (product: PublicStoreProduct) => {
+    const currentQuantity = cartQuantities[product.id] ?? 0;
+    setActiveProduct(product);
+    setProductDialogQuantity(currentQuantity > 0 ? currentQuantity : 1);
+    setIsProductDialogOpen(true);
   };
 
-  const decrementProduct = (productId: string) => {
-    setCartQuantities((prev) => {
-      const currentQuantity = prev[productId] ?? 0;
+  const closeProductDialog = () => {
+    setIsProductDialogOpen(false);
+    setActiveProduct(null);
+    setProductDialogQuantity(1);
+  };
 
-      if (currentQuantity <= 1) {
+  const setProductQuantity = (productId: string, quantity: number) => {
+    setCartQuantities((prev) => {
+      if (quantity <= 0) {
         const { [productId]: _removed, ...rest } = prev;
         return rest;
       }
 
       return {
         ...prev,
-        [productId]: currentQuantity - 1,
+        [productId]: quantity,
       };
     });
+  };
+
+  const removeProductFromCart = (productId: string) => {
+    setProductQuantity(productId, 0);
+  };
+
+  const confirmProductSelection = () => {
+    if (!activeProduct) {
+      return;
+    }
+
+    setProductQuantity(activeProduct.id, productDialogQuantity);
+    closeProductDialog();
   };
 
   const clearCart = () => {
     setCartQuantities({});
   };
 
+  const handleContinueCheckout = () => {
+    setCheckoutStep('checkout');
+  };
+
+  const handleBackToMenu = () => {
+    setCheckoutStep('menu');
+  };
+
   const handleCreateOrder = async () => {
     const trimmedName = customerName.trim();
     const trimmedPhone = customerPhone.trim();
     const trimmedAddress = deliveryAddress.trim();
+    const trimmedAddressExtra = deliveryAddressExtra.trim();
     const trimmedNotes = notes.trim();
+    const mergedNotes = [trimmedAddressExtra ? `Piso/Depto: ${trimmedAddressExtra}` : '', trimmedNotes].filter(Boolean).join(' | ');
 
     if (!slug) {
       toast.error('No se encontro el slug de la tienda');
@@ -203,6 +413,11 @@ export function PublicStorefrontView() {
 
     if (orderType === 'delivery' && !trimmedAddress) {
       toast.error('Ingresa la direccion para delivery');
+      return;
+    }
+
+    if (!paymentMethod) {
+      toast.error('Selecciona forma de pago');
       return;
     }
 
@@ -238,16 +453,31 @@ export function PublicStorefrontView() {
         phone: trimmedPhone,
         type: orderType,
         address: orderType === 'delivery' ? trimmedAddress : undefined,
-        notes: trimmedNotes || undefined,
+        notes: mergedNotes || undefined,
         total: cartTotal,
         productIds,
         items,
         headquarterId: orderType === 'pickup' ? selectedHeadquarterId : undefined,
       });
 
+      const paymentLabel = paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo';
+      setOrderSuccessSummary({
+        customerName: trimmedName,
+        total: cartTotal,
+        itemsCount: cartItemsCount,
+        paymentLabel,
+        orderType,
+        address: orderType === 'delivery' ? trimmedAddress : undefined,
+        pickupHeadquarterName: orderType === 'pickup' ? (pickupHeadquarter ?? fallbackHeadquarter)?.name : undefined,
+      });
+
       toast.success('Compra creada con exito');
       clearCart();
+      setCheckoutStep('success');
       setNotes('');
+      setDeliveryAddressExtra('');
+      setPaymentMethod('');
+      setCustomerEmail('');
       if (orderType === 'delivery') {
         setDeliveryAddress('');
       }
@@ -258,13 +488,53 @@ export function PublicStorefrontView() {
     }
   };
 
+  const handleStartNewOrder = () => {
+    setCheckoutStep('menu');
+    setOrderSuccessSummary(null);
+    setSelectedCategoryId('all');
+    setSearchTerm('');
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   const logoText = (store?.name ?? slug ?? 'T')
     .slice(0, 2)
     .toUpperCase();
 
+  const renderProductCard = (product: PublicStoreProduct) => (
+    <button
+      key={product.id}
+      type="button"
+      onClick={() => openProductDialog(product)}
+      className="w-full rounded-xl border border-[#e4e4e4] bg-[#fbfbfb] p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+    >
+      <div className="grid items-center gap-3 md:grid-cols-[1fr_108px]">
+        <div>
+          <p className="text-base font-bold text-[#303030]">{product.name}</p>
+          {product.description ? (
+            <p className="mt-1 line-clamp-2 min-h-10 text-xs text-[#656565]">{product.description}</p>
+          ) : (
+            <p className="mt-1 min-h-10 text-xs text-[#9a9a9a]">Sin descripcion</p>
+          )}
+          <p className="mt-2 text-2xl font-black text-[#ff5a2f]">{currencyFormatter.format(product.price)}</p>
+        </div>
+        <div className="h-24 overflow-hidden rounded-lg border border-[#e8e8e8] bg-[#f1f1f1]">
+          {product.imageUrl ? (
+            <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full items-center justify-center text-[#9ea3ae]">
+              <Store className="h-8 w-8" />
+            </div>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+
   return (
     <div className="min-h-screen bg-[#e6e6e6] text-[#2f2f2f]">
-      <section className="relative overflow-hidden bg-[#6f6f72] pb-24 text-white">
+      <section className="relative overflow-hidden bg-[#6f6f72] pb-24 text-[#ffffff]">
         <div className="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_15px_15px,rgba(255,255,255,0.26)_2px,transparent_2px),radial-gradient(circle_at_45px_45px,rgba(255,255,255,0.15)_2px,transparent_2px)] bg-[length:60px_60px]" />
         <div className="relative mx-auto max-w-6xl px-4 pt-8 md:px-6 md:pt-10">
           <div className="grid gap-6 md:grid-cols-[1.5fr_1fr_1fr]">
@@ -274,7 +544,6 @@ export function PublicStorefrontView() {
               </div>
               <div>
                 <h1 className="text-4xl font-extrabold leading-tight tracking-tight">{store?.name ?? 'Tienda'}</h1>
-                <p className="mt-1 text-sm text-white/80">{store?.description ?? `Slug: ${slug}`}</p>
                 <p className="mt-2 inline-flex items-center gap-2 rounded-full bg-emerald-300/30 px-3 py-1 text-xs font-medium text-emerald-100">
                   <Clock3 className="h-3.5 w-3.5" />
                   Disponible
@@ -283,14 +552,14 @@ export function PublicStorefrontView() {
             </div>
 
             <div className="space-y-2 border-white/20 md:border-l md:pl-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/70">Contacto</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f2f2f2]/80">Contacto</p>
               <p className="flex items-center gap-2 text-sm"><Phone className="h-4 w-4" /> {fallbackHeadquarter?.phone ?? 'Sin telefono'}</p>
               <p className="flex items-center gap-2 text-sm"><Mail className="h-4 w-4" /> {`${slug}@tienda.com`}</p>
               <p className="flex items-center gap-2 text-sm"><MapPin className="h-4 w-4" /> {fallbackHeadquarter?.location ?? 'Retiro en sede'}</p>
             </div>
 
             <div className="space-y-2 border-white/20 md:border-l md:pl-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/70">Canales</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f2f2f2]/80">Canales</p>
               <div className="flex items-center gap-3">
                 <div className="h-11 w-11 rounded-full bg-white text-[#ff5a2f] shadow flex items-center justify-center">
                   <MessageCircle className="h-5 w-5" />
@@ -302,170 +571,375 @@ export function PublicStorefrontView() {
                   <Store className="h-5 w-5" />
                 </div>
               </div>
-              <p className="text-xs text-white/80">Atencion por redes y retiro en tienda.</p>
+              <p className="text-xs text-[#f2f2f2]/90">Atencion por redes y retiro en tienda.</p>
             </div>
           </div>
         </div>
       </section>
 
       <div className="relative mx-auto -mt-12 max-w-6xl px-4 pb-10 md:px-6">
-        <section className="mx-auto mb-5 max-w-2xl rounded-2xl border border-black/10 bg-[#f8f8f8] p-4 shadow-lg">
-          <div className="grid grid-cols-2 gap-2">
+        <section className="mx-auto mb-5 max-w-2xl rounded-2xl border border-black/10 bg-[#f4f4f4] p-4 shadow-lg">
+          <div className="grid grid-cols-2 gap-3">
             <Button
               type="button"
               onClick={() => setOrderType('delivery')}
-              className={`h-11 rounded-xl text-base transition ${orderType === 'delivery' ? 'bg-[#3f4044] text-white' : 'bg-transparent text-[#454545] hover:bg-[#ececec]'}`}
+              className={`h-11 rounded-full border text-base font-semibold transition ${
+                orderType === 'delivery'
+                  ? 'border-[#3f3f41] bg-[#3f3f41] !text-[#ffffff]'
+                  : 'border-[#d3d3d3] bg-[#f4f4f4] text-[#454545] hover:bg-[#ededed]'
+              }`}
             >
               Delivery
             </Button>
             <Button
               type="button"
               onClick={() => setOrderType('pickup')}
-              className={`h-11 rounded-xl text-base transition ${orderType === 'pickup' ? 'bg-[#3f4044] text-white' : 'bg-transparent text-[#454545] hover:bg-[#ececec]'}`}
+              className={`h-11 rounded-full border text-base font-semibold transition ${
+                orderType === 'pickup'
+                  ? 'border-[#3f3f41] bg-[#3f3f41] !text-[#ffffff]'
+                  : 'border-[#d3d3d3] bg-[#f4f4f4] text-[#454545] hover:bg-[#ededed]'
+              }`}
             >
               Para retirar
             </Button>
           </div>
 
-          <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr]">
-            <div className="rounded-lg border border-[#dddddd] bg-white px-3 py-2 text-sm text-[#5f5f5f]">
-              Horario de entrega:
-              <p className="font-semibold text-[#313131]">Lo antes posible</p>
-            </div>
-            {orderType === 'pickup' ? (
+          <div className="mt-4 grid items-center gap-3 md:grid-cols-[1fr_1.4fr]">
+            <p className="text-3md font-medium text-[#4d4d4d] md:pl-10">Horario de entrega:</p>
+            <Select
+              value={selectedSchedule?.id ?? 'asap'}
+              onValueChange={setSelectedScheduleId}
+              disabled={scheduleOptions.length === 0}
+            >
+              <SelectTrigger className="h-12 rounded-lg border border-[#bdbdbd] !bg-[#f4f4f4] !text-[#3e3e3e] [&_svg]:!text-[#575757]">
+                <SelectValue className="!text-[#3f3f3f] text-base" placeholder="Sin horarios disponibles" />
+              </SelectTrigger>
+              <SelectContent className="!bg-white !text-[#1f2937]">
+                {scheduleOptions.map((option) => (
+                  <SelectItem
+                    key={option.id}
+                    value={option.id}
+                    className="!text-[#1f2937] focus:!bg-[#f3f4f6] focus:!text-[#1f2937] data-[state=checked]:!bg-[#f3f4f6] data-[state=checked]:!text-[#1f2937]"
+                  >
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {orderType === 'pickup' ? (
+            <div className="mt-3 grid items-center gap-3 md:grid-cols-[1fr_1.4fr]">
+              <p className="text-3md font-medium text-[#4d4d4d] md:pl-10">Sede para retirar:</p>
               <Select
                 value={selectedHeadquarterId}
                 onValueChange={setSelectedHeadquarterId}
                 disabled={headquarters.length === 0}
               >
-                <SelectTrigger className="h-full border-[#dddddd] bg-white">
-                  <SelectValue placeholder={headquarters.length === 0 ? 'Sin sedes disponibles' : 'Sede de retiro'} />
+                <SelectTrigger className="h-12 rounded-lg border border-[#bdbdbd] !bg-[#f4f4f4] !text-[#3e3e3e] data-[placeholder]:!text-[#6b7280] [&_svg]:!text-[#575757]">
+                  <SelectValue
+                    className="!text-[#3f3f3f] text-base"
+                    placeholder={headquarters.length === 0 ? 'Sin sedes disponibles' : 'Sede de retiro'}
+                  />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="!bg-white !text-[#1f2937] h-full">
                   {headquarters.map((headquarter) => (
-                    <SelectItem key={headquarter.id} value={headquarter.id}>
+                    <SelectItem
+                      key={headquarter.id}
+                      value={headquarter.id}
+                      className="!text-[#1f2937] focus:!bg-[#f3f4f6] focus:!text-[#1f2937] data-[state=checked]:!bg-[#f3f4f6] data-[state=checked]:!text-[#1f2937]"
+                    >
                       {headquarter.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            ) : (
-              <Input
-                placeholder="Direccion para delivery"
-                value={deliveryAddress}
-                onChange={(event) => setDeliveryAddress(event.target.value)}
-                className="h-full border-[#dddddd] bg-white"
-              />
-            )}
+            </div>
+          ) : null}
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#e3e3e3] pt-3">
+            <span className="rounded-xl bg-[#c8e9d2] px-4 py-1 text-sm font-semibold text-[#2ea65f]">
+              Disponible
+            </span>
+            <div className="flex items-center gap-2 text-[#757575]">
+              <Clock3 className="h-4 w-4" />
+              <span className="text-2md">
+                {orderType === 'pickup' ? '11:30 a 00:00' : '11:30 a 16:00'}
+              </span>
+              {orderType === 'delivery' ? (
+                <>
+                  <span className="text-[#bbbbbb]">|</span>
+                  <Clock3 className="h-4 w-4" />
+                  <span className="text-2md">19:30 a 00:00</span>
+                </>
+              ) : null}
+            </div>
           </div>
         </section>
 
         <section className="rounded-[28px] border border-black/10 bg-[#f1f1f1] p-4 shadow-xl md:p-7">
-          {isLoading ? (
-            <div className="rounded-xl border border-[#dddddd] bg-white p-4 text-sm text-[#666666]">
-              Cargando tienda...
-            </div>
-          ) : null}
-
-          <div className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
+          <div className={`grid gap-5 ${checkoutStep === 'success' ? '' : 'lg:grid-cols-[1.6fr_1fr]'}`}>
             <div className="rounded-2xl border border-[#dfdfdf] bg-white p-4 md:p-5">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6a6a6a]" />
-                <Input
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  className="h-11 border-[#d2d2d2] bg-[#f9f9f9] pl-10 text-[#333333] placeholder:text-[#7b7b7b]"
-                  placeholder="Buscar por productos"
-                />
-              </div>
+              {checkoutStep === 'menu' ? (
+                <>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6a6a6a]" />
+                    <Input
+                      value={searchTerm}
+                      onChange={(event) => setSearchTerm(event.target.value)}
+                      className="h-11 border-[#d2d2d2] !bg-white pl-10 !text-[#333333] placeholder:!text-[#7b7b7b] focus:!bg-white"
+                      placeholder="Buscar por productos"
+                    />
+                  </div>
 
-              <div className="mt-4 flex flex-wrap gap-2 border-b border-[#ececec] pb-4">
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategoryId('all')}
-                  className={`rounded-full border px-4 py-1.5 text-sm font-semibold uppercase transition ${
-                    selectedCategoryId === 'all'
-                      ? 'border-[#ff5a2f] bg-[#ff5a2f] text-white'
-                      : 'border-[#dedede] bg-white text-[#4f4f4f] hover:border-[#ff8d72] hover:text-[#ff5a2f]'
-                  }`}
-                >
-                  Todas
-                </button>
-                {categoryEntries.map(([categoryId, categoryName]) => (
-                  <button
-                    key={categoryId}
-                    type="button"
-                    onClick={() => setSelectedCategoryId(categoryId)}
-                    className={`rounded-full border px-4 py-1.5 text-sm font-semibold uppercase transition ${
-                      selectedCategoryId === categoryId
-                        ? 'border-[#ff5a2f] bg-[#ff5a2f] text-white'
-                        : 'border-[#dedede] bg-white text-[#4f4f4f] hover:border-[#ff8d72] hover:text-[#ff5a2f]'
-                    }`}
-                  >
-                    {categoryName}
-                  </button>
-                ))}
-              </div>
+                  <div className="mt-4 flex flex-wrap gap-2 border-b border-[#ececec] pb-4">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategoryId('all')}
+                      className={`rounded-full border px-4 py-1.5 text-sm font-semibold uppercase transition ${
+                        selectedCategoryId === 'all'
+                          ? 'border-[#ff5a2f] bg-[#ff5a2f] !text-[#ffffff]'
+                          : 'border-[#dedede] bg-white text-[#4f4f4f] hover:border-[#ff8d72] hover:text-[#ff5a2f]'
+                      }`}
+                    >
+                      Todas
+                    </button>
+                    {categoryEntries.map(([categoryId, categoryName]) => (
+                      <button
+                        key={categoryId}
+                        type="button"
+                        onClick={() => setSelectedCategoryId(categoryId)}
+                        className={`rounded-full border px-4 py-1.5 text-sm font-semibold uppercase transition ${
+                          selectedCategoryId === categoryId
+                            ? 'border-[#ff5a2f] bg-[#ff5a2f] !text-[#ffffff]'
+                            : 'border-[#dedede] bg-white text-[#4f4f4f] hover:border-[#ff8d72] hover:text-[#ff5a2f]'
+                        }`}
+                      >
+                        {categoryName}
+                      </button>
+                    ))}
+                  </div>
 
-              <div className="mt-4">
-                <h2 className="text-xl font-black uppercase tracking-wide text-[#2f2f2f]">
-                  {selectedCategoryId === 'all' ? 'Catalogo' : (categoriesById[selectedCategoryId] ?? 'Categoria')}
-                </h2>
-              </div>
+                  <div className="mt-4">
+                    <h2 className="text-xl font-black uppercase tracking-wide text-[#2f2f2f]">
+                      {selectedCategoryId === 'all' ? 'Catalogo' : (categoriesById[selectedCategoryId] ?? 'Categoria')}
+                    </h2>
+                  </div>
 
-              {filteredProducts.length === 0 ? (
-                <div className="mt-4 rounded-lg border border-[#e5e5e5] bg-[#fafafa] p-4 text-sm text-[#777777]">
-                  No hay productos disponibles para este filtro.
-                </div>
-              ) : (
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  {filteredProducts.map((product) => (
-                    <article key={product.id} className="rounded-xl border border-[#e4e4e4] bg-[#fbfbfb] p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-                      <p className="text-base font-bold text-[#303030]">{product.name}</p>
-                      {product.description ? (
-                        <p className="mt-1 min-h-10 text-xs text-[#656565]">{product.description}</p>
-                      ) : (
-                        <p className="mt-1 min-h-10 text-xs text-[#9a9a9a]">Sin descripcion</p>
-                      )}
-                      <p className="mt-2 text-sm font-semibold text-[#3d3d3d]">{currencyFormatter.format(product.price)}</p>
-
-                      {product.categoryIds.length > 0 ? (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {product.categoryIds.map((categoryId) => (
-                            <span key={`${product.id}-${categoryId}`} className="rounded-full bg-[#ffe5dd] px-2 py-0.5 text-[10px] font-semibold uppercase text-[#ff5a2f]">
-                              {categoriesById[categoryId] ?? `Categoria ${categoryId}`}
-                            </span>
+                  {filteredProducts.length === 0 ? (
+                    <div className="mt-4 rounded-lg border border-[#e5e5e5] bg-[#fafafa] p-4 text-sm text-[#777777]">
+                      No hay productos disponibles para este filtro.
+                    </div>
+                  ) : (
+                    <>
+                      {selectedCategoryId === 'all' ? (
+                        <div className="mt-4 space-y-6">
+                          {groupedVisibleProducts.map((group) => (
+                            <section key={group.categoryId}>
+                              <h3 className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-[#4b5563]">
+                                {group.categoryName}
+                              </h3>
+                              <div className="grid gap-3 md:grid-cols-2">
+                                {group.products.map((product) => renderProductCard(product))}
+                              </div>
+                            </section>
                           ))}
                         </div>
+                      ) : (
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                          {visibleProducts.map((product) => renderProductCard(product))}
+                        </div>
+                      )}
+                      <div ref={loadMoreTriggerRef} className="h-10" />
+                      {hasMoreProducts ? (
+                        <p className="pt-1 text-center text-xs text-[#7a7a7a]">Cargando mas productos...</p>
                       ) : null}
-
-                      <div className="mt-3 flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => decrementProduct(product.id)}
-                          disabled={(cartQuantities[product.id] ?? 0) === 0}
-                          className="h-8 w-8 rounded-full border border-[#d4d4d4] bg-white text-lg leading-none text-[#4b4b4b] transition hover:border-[#ff5a2f] hover:text-[#ff5a2f] disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          -
-                        </button>
-                        <span className="w-7 text-center text-sm font-semibold text-[#404040]">{cartQuantities[product.id] ?? 0}</span>
-                        <button
-                          type="button"
-                          onClick={() => incrementProduct(product.id)}
-                          className="h-8 w-8 rounded-full border border-[#ff5a2f] bg-[#ff5a2f] text-lg leading-none text-white transition hover:bg-[#e94d26]"
-                        >
-                          +
-                        </button>
+                    </>
+                  )}
+                </>
+              ) : checkoutStep === 'checkout' ? (
+                <div className="space-y-8">
+                  <section className="space-y-4 border-b border-[#e4e4e4] pb-6">
+                    <h3 className="text-3xl font-extrabold text-[#2f2f2f]">Datos generales</h3>
+                    <div className="space-y-1">
+                      <label className="text-sm font-semibold text-[#2f2f2f]">Correo electrónico</label>
+                      <Input
+                        placeholder="ejemplo@gmail.com"
+                        value={customerEmail}
+                        onChange={(event) => setCustomerEmail(event.target.value)}
+                        className="h-11 border-0 border-b border-[#c9ccd1] rounded-none px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent"
+                      />
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="text-sm font-semibold text-[#2f2f2f]">Nombre y apellido*</label>
+                        <Input
+                          placeholder="Nombre completo"
+                          value={customerName}
+                          onChange={(event) => setCustomerName(event.target.value)}
+                          className="h-11 border-0 border-b border-[#c9ccd1] rounded-none px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent"
+                        />
                       </div>
-                    </article>
-                  ))}
+                      <div className="space-y-1">
+                        <label className="text-sm font-semibold text-[#2f2f2f]">Número de teléfono*</label>
+                        <Input
+                          placeholder="011 15-2345-6789"
+                          value={customerPhone}
+                          onChange={(event) => setCustomerPhone(event.target.value)}
+                          className="h-11 border-0 border-b border-[#c9ccd1] rounded-none px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent"
+                        />
+                      </div>
+                    </div>
+                  </section>
+
+                  {orderType === 'delivery' ? (
+                    <section className="space-y-4 border-b border-[#e4e4e4] pb-6">
+                      <h3 className="text-3xl font-extrabold text-[#2f2f2f]">Dirección</h3>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-1">
+                          <label className="text-sm font-semibold text-[#2f2f2f]">Calle y número*</label>
+                          <Input
+                            placeholder="Av. Argentina 1234"
+                            value={deliveryAddress}
+                            onChange={(event) => setDeliveryAddress(event.target.value)}
+                            className="h-11 border-0 border-b border-[#c9ccd1] rounded-none px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-sm font-semibold text-[#2f2f2f]">Piso y departamento</label>
+                          <Input
+                            placeholder="Por ejemplo: 1B"
+                            value={deliveryAddressExtra}
+                            onChange={(event) => setDeliveryAddressExtra(event.target.value)}
+                            className="h-11 border-0 border-b border-[#c9ccd1] rounded-none px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-semibold text-[#2f2f2f]">Comentarios</label>
+                        <Input
+                          placeholder="Notas para el pedido"
+                          value={notes}
+                          onChange={(event) => setNotes(event.target.value)}
+                          className="h-11 border-0 border-b border-[#c9ccd1] rounded-none px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent"
+                        />
+                      </div>
+                    </section>
+                  ) : null}
+
+                  <section className="space-y-4">
+                    <h3 className="text-3xl font-extrabold text-[#2f2f2f]">Forma de pago*</h3>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('transfer')}
+                        className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left ${
+                          paymentMethod === 'transfer' ? 'border-[#ff5a2f] bg-[#fff3ef]' : 'border-[#dadada] bg-white'
+                        }`}
+                      >
+                        <span className="text-sm font-semibold text-[#2f2f2f]">Transferencia</span>
+                        <span className={`h-5 w-5 rounded-full border ${paymentMethod === 'transfer' ? 'border-[#ff5a2f] bg-[#ff5a2f]' : 'border-[#b9b9b9] bg-transparent'}`} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('cash')}
+                        className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left ${
+                          paymentMethod === 'cash' ? 'border-[#ff5a2f] bg-[#fff3ef]' : 'border-[#dadada] bg-white'
+                        }`}
+                      >
+                        <span className="text-sm font-semibold text-[#2f2f2f]">Efectivo</span>
+                        <span className={`h-5 w-5 rounded-full border ${paymentMethod === 'cash' ? 'border-[#ff5a2f] bg-[#ff5a2f]' : 'border-[#b9b9b9] bg-transparent'}`} />
+                      </button>
+                    </div>
+                    <div className="grid gap-3 pt-2 md:grid-cols-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-11 rounded-xl border-[#ff5a2f] text-[#ff5a2f] hover:bg-[#fff3ef]"
+                        onClick={handleBackToMenu}
+                      >
+                        Atrás
+                      </Button>
+                      <Button
+                        type="button"
+                        className="h-11 rounded-xl bg-[#ff5a2f] !text-[#ffffff] hover:bg-[#ed4f25] disabled:bg-[#b0b0b0]"
+                        onClick={() => void handleCreateOrder()}
+                        disabled={!canConfirmCheckout || isCreatingOrder || isLoading}
+                      >
+                        {isCreatingOrder ? 'Procesando...' : 'Confirmar pedido'}
+                      </Button>
+                    </div>
+                  </section>
+                </div>
+              ) : (
+                <div className="flex min-h-[540px] items-center justify-center">
+                  <div className="w-full max-w-2xl rounded-2xl border border-[#e2e2e2] bg-white p-8 text-center shadow-sm">
+                    <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-[#eafaf0] text-[#2da861]">
+                      <CheckCircle2 className="h-12 w-12" />
+                    </div>
+                    <h3 className="text-4xl font-black text-[#2f2f2f]">Compra realizada con éxito</h3>
+                    <p className="mt-2 text-base text-[#6b7280]">
+                      Gracias
+                      {' '}
+                      <span className="font-semibold text-[#374151]">{orderSuccessSummary?.customerName || 'por tu compra'}</span>
+                      . Tu pedido fue confirmado correctamente.
+                    </p>
+
+                    <div className="mt-6 rounded-xl border border-[#ececec] bg-[#fafafa] p-5 text-left">
+                      <p className="flex items-center justify-between text-sm text-[#5f636b]">
+                        <span>Items</span>
+                        <span className="font-semibold">{orderSuccessSummary?.itemsCount ?? 0}</span>
+                      </p>
+                      <p className="mt-2 flex items-center justify-between text-sm text-[#5f636b]">
+                        <span>Pago</span>
+                        <span className="font-semibold">{orderSuccessSummary?.paymentLabel ?? '-'}</span>
+                      </p>
+                      {orderSuccessSummary?.orderType === 'delivery' && orderSuccessSummary.address ? (
+                        <p className="mt-2 flex items-start justify-between gap-3 text-sm text-[#5f636b]">
+                          <span>Dirección</span>
+                          <span className="text-right font-semibold">{orderSuccessSummary.address}</span>
+                        </p>
+                      ) : null}
+                      {orderSuccessSummary?.orderType === 'pickup' && orderSuccessSummary.pickupHeadquarterName ? (
+                        <p className="mt-2 flex items-start justify-between gap-3 text-sm text-[#5f636b]">
+                          <span>Retiro</span>
+                          <span className="text-right font-semibold">{orderSuccessSummary.pickupHeadquarterName}</span>
+                        </p>
+                      ) : null}
+                      <div className="mt-4 border-t border-[#e4e4e4] pt-3">
+                        <p className="flex items-center justify-between text-2xl font-black text-[#2f2f2f]">
+                          <span>Total</span>
+                          <span className="text-[#ff5a2f]">{currencyFormatter.format(orderSuccessSummary?.total ?? 0)}</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 grid gap-3 md:grid-cols-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-11 rounded-xl border-[#ff5a2f] text-[#ff5a2f] hover:bg-[#fff3ef]"
+                        onClick={handleBackToMenu}
+                      >
+                        Volver al menu
+                      </Button>
+                      <Button
+                        type="button"
+                        className="h-11 rounded-xl bg-[#ff5a2f] !text-[#ffffff] hover:bg-[#ed4f25]"
+                        onClick={handleStartNewOrder}
+                      >
+                        Hacer otro pedido
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
 
-            <aside className="h-fit rounded-2xl border border-[#dedede] bg-white p-4 md:sticky md:top-4">
+            {checkoutStep !== 'success' ? (
+              <aside className="h-fit rounded-2xl border border-[#dedede] bg-white p-4 md:sticky md:top-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-3xl font-extrabold leading-none text-[#303030]">Mi pedido</h3>
+                <h3 className="text-4md font-extrabold leading-none text-[#303030]">Mi pedido</h3>
                 <Button
                   type="button"
                   variant="ghost"
@@ -479,81 +953,154 @@ export function PublicStorefrontView() {
               </div>
               <div className="mt-4 h-px bg-[#e9e9e9]" />
 
-              <div className="mt-3 rounded-lg bg-[#fafafa] p-3 text-sm text-[#565656]">
-                {cartItemsCount} items
-                <p className="text-base font-bold text-[#313131]">Total: {currencyFormatter.format(cartTotal)}</p>
-                {orderType === 'pickup' && (pickupHeadquarter || fallbackHeadquarter) ? (
-                  <p className="mt-1 text-xs text-[#666666]">
-                    Retiro en: {(pickupHeadquarter ?? fallbackHeadquarter)?.name}
-                  </p>
-                ) : null}
-              </div>
+              {cartItems.length === 0 ? (
+                <div className="flex min-h-[420px] flex-col items-center justify-center text-center">
+                  <div className="mb-6 rounded-full border border-[#e6e6e6] bg-[#f8f8f8] p-8 text-[#b8bcc5]">
+                    <ShoppingBag className="h-16 w-16" />
+                  </div>
+                  <p className="text-2xl font-medium text-[#8b8e94]">Pedido vacio</p>
+                </div>
+              ) : (
+                <div className="mt-4 space-y-5">
+                  {cartItems.map((item) => (
+                    <article key={item.id}>
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="text-3md font-black text-[#3b3b3b]">{item.name}</h4>
+                        <button
+                          type="button"
+                          onClick={() => openProductDialog(item)}
+                          className="text-sm font-medium text-[#1f5ea8] underline-offset-2 hover:underline"
+                        >
+                          Editar
+                        </button>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between">
+                        <p className="text-lg text-[#4f4f4f]">(x{item.quantity}) <span className="ml-3 font-semibold text-[#ff5a2f]">{currencyFormatter.format(item.price * item.quantity)}</span></p>
+                        <button
+                          type="button"
+                          onClick={() => removeProductFromCart(item.id)}
+                          className="rounded-lg border border-[#cfcfcf] p-2 text-[#7d7d7d] transition hover:border-[#ff5a2f] hover:text-[#ff5a2f]"
+                        >
+                          <Trash2 className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </article>
+                  ))}
 
-              <div className="mt-3 max-h-36 space-y-2 overflow-y-auto pr-1">
-                {cartItems.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-[#dddddd] p-4 text-center text-xs text-[#8a8a8a]">
-                    Tu carrito esta vacio.
-                  </p>
-                ) : (
-                  cartItems.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between gap-2 rounded-lg border border-[#ededed] px-2 py-1.5 text-sm">
-                      <span className="truncate text-[#4a4a4a]">{item.name} x{item.quantity}</span>
-                      <span className="font-semibold text-[#2f2f2f]">{currencyFormatter.format(item.price * item.quantity)}</span>
+                  <div className="h-px border-t border-dashed border-[#d9d9d9]" />
+
+                  <section>
+                    <h4 className="text-3xl font-extrabold text-[#3b3b3b]">Resumen</h4>
+                    <div className="mt-3 space-y-1 text-lg text-[#606060]">
+                      <p className="flex items-center justify-between">
+                        <span className="font-semibold">Subtotal</span>
+                        <span>{currencyFormatter.format(cartTotal)}</span>
+                      </p>
+                      <p className="flex items-center justify-between">
+                        <span className="font-semibold">Costo de envio</span>
+                        <span>-</span>
+                      </p>
                     </div>
-                  ))
-                )}
-              </div>
+                    <div className="mt-4 border-t border-[#dfdfdf] pt-3">
+                      <p className="flex items-center justify-between text-4xl font-black text-[#2f2f2f]">
+                        <span>Total</span>
+                        <span className="text-[#ff5a2f]">{currencyFormatter.format(cartTotal)}</span>
+                      </p>
+                      {orderType === 'pickup' && (pickupHeadquarter || fallbackHeadquarter) ? (
+                        <p className="mt-2 text-sm text-[#666666]">
+                          Retiro en: {(pickupHeadquarter ?? fallbackHeadquarter)?.name}
+                        </p>
+                      ) : null}
+                    </div>
+                  </section>
+                </div>
+              )}
 
-              <div className="mt-4 space-y-2">
-                <Input
-                  placeholder="Tu nombre"
-                  value={customerName}
-                  onChange={(event) => setCustomerName(event.target.value)}
-                  className="border-[#d8d8d8] bg-[#fafafa]"
-                />
-                <Input
-                  placeholder="Tu telefono"
-                  value={customerPhone}
-                  onChange={(event) => setCustomerPhone(event.target.value)}
-                  className="border-[#d8d8d8] bg-[#fafafa]"
-                />
-                {orderType === 'pickup' ? (
-                  <Select
-                    value={selectedHeadquarterId}
-                    onValueChange={setSelectedHeadquarterId}
-                    disabled={headquarters.length === 0}
-                  >
-                    <SelectTrigger className="border-[#d8d8d8] bg-[#fafafa]">
-                      <SelectValue placeholder={headquarters.length === 0 ? 'Sin sedes disponibles' : 'Sede de retiro'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {headquarters.map((headquarter) => (
-                        <SelectItem key={headquarter.id} value={headquarter.id}>
-                          {headquarter.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : null}
-                <Input
-                  placeholder="Notas (opcional)"
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  className="border-[#d8d8d8] bg-[#fafafa]"
-                />
-
-                <Button
-                  className="h-11 w-full bg-[#ff5a2f] text-white hover:bg-[#ed4f25]"
-                  onClick={() => void handleCreateOrder()}
-                  disabled={isCreatingOrder || isLoading}
-                >
-                  {isCreatingOrder ? 'Procesando...' : 'Confirmar compra'}
-                </Button>
-              </div>
-            </aside>
+              </aside>
+            ) : null}
           </div>
         </section>
       </div>
+
+      {cartItemsCount > 0 && checkoutStep === 'menu' ? (
+        <div className="fixed inset-x-0 bottom-0 z-40 px-4 pb-4">
+          <div className="mx-auto flex w-full max-w-4xl items-center justify-between rounded-2xl bg-[#ff5a2f] px-5 py-3 shadow-2xl">
+            <button
+              type="button"
+              onClick={handleContinueCheckout}
+              className="text-xl font-extrabold !text-[#ffffff]"
+            >
+              Continuar
+            </button>
+            <p className="text-2xl font-black !text-[#ffffff]">{currencyFormatter.format(cartTotal)}</p>
+          </div>
+        </div>
+      ) : null}
+
+      <Dialog open={isProductDialogOpen} onOpenChange={(open) => (!open ? closeProductDialog() : setIsProductDialogOpen(true))}>
+        <DialogContent className="max-h-[94vh] max-w-[460px] overflow-y-auto border-0 p-0 !bg-[#ffffff]">
+          {activeProduct ? (
+            <div>
+              <div className="relative h-[380px] overflow-hidden bg-[#efefef]">
+                {activeProduct.imageUrl ? (
+                  <img src={activeProduct.imageUrl} alt={activeProduct.name} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-[#9ea3ae]">
+                    <Store className="h-20 w-20" />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={closeProductDialog}
+                  className="absolute left-3 top-3 rounded-full bg-[#ffffff] p-2 text-[#1f2937] shadow-md"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 p-4">
+                <h3 className="text-4xl font-black text-[#2f2f2f]">{activeProduct.name}</h3>
+                <p className="text-sm text-[#5f636b]">{activeProduct.description ?? 'Sin descripcion.'}</p>
+                <p className="text-4xl font-black text-[#ff5a2f]">{currencyFormatter.format(activeProduct.price)}</p>
+                <p className="text-sm text-[#7a7a7a]">
+                  Sin impuestos nacionales:
+                  {' '}
+                  {currencyFormatter.format(activeProduct.price * 0.83)}
+                </p>
+
+                <div className="grid grid-cols-3 items-center rounded-2xl border border-[#dfdfdf] bg-[#fbfbfb]">
+                  <button
+                    type="button"
+                    onClick={() => setProductDialogQuantity((qty) => Math.max(1, qty - 1))}
+                    className="h-11 text-center text-3xl font-semibold text-[#4a4a4a]"
+                  >
+                    -
+                  </button>
+                  <p className="h-11 border-x border-[#dfdfdf] text-center text-2xl font-bold leading-[44px] text-[#2f2f2f]">
+                    {productDialogQuantity}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setProductDialogQuantity((qty) => qty + 1)}
+                    className="h-11 text-center text-3xl font-semibold text-[#4a4a4a]"
+                  >
+                    +
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={confirmProductSelection}
+                  className="flex h-12 w-full items-center justify-between rounded-2xl bg-[#ff5a2f] px-6 text-2xl font-black !text-[#ffffff]"
+                >
+                  <span>Agregar a mi pedido</span>
+                  <span>{currencyFormatter.format(productDialogTotal)}</span>
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

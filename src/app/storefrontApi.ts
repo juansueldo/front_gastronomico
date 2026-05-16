@@ -123,6 +123,8 @@ const ensureApiUrl = () => {
   return API_URL;
 };
 
+import { ApiError } from './api/errors';
+
 const buildApiUrl = (baseUrl: string, path: string) => {
   const normalizedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
@@ -379,7 +381,12 @@ export const fetchPublicStore = async (slug: string): Promise<PublicStoreInfo> =
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(data?.error || data?.detail || 'No se pudo cargar la tienda');
+    throw new ApiError(
+      data?.code ?? `HTTP_${response.status}`,
+      response.status,
+      data?.error || data?.detail || 'No se pudo cargar la tienda',
+      data?.details,
+    );
   }
 
   return normalizeStore(slug, data as BackendStoreInfo | null);
@@ -400,7 +407,12 @@ export const fetchPublicStoreCatalog = async (slug: string): Promise<PublicStore
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(data?.error || data?.detail || 'No se pudieron cargar los productos de la tienda');
+    throw new ApiError(
+      data?.code ?? `HTTP_${response.status}`,
+      response.status,
+      data?.error || data?.detail || 'No se pudieron cargar los productos de la tienda',
+      data?.details,
+    );
   }
 
   return normalizeProductsAndCategories(data);
@@ -447,7 +459,12 @@ export const createPublicStoreOrder = async (slug: string, input: CreatePublicOr
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(data?.error || data?.detail || 'No se pudo crear la compra');
+    throw new ApiError(
+      data?.code ?? `HTTP_${response.status}`,
+      response.status,
+      data?.error || data?.detail || 'No se pudo crear la compra',
+      data?.details,
+    );
   }
 
   return data;
