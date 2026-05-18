@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { CheckCircle2, ChevronLeft, Clock3, Instagram, Mail, MapPin, MessageCircle, Phone, Search, ShoppingBag, Store, Trash2 } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, Clock3, Instagram, Loader2, Mail, MapPin, MessageCircle, Phone, Search, ShoppingBag, Store, Trash2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -255,6 +255,7 @@ export function PublicStorefrontView() {
     () => buildScheduleState(activeScheduleHeadquarter?.schedules, scheduleNow),
     [activeScheduleHeadquarter?.schedules, scheduleNow],
   );
+  const storeImageUrl = store?.profileImageUrl ?? store?.logoUrl;
   const availableScheduleDays = scheduleState.dayOptions;
   const selectedScheduleDay = availableScheduleDays.find((day) => day.id === selectedScheduleDayId) ?? availableScheduleDays[0];
   const selectedScheduleSlot = selectedScheduleDay?.slots.find((slot) => slot.id === selectedScheduleSlotId) ?? selectedScheduleDay?.slots[0];
@@ -401,18 +402,40 @@ export function PublicStorefrontView() {
 
     document.title = store?.name ? `${store.name} - Menu Online` : 'Menu Online';
 
-    const faviconElement = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
-    if (!faviconElement) {
+    const faviconLinks = Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel*="icon"]'));
+    if (faviconLinks.length === 0) {
+      const createdLink = document.createElement('link');
+      createdLink.rel = 'icon';
+      document.head.appendChild(createdLink);
+      faviconLinks.push(createdLink);
+    }
+
+    const fallbackFavicon = faviconLinks[0]?.dataset.defaultFavicon || faviconLinks[0]?.href || '';
+    const rawTargetFavicon = storeImageUrl || fallbackFavicon;
+    if (!rawTargetFavicon) {
       return;
     }
 
-    const fallbackFavicon = faviconElement.dataset.defaultFavicon || faviconElement.href;
-    if (!faviconElement.dataset.defaultFavicon) {
-      faviconElement.dataset.defaultFavicon = fallbackFavicon;
+    let resolvedTargetFavicon = rawTargetFavicon;
+    if (storeImageUrl) {
+      try {
+        const withCacheBuster = new URL(rawTargetFavicon, window.location.origin);
+        withCacheBuster.searchParams.set('favicon_ts', String(Date.now()));
+        resolvedTargetFavicon = withCacheBuster.toString();
+      } catch {
+        const separator = rawTargetFavicon.includes('?') ? '&' : '?';
+        resolvedTargetFavicon = `${rawTargetFavicon}${separator}favicon_ts=${Date.now()}`;
+      }
     }
 
-    faviconElement.href = store?.logoUrl || fallbackFavicon;
-  }, [store?.name, store?.logoUrl]);
+    faviconLinks.forEach((faviconLink) => {
+      if (!faviconLink.dataset.defaultFavicon) {
+        faviconLink.dataset.defaultFavicon = faviconLink.href || fallbackFavicon;
+      }
+
+      faviconLink.href = resolvedTargetFavicon;
+    });
+  }, [store?.name, storeImageUrl]);
 
   useEffect(() => {
     setVisibleProductsCount(PRODUCT_BATCH_SIZE);
@@ -523,9 +546,10 @@ export function PublicStorefrontView() {
   if (storeLoadState === 'loading' || storeLoadState === 'idle') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#e6e6e6] px-4 text-center">
-        <p className="rounded-xl border border-[#dddddd] bg-white px-5 py-3 text-sm text-[#666666]">
-          Cargando tienda...
-        </p>
+        <div className="inline-flex items-center gap-2 rounded-xl border border-[#dddddd] bg-white px-5 py-3 text-sm text-[#666666]">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Cargando tienda...</span>
+        </div>
       </div>
     );
   }
@@ -758,8 +782,12 @@ export function PublicStorefrontView() {
         <div className="relative mx-auto max-w-6xl px-4 pt-8 md:px-6 md:pt-10">
           <div className="grid gap-6 md:grid-cols-[1.5fr_1fr_1fr]">
             <div className="flex items-start gap-4">
-              <div className="h-20 w-20 shrink-0 rounded-full bg-black/80 shadow-xl ring-2 ring-white/20 flex items-center justify-center">
-                <span className="text-xl font-semibold tracking-widest text-amber-300">{logoText}</span>
+              <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full bg-black/80 shadow-xl ring-2 ring-white/20 flex items-center justify-center">
+                {storeImageUrl ? (
+                  <img src={storeImageUrl} alt={`Logo de ${store?.name ?? 'la tienda'}`} className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-xl font-semibold tracking-widest text-amber-300">{logoText}</span>
+                )}
               </div>
               <div>
                 <h1 className="text-4xl font-extrabold leading-tight tracking-tight">{store?.name ?? 'Tienda'}</h1>

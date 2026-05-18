@@ -12,6 +12,7 @@ export interface PublicStoreInfo {
   slug: string;
   name: string;
   description?: string;
+  profileImageUrl?: string;
   logoUrl?: string;
   statusId?: number;
   pickupHeadquarters?: PublicStoreHeadquarter[];
@@ -66,6 +67,8 @@ interface BackendStoreInfo {
   description?: string;
   logo_url?: string;
   logoUrl?: string;
+  profileImageUrl?: string;
+  profile_image_url?: string;
   status_id?: string | number;
   statusId?: string | number;
   headquarterId?: string | number;
@@ -339,13 +342,21 @@ const normalizeStore = (slug: string, item: BackendStoreInfo | null): PublicStor
     item?.headquarter_id,
     pickupHeadquarters[0]?.id
   );
+  const resolvedProfileImageUrl = (
+    item?.profileImageUrl
+    ?? item?.profile_image_url
+    ?? item?.logoUrl
+    ?? item?.logo_url
+    ?? undefined
+  );
 
   return {
     id: item?.id !== undefined ? String(item.id) : undefined,
     slug: item?.slug ?? item?.slug_url ?? item?.slugUrl ?? slug,
     name: item?.name ?? item?.title ?? slug,
     description: item?.description ?? undefined,
-    logoUrl: item?.logo_url ?? item?.logoUrl ?? undefined,
+    profileImageUrl: resolvedProfileImageUrl,
+    logoUrl: item?.logoUrl ?? item?.logo_url ?? resolvedProfileImageUrl,
     statusId: Number.isFinite(parsedStatusId) ? parsedStatusId : 1,
     pickupHeadquarters,
     defaultHeadquarterId: defaultHeadquarterId || undefined,
