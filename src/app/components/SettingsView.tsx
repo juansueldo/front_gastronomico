@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { type ChangeEvent, useEffect, useRef, useState } from 'react';
 import { Camera, Bell, Shield, Globe, Moon, LogOut, Save } from 'lucide-react';
-import { Avatar, AvatarFallback } from './ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -13,9 +13,12 @@ import { AuthUser } from '../authStorage';
 import { clearAuthSession, getLoggedUser } from '../authStorage';
 import { useNavigate } from 'react-router';
 import { getThemePreference, setThemePreference, type ThemePreference } from '../theme';
-import { createCustomerSlug, fetchCustomerSlugs, type StoreSlug } from '../slugApi';
+import { updateStoreProfileImage } from '../api';
+import { createCustomerSlug, fetchCustomerSlugs, updateCustomerSlug, type StoreSlug } from '../slugApi';
 
 export function SettingsView() {
+  const userImageInputRef = useRef<HTMLInputElement | null>(null);
+  const storeImageInputRef = useRef<HTMLInputElement | null>(null);
   const navigate = useNavigate();
   const [loggedUser, setLoggedUser] = useState<AuthUser | null>(null);
   const [notifications, setNotifications] = useState({
@@ -26,11 +29,36 @@ export function SettingsView() {
   });
   const [theme, setTheme] = useState<ThemePreference>('dark');
   const [language, setLanguage] = useState('es');
-  const [storeSlugs, setStoreSlugs] = useState<StoreSlug[]>([]);
+  const [storeSlug, setStoreSlug] = useState<StoreSlug | null>(null);
   const [slugUrlInput, setSlugUrlInput] = useState('');
   const [slugStatusId, setSlugStatusId] = useState('1');
   const [isLoadingSlugs, setIsLoadingSlugs] = useState(false);
-  const [isCreatingSlug, setIsCreatingSlug] = useState(false);
+  const [isSavingSlug, setIsSavingSlug] = useState(false);
+  const [userProfileImagePreviewUrl, setUserProfileImagePreviewUrl] = useState<string | null>(null);
+  const [storeImagePreviewUrl, setStoreImagePreviewUrl] = useState<string | null>(null);
+  const [isUploadingStoreImage, setIsUploadingStoreImage] = useState(false);
+  const USER_PROFILE_IMAGE_STORAGE_KEY = 'settings:user-profile-image';
+
+  const readFileAsDataUrl = (file: File): Promise<string> => (
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        if (typeof reader.result !== 'string') {
+          reject(new Error('No se pudo leer la imagen seleccionada'));
+          return;
+        }
+
+        resolve(reader.result);
+      };
+
+      reader.onerror = () => {
+        reject(new Error('No se pudo leer la imagen seleccionada'));
+      };
+
+      reader.readAsDataURL(file);
+    })
+  );
 
   const normalizeStoreUrl = (rawSlug: string) => {
     const trimmed = rawSlug.trim();
@@ -51,7 +79,10 @@ export function SettingsView() {
 
     try {
       const slugs = await fetchCustomerSlugs();
-      setStoreSlugs(slugs);
+      const currentSlug = slugs[0] ?? null;
+      setStoreSlug(currentSlug);
+      setSlugUrlInput(currentSlug?.slugUrl ?? '');
+      setSlugStatusId(String(currentSlug?.statusId ?? 1));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudieron cargar los slugs');
     } finally {
@@ -63,6 +94,15 @@ export function SettingsView() {
     const storedUser = getLoggedUser() as Partial<AuthUser> | null;
     if (storedUser) {
       setLoggedUser(storedUser as AuthUser);
+    }
+
+    try {
+      const storedProfileImage = localStorage.getItem(USER_PROFILE_IMAGE_STORAGE_KEY);
+      if (storedProfileImage) {
+        setUserProfileImagePreviewUrl(storedProfileImage);
+      }
+    } catch {
+      // no-op: localStorage can fail in restricted contexts
     }
 
     setTheme(getThemePreference());
@@ -77,8 +117,63 @@ export function SettingsView() {
     toast.success('Perfil actualizado correctamente');
   };
 
-  const handlePhotoUpload = () => {
-    toast.info('Función de carga de foto no disponible en demo');
+  const handleUserPhotoUpload = () => {
+    userImageInputRef.current?.click();
+  };
+
+  const handleStorePhotoUpload = () => {
+    storeImageInputRef.current?.click();
+  };
+
+  const handleUserProfileImageSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Selecciona un archivo de imagen valido');
+      return;
+    }
+
+    try {
+      const base64Image = await readFileAsDataUrl(file);
+      setUserProfileImagePreviewUrl(base64Image);
+      localStorage.setItem(USER_PROFILE_IMAGE_STORAGE_KEY, base64Image);
+      toast.success('Foto de perfil actualizada');
+    } catch {
+      toast.error('No se pudo actualizar la foto de perfil');
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const handleStoreImageSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Selecciona un archivo de imagen valido');
+      return;
+    }
+
+    setIsUploadingStoreImage(true);
+
+    try {
+      const base64Image = await readFileAsDataUrl(file);
+      await updateStoreProfileImage({ image: base64Image });
+      setStoreImagePreviewUrl(base64Image);
+      toast.success('Imagen de la tienda actualizada');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo actualizar la imagen de la tienda');
+    } finally {
+      event.target.value = '';
+      setIsUploadingStoreImage(false);
+    }
   };
 
   const handleLogout = () => {
@@ -93,7 +188,7 @@ export function SettingsView() {
     setThemePreference(nextTheme);
   };
 
-  const handleCreateSlug = async () => {
+  const handleSaveSlug = async () => {
     const trimmedSlug = slugUrlInput.trim();
     const parsedStatusId = Number(slugStatusId);
 
@@ -107,21 +202,33 @@ export function SettingsView() {
       return;
     }
 
-    setIsCreatingSlug(true);
+    setIsSavingSlug(true);
 
     try {
-      await createCustomerSlug({
-        slugUrl: trimmedSlug,
-        statusId: parsedStatusId,
-      });
-
-      toast.success('Slug creado correctamente');
-      setSlugUrlInput('');
-      await loadStoreSlugs();
+      if (storeSlug) {
+        const updated = await updateCustomerSlug({
+          slugId: storeSlug.id,
+          slugUrl: trimmedSlug,
+          statusId: parsedStatusId,
+        });
+        setStoreSlug(updated);
+        setSlugUrlInput(updated.slugUrl);
+        setSlugStatusId(String(updated.statusId));
+        toast.success('Slug actualizado correctamente');
+      } else {
+        const created = await createCustomerSlug({
+          slugUrl: trimmedSlug,
+          statusId: parsedStatusId,
+        });
+        setStoreSlug(created);
+        setSlugUrlInput(created.slugUrl);
+        setSlugStatusId(String(created.statusId));
+        toast.success('Slug creado correctamente');
+      }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo crear el slug');
+      toast.error(error instanceof Error ? error.message : 'No se pudo guardar el slug');
     } finally {
-      setIsCreatingSlug(false);
+      setIsSavingSlug(false);
     }
   };
 
@@ -159,24 +266,34 @@ export function SettingsView() {
               Información del Perfil
             </h2>
 
-            <div className="flex flex-col md:flex-row gap-6">
-              {/* Avatar */}
-              <div className="flex flex-col items-center gap-3">
-                <Avatar className="h-24 w-24">
-                  <AvatarFallback className="bg-primary text-2xl">
-                    {loggedUser ? getInitials(loggedUser.firstname + ' ' + loggedUser.lastname) : ''}
-                  </AvatarFallback>
-                </Avatar>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handlePhotoUpload}
-                  className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
-                >
-                  <Camera className="h-4 w-4 mr-2" />
-                  Cambiar foto
-                </Button>
-              </div>
+              <div className="flex flex-col md:flex-row gap-6">
+                {/* Avatar */}
+                <div className="flex flex-col items-center gap-3">
+                  <Avatar className="h-24 w-24">
+                    {userProfileImagePreviewUrl ? (
+                      <AvatarImage src={userProfileImagePreviewUrl} alt="Foto de perfil del usuario" />
+                    ) : null}
+                    <AvatarFallback className="bg-primary text-2xl">
+                      {loggedUser ? getInitials(loggedUser.firstname + ' ' + loggedUser.lastname) : ''}
+                    </AvatarFallback>
+                  </Avatar>
+                  <input
+                    ref={userImageInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) => void handleUserProfileImageSelected(event)}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleUserPhotoUpload}
+                    className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
+                  >
+                    <Camera className="h-4 w-4 mr-2" />
+                    Cambiar foto de perfil
+                  </Button>
+                </div>
 
               {/* Form */}
               <div className="flex-1 space-y-4">
@@ -223,6 +340,56 @@ export function SettingsView() {
                   <Save className="h-4 w-4 mr-2" />
                   Guardar cambios
                 </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Store Image Section */}
+          <div className="bg-card rounded-lg p-6 space-y-4">
+            <h2 className="text-white font-medium mb-1 flex items-center gap-2">
+              <Camera className="h-5 w-5" />
+              Imagen de la tienda
+            </h2>
+            <p className="text-sm text-gray-400">
+              Esta imagen se usa en el storefront público de la tienda.
+            </p>
+
+            <div className="grid gap-4 md:grid-cols-[220px_1fr]">
+              <div className="space-y-3">
+                <div className="h-44 w-full overflow-hidden rounded-md border border-orange-700 bg-body">
+                  {storeImagePreviewUrl ? (
+                    <img
+                      src={storeImagePreviewUrl}
+                      alt="Vista previa de la tienda"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-sm text-gray-500">
+                      Sin imagen cargada
+                    </div>
+                  )}
+                </div>
+                <input
+                  ref={storeImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => void handleStoreImageSelected(event)}
+                />
+                <Button
+                  variant="outline"
+                  onClick={handleStorePhotoUpload}
+                  disabled={isUploadingStoreImage}
+                  className="w-full bg-transparent border-orange-600 text-white hover:bg-gray-700"
+                >
+                  {isUploadingStoreImage ? 'Subiendo imagen...' : 'Subir imagen de tienda'}
+                </Button>
+              </div>
+
+              <div className="rounded-md border border-orange-700 bg-body p-4">
+                <p className="text-sm text-gray-300">
+                  Recomendado: imagen cuadrada con buena resolución para que se vea bien en catálogo y portada.
+                </p>
               </div>
             </div>
           </div>
@@ -369,7 +536,7 @@ export function SettingsView() {
           <div className="bg-card rounded-lg p-6 space-y-4">
             <h2 className="text-white font-medium">Tienda publica</h2>
             <p className="text-sm text-gray-400">
-              Crea y gestiona URLs publicas para que tus clientes hagan pedidos.
+              Configura el slug público de tu tienda (uno por cuenta).
             </p>
 
             <div className="grid md:grid-cols-[1fr_180px_auto] gap-3">
@@ -388,8 +555,8 @@ export function SettingsView() {
                   <SelectItem value="2">Inactivo (2)</SelectItem>
                 </SelectContent>
               </Select>
-              <Button onClick={() => void handleCreateSlug()} disabled={isCreatingSlug}>
-                {isCreatingSlug ? 'Creando...' : 'Crear slug'}
+              <Button onClick={() => void handleSaveSlug()} disabled={isSavingSlug}>
+                {isSavingSlug ? 'Guardando...' : (storeSlug ? 'Actualizar slug' : 'Crear slug')}
               </Button>
             </div>
 
@@ -398,19 +565,19 @@ export function SettingsView() {
                 <p className="text-sm text-gray-400">Cargando slugs...</p>
               ) : null}
 
-              {!isLoadingSlugs && storeSlugs.length === 0 ? (
-                <p className="text-sm text-gray-500">Aun no tienes slugs creados</p>
+              {!isLoadingSlugs && !storeSlug ? (
+                <p className="text-sm text-gray-500">Todavía no tienes slug creado</p>
               ) : null}
 
-              {!isLoadingSlugs && storeSlugs.map((slug) => {
-                const normalizedUrl = normalizeStoreUrl(slug.slugUrl);
+              {!isLoadingSlugs && storeSlug ? (() => {
+                const normalizedUrl = normalizeStoreUrl(storeSlug.slugUrl);
 
                 return (
-                  <div key={slug.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-orange-700 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-orange-700 p-3">
                     <div className="min-w-0">
-                      <p className="text-sm text-white truncate">{slug.slugUrl}</p>
+                      <p className="text-sm text-white truncate">{storeSlug.slugUrl}</p>
                       <p className="text-xs text-gray-400 truncate">{normalizedUrl}</p>
-                      <p className="text-xs text-gray-500">Estado: {slug.statusId}</p>
+                      <p className="text-xs text-gray-500">Estado: {storeSlug.statusId}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <Button
@@ -418,7 +585,7 @@ export function SettingsView() {
                         size="sm"
                         variant="outline"
                         className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
-                        onClick={() => void handleCopyStoreUrl(slug.slugUrl)}
+                        onClick={() => void handleCopyStoreUrl(storeSlug.slugUrl)}
                       >
                         Copiar URL
                       </Button>
@@ -433,7 +600,7 @@ export function SettingsView() {
                     </div>
                   </div>
                 );
-              })}
+              })() : null}
             </div>
           </div>
 

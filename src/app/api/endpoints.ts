@@ -44,7 +44,23 @@ export const endpoints = {
     getHeadquarter: (id: string) => apiClient.get(`${API_VERSION}/headquarter/${id}`),
     createHeadquarter: (data: Payload) => apiClient.post(`${API_VERSION}/headquarter`, data),
     updateHeadquarter: (id: string, data: Payload) => apiClient.patch(`${API_VERSION}/headquarter/${id}`, { id, ...data }),
+    updateHeadquarterSchedules: (id: string, schedules: Payload[]) => apiClient.put(`${API_VERSION}/headquarter/${id}/schedules`, {
+      id,
+      headquarterId: id,
+      headquarter_id: id,
+      schedules,
+    }),
     deleteHeadquarter: (id: string) => apiClient.delete(`${API_VERSION}/headquarter/${id}`),
+
+    // --- STORE ---
+    updateStoreProfileImage: (image: string) => apiClient.patch(`${API_VERSION}/store/profile-image`, {
+      image,
+      profileImage: image,
+      profile_image: image,
+      logo: image,
+      logoUrl: image,
+      logo_url: image,
+    }),
 
     // --- DELIVERY ZONE ---
     fetchDeliveryZones: (params?: QueryParams) => apiClient.get(`${API_VERSION}/delivery-zone`, { params, config: { cache: 'short' } }),

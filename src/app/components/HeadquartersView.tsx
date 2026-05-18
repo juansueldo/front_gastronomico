@@ -1,7 +1,15 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Building2, MapPin, Phone } from 'lucide-react';
 import { toast } from 'sonner';
-import { createHeadquarter, listHeadquarters, updateHeadquarter, type CreateHeadquarterRequest, type Headquarter } from '../api/headquarter';
+import {
+  createHeadquarter,
+  listHeadquarters,
+  updateHeadquarter,
+  updateHeadquarterSchedules,
+  type CreateHeadquarterRequest,
+  type Headquarter,
+  type HeadquarterScheduleInput,
+} from '../api/headquarter';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import {
@@ -10,8 +18,76 @@ import {
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
+import { Input } from './ui/input';
+import { Switch } from './ui/switch';
 import { type DataTableColumn, RemoteDataTable, createRowActionsColumn } from './ui/data-table';
 import { HeadquartersForm } from './headquarters/HeadquartersForm';
+
+const DAY_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'monday', label: 'Lunes' },
+  { key: 'tuesday', label: 'Martes' },
+  { key: 'wednesday', label: 'Miércoles' },
+  { key: 'thursday', label: 'Jueves' },
+  { key: 'friday', label: 'Viernes' },
+  { key: 'saturday', label: 'Sábado' },
+  { key: 'sunday', label: 'Domingo' },
+];
+
+type ScheduleDraft = {
+  dayOfWeek: string;
+  openTime: string;
+  closeTime: string;
+  isClosed: boolean;
+};
+
+type RawHeadquarterSchedule = Partial<{
+  dayOfWeek: string;
+  day_of_week: string;
+  openTime: string;
+  open_time: string;
+  closeTime: string;
+  close_time: string;
+  isClosed: boolean;
+  is_closed: boolean;
+}>;
+
+const buildDefaultScheduleDraft = (): ScheduleDraft[] => DAY_OPTIONS.map((day) => ({
+  dayOfWeek: day.key,
+  openTime: '09:00',
+  closeTime: '18:00',
+  isClosed: false,
+}));
+
+const normalizeHeadquarterSchedules = (headquarter: Headquarter): ScheduleDraft[] => {
+  const rawSchedules = Array.isArray((headquarter as Headquarter & { schedules?: unknown }).schedules)
+    ? ((headquarter as Headquarter & { schedules: RawHeadquarterSchedule[] }).schedules)
+    : [];
+
+  const schedulesByDay = new Map(
+    rawSchedules
+      .map((schedule) => {
+        const dayOfWeek = String(schedule.dayOfWeek ?? schedule.day_of_week ?? '').trim().toLowerCase();
+        if (!dayOfWeek) {
+          return null;
+        }
+
+        return [dayOfWeek, {
+          dayOfWeek,
+          openTime: String(schedule.openTime ?? schedule.open_time ?? '09:00').slice(0, 5),
+          closeTime: String(schedule.closeTime ?? schedule.close_time ?? '18:00').slice(0, 5),
+          isClosed: Boolean(schedule.isClosed ?? schedule.is_closed ?? false),
+        } satisfies ScheduleDraft] as const;
+      })
+      .filter((entry): entry is readonly [string, ScheduleDraft] => entry !== null),
+  );
+
+  return DAY_OPTIONS.map((day) => schedulesByDay.get(day.key) ?? {
+    dayOfWeek: day.key,
+    openTime: '09:00',
+    closeTime: '18:00',
+    isClosed: false,
+  });
+};
 
 export function HeadquartersView() {
   const [form, setForm] = useState<CreateHeadquarterRequest>({ name: '', phone: '', location: '' });
@@ -20,6 +96,11 @@ export function HeadquartersView() {
   const [reloadKey, setReloadKey] = useState(0);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingHeadquarterId, setEditingHeadquarterId] = useState<string | null>(null);
+  const [isSchedulesDialogOpen, setIsSchedulesDialogOpen] = useState(false);
+  const [scheduleHeadquarter, setScheduleHeadquarter] = useState<Headquarter | null>(null);
+  const [scheduleDraft, setScheduleDraft] = useState<ScheduleDraft[]>(buildDefaultScheduleDraft());
+  const [isSavingSchedules, setIsSavingSchedules] = useState(false);
+  const [scheduleStepIndex, setScheduleStepIndex] = useState(0);
 
   const loadHeadquarters = useCallback(({ page, pageSize, search, sort }: {
     page: number;
@@ -50,6 +131,13 @@ export function HeadquartersView() {
       location: headquarter.location ?? '',
     });
     setIsDialogOpen(true);
+  };
+
+  const openSchedulesDialog = (headquarter: Headquarter) => {
+    setScheduleHeadquarter(headquarter);
+    setScheduleDraft(normalizeHeadquarterSchedules(headquarter));
+    setScheduleStepIndex(0);
+    setIsSchedulesDialogOpen(true);
   };
 
   const columns = useMemo<DataTableColumn<Headquarter>[]>(() => [
@@ -107,10 +195,8 @@ export function HeadquartersView() {
       },
       extraActions: [
         {
-          label: 'Ver detalle',
-          onClick: (headquarter) => {
-            toast.info(`Sede: ${headquarter.name}`);
-          },
+          label: 'Configurar horarios',
+          onClick: openSchedulesDialog,
         },
       ],
     }),
@@ -160,6 +246,69 @@ export function HeadquartersView() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleScheduleFieldChange = (
+    dayOfWeek: string,
+    field: keyof Omit<ScheduleDraft, 'dayOfWeek'>,
+    value: string | boolean,
+  ) => {
+    setScheduleDraft((current) => current.map((entry) => (
+      entry.dayOfWeek === dayOfWeek
+        ? {
+            ...entry,
+            [field]: value,
+          }
+        : entry
+    )));
+  };
+
+  const handleSaveSchedules = async () => {
+    if (!scheduleHeadquarter) {
+      return;
+    }
+
+    const invalidSchedule = scheduleDraft.find((item) => !item.isClosed && (!item.openTime || !item.closeTime));
+    if (invalidSchedule) {
+      toast.error('Completa horario de apertura y cierre para los dias habilitados');
+      return;
+    }
+
+    setIsSavingSchedules(true);
+
+    try {
+      const payload: HeadquarterScheduleInput[] = scheduleDraft.map((schedule) => ({
+        dayOfWeek: schedule.dayOfWeek,
+        openTime: schedule.openTime,
+        closeTime: schedule.closeTime,
+        isClosed: schedule.isClosed,
+      }));
+
+      await updateHeadquarterSchedules(scheduleHeadquarter.id, payload);
+      toast.success('Horarios actualizados');
+      setIsSchedulesDialogOpen(false);
+      setScheduleHeadquarter(null);
+      setScheduleDraft(buildDefaultScheduleDraft());
+      setScheduleStepIndex(0);
+      setReloadKey((current) => current + 1);
+    } catch (nextError) {
+      toast.error(nextError instanceof Error ? nextError.message : 'No se pudieron guardar los horarios');
+    } finally {
+      setIsSavingSchedules(false);
+    }
+  };
+
+  const currentScheduleStep = DAY_OPTIONS[scheduleStepIndex] ?? DAY_OPTIONS[0];
+  const currentDayDraft = scheduleDraft.find((item) => item.dayOfWeek === currentScheduleStep.key);
+  const currentDayIsClosed = currentDayDraft?.isClosed ?? false;
+  const isLastScheduleStep = scheduleStepIndex >= (DAY_OPTIONS.length - 1);
+
+  const goToNextScheduleStep = () => {
+    setScheduleStepIndex((current) => Math.min(current + 1, DAY_OPTIONS.length - 1));
+  };
+
+  const goToPreviousScheduleStep = () => {
+    setScheduleStepIndex((current) => Math.max(current - 1, 0));
   };
 
   return (
@@ -213,6 +362,107 @@ export function HeadquartersView() {
             onChange={handleFieldChange}
             onSubmit={handleSaveHeadquarter}
           />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isSchedulesDialogOpen}
+        onOpenChange={(open) => {
+          setIsSchedulesDialogOpen(open);
+          if (!open) {
+            setScheduleHeadquarter(null);
+            setScheduleDraft(buildDefaultScheduleDraft());
+            setScheduleStepIndex(0);
+          }
+        }}
+      >
+        <DialogContent className="card max-h-[90vh] overflow-y-auto bg-card text-white sm:max-w-xl lg:min-w-0">
+          <DialogHeader>
+            <DialogTitle>Horarios de {scheduleHeadquarter?.name ?? 'sede'}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-xs text-gray-400">
+                Paso {scheduleStepIndex + 1} de {DAY_OPTIONS.length}
+              </p>
+              <div className="grid grid-cols-7 gap-1">
+                {DAY_OPTIONS.map((day, index) => (
+                  <div
+                    key={day.key}
+                    className={`h-1.5 rounded-full ${index <= scheduleStepIndex ? 'bg-orange-500' : 'bg-gray-700'}`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-md border border-orange-700 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium text-white">{currentScheduleStep.label}</p>
+                <label className="flex items-center gap-2 text-xs text-gray-300">
+                  <span>Cerrado</span>
+                  <Switch
+                    checked={currentDayIsClosed}
+                    onCheckedChange={(checked) => handleScheduleFieldChange(currentScheduleStep.key, 'isClosed', checked)}
+                  />
+                </label>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="mb-1 text-xs text-gray-400">Apertura</p>
+                  <Input
+                    type="time"
+                    value={currentDayDraft?.openTime ?? '09:00'}
+                    disabled={currentDayIsClosed}
+                    onChange={(event) => handleScheduleFieldChange(currentScheduleStep.key, 'openTime', event.target.value)}
+                    className="border-orange-700"
+                  />
+                </div>
+                <div>
+                  <p className="mb-1 text-xs text-gray-400">Cierre</p>
+                  <Input
+                    type="time"
+                    value={currentDayDraft?.closeTime ?? '18:00'}
+                    disabled={currentDayIsClosed}
+                    onChange={(event) => handleScheduleFieldChange(currentScheduleStep.key, 'closeTime', event.target.value)}
+                    className="border-orange-700"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={goToPreviousScheduleStep}
+                disabled={scheduleStepIndex === 0 || isSavingSchedules}
+                className="border-orange-700 bg-transparent text-white hover:bg-gray-700"
+              >
+                Anterior
+              </Button>
+              {isLastScheduleStep ? (
+                <Button
+                  type="button"
+                  onClick={() => void handleSaveSchedules()}
+                  disabled={isSavingSchedules || !scheduleHeadquarter}
+                  className="w-full"
+                >
+                  {isSavingSchedules ? 'Guardando horarios...' : 'Guardar horarios'}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={goToNextScheduleStep}
+                  disabled={isSavingSchedules}
+                  className="w-full"
+                >
+                  Siguiente
+                </Button>
+              )}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

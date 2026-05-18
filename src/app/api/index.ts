@@ -37,6 +37,9 @@ export * from './tables';
 // Slugs API
 export * from './slugs';
 
+// Store API
+export * from './store';
+
 // Storefront API
 export * from './storefront';
 

@@ -39,6 +39,7 @@ export interface PublicStoreHeadquarter {
   name: string;
   location?: string;
   phone?: string;
+  schedules?: PublicStoreSchedule[];
 }
 
 export interface PublicStoreCatalog {
@@ -46,6 +47,13 @@ export interface PublicStoreCatalog {
   categories: PublicStoreCategory[];
   headquarters: PublicStoreHeadquarter[];
   defaultHeadquarterId?: string;
+}
+
+export interface PublicStoreSchedule {
+  dayOfWeek: string;
+  openTime: string;
+  closeTime: string;
+  isClosed: boolean;
 }
 
 interface BackendStoreInfo {
@@ -108,6 +116,18 @@ interface BackendHeadquarter {
   location?: string;
   address?: string;
   phone?: string;
+  schedules?: unknown;
+}
+
+interface BackendSchedule {
+  day_of_week?: string;
+  dayOfWeek?: string;
+  open_time?: string;
+  openTime?: string;
+  close_time?: string;
+  closeTime?: string;
+  is_closed?: boolean;
+  isClosed?: boolean;
 }
 
 const API_URL = (import.meta as StorefrontImportMeta).env?.VITE_API_URL;
@@ -196,7 +216,40 @@ const normalizeHeadquarter = (value: unknown): PublicStoreHeadquarter | null => 
     name: String(candidate.name ?? candidate.title ?? `Sede ${id}`).trim(),
     location: candidate.location ?? candidate.address ?? undefined,
     phone: candidate.phone ?? undefined,
+    schedules: normalizeSchedules(candidate.schedules),
   };
+};
+
+const normalizeSchedule = (value: unknown): PublicStoreSchedule | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as BackendSchedule;
+  const dayOfWeek = String(candidate.day_of_week ?? candidate.dayOfWeek ?? '').trim().toLowerCase();
+  const openTime = String(candidate.open_time ?? candidate.openTime ?? '').trim();
+  const closeTime = String(candidate.close_time ?? candidate.closeTime ?? '').trim();
+
+  if (!dayOfWeek || !openTime || !closeTime) {
+    return null;
+  }
+
+  return {
+    dayOfWeek,
+    openTime,
+    closeTime,
+    isClosed: Boolean(candidate.is_closed ?? candidate.isClosed ?? false),
+  };
+};
+
+const normalizeSchedules = (input: unknown): PublicStoreSchedule[] => {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input
+    .map((item) => normalizeSchedule(item))
+    .filter((item): item is PublicStoreSchedule => item !== null && !item.isClosed);
 };
 
 const normalizeHeadquarters = (input: unknown): PublicStoreHeadquarter[] => {
@@ -207,9 +260,23 @@ const normalizeHeadquarters = (input: unknown): PublicStoreHeadquarter[] => {
 
     const deduped = new Map<string, PublicStoreHeadquarter>();
     parsed.forEach((item) => {
-      if (!deduped.has(item.id)) {
+      const existing = deduped.get(item.id);
+      if (!existing) {
         deduped.set(item.id, item);
+        return;
       }
+
+      const mergedSchedules = existing.schedules?.length
+        ? existing.schedules
+        : item.schedules;
+
+      deduped.set(item.id, {
+        ...existing,
+        name: existing.name || item.name,
+        location: existing.location ?? item.location,
+        phone: existing.phone ?? item.phone,
+        schedules: mergedSchedules,
+      });
     });
 
     return Array.from(deduped.values());
@@ -428,6 +495,8 @@ interface CreatePublicOrderInput {
   productIds: string[];
   items: string[];
   headquarterId?: string | number;
+  scheduledFor?: string;
+  isAsap?: boolean;
 }
 
 export const createPublicStoreOrder = async (slug: string, input: CreatePublicOrderInput) => {
@@ -453,6 +522,10 @@ export const createPublicStoreOrder = async (slug: string, input: CreatePublicOr
       headquarterId: input.headquarterId,
       pickup_headquarter_id: input.headquarterId,
       pickupHeadquarterId: input.headquarterId,
+      scheduled_for: input.scheduledFor,
+      scheduledFor: input.scheduledFor,
+      is_asap: input.isAsap,
+      isAsap: input.isAsap,
     }),
   });
 

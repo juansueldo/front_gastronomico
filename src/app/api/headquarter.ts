@@ -8,6 +8,7 @@ export interface Headquarter {
   location?: string;
   storeId?: string;
   statusId?: number;
+  schedules?: HeadquarterScheduleInput[];
 }
 
 export interface CreateHeadquarterRequest {
@@ -20,6 +21,13 @@ export interface UpdateHeadquarterRequest {
   name?: string;
   phone?: string;
   location?: string;
+}
+
+export interface HeadquarterScheduleInput {
+  dayOfWeek: string;
+  openTime: string;
+  closeTime: string;
+  isClosed?: boolean;
 }
 
 export interface ListSortState {
@@ -155,5 +163,25 @@ export function updateHeadquarter(id: string, data: UpdateHeadquarterRequest) {
   return apiClient.patch(`${API_VERSION}/headquarter/${id}`, {
     id,
     ...data,
+  });
+}
+
+export function updateHeadquarterSchedules(id: string, schedules: HeadquarterScheduleInput[]) {
+  const normalizedSchedules = schedules.map((schedule) => ({
+    dayOfWeek: schedule.dayOfWeek.trim().toLowerCase(),
+    day_of_week: schedule.dayOfWeek.trim().toLowerCase(),
+    openTime: schedule.openTime.trim(),
+    open_time: schedule.openTime.trim(),
+    closeTime: schedule.closeTime.trim(),
+    close_time: schedule.closeTime.trim(),
+    isClosed: Boolean(schedule.isClosed),
+    is_closed: Boolean(schedule.isClosed),
+  }));
+
+  return apiClient.put(`${API_VERSION}/headquarter/${id}/schedules`, {
+    id,
+    headquarterId: id,
+    headquarter_id: id,
+    schedules: normalizedSchedules,
   });
 }

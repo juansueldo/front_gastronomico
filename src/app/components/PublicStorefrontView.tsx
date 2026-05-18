@@ -13,15 +13,23 @@ import {
   type PublicStoreInfo,
   type PublicStoreHeadquarter,
   type PublicStoreProduct,
+  type PublicStoreSchedule,
 } from '../storefrontApi';
 import { isApiError } from '../api/errors';
 
 type StoreLoadState = 'idle' | 'loading' | 'ready' | 'not-found' | 'error';
 type CheckoutStep = 'menu' | 'checkout' | 'success';
 type PaymentMethod = '' | 'transfer' | 'cash';
-type StoreScheduleOption = {
+type ScheduleMode = 'asap' | 'scheduled';
+type StoreScheduleSlotOption = {
   id: string;
   label: string;
+  startDate: Date;
+};
+type StoreScheduleDayOption = {
+  id: string;
+  label: string;
+  slots: StoreScheduleSlotOption[];
 };
 type OrderSuccessSummary = {
   customerName: string;
@@ -40,6 +48,126 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
 });
 
 const PRODUCT_BATCH_SIZE = 12;
+const DAY_OF_WEEK_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+const DAY_OF_WEEK_SHORT_LABELS = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'] as const;
+
+const buildDateWithTime = (date: Date, time: string) => {
+  const [hours, minutes] = time.split(':').map((value) => Number(value) || 0);
+  const result = new Date(date);
+  result.setHours(hours, minutes, 0, 0);
+  return result;
+};
+
+const formatHourLabel = (date: Date) => (
+  date.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+);
+
+const formatScheduleDayLabel = (date: Date) => {
+  const dayLabel = DAY_OF_WEEK_SHORT_LABELS[date.getDay()];
+  return `${dayLabel}-${date.getDate()}/${date.getMonth() + 1}`;
+};
+
+const formatWindowLabel = (open: Date, close: Date) => {
+  const openLabel = formatHourLabel(open);
+  const closeLabel = formatHourLabel(close);
+  return `${openLabel} a ${closeLabel}`;
+};
+
+const buildScheduleState = (schedules: PublicStoreSchedule[] | undefined, now: Date) => {
+  if (!schedules || schedules.length === 0) {
+    return {
+      isOpenNow: false,
+      hasSchedules: false,
+      todayWindowLabel: '',
+      nextOpeningLabel: '',
+      dayOptions: [] as StoreScheduleDayOption[],
+    };
+  }
+
+  const validSchedules = schedules.filter((schedule) => !schedule.isClosed);
+  if (validSchedules.length === 0) {
+    return {
+      isOpenNow: false,
+      hasSchedules: false,
+      todayWindowLabel: '',
+      nextOpeningLabel: '',
+      dayOptions: [] as StoreScheduleDayOption[],
+    };
+  }
+
+  const dayOptions: StoreScheduleDayOption[] = [];
+  const todayKey = DAY_OF_WEEK_KEYS[now.getDay()];
+  const todayWindows: string[] = [];
+  let isOpenNow = false;
+  let firstFutureOpening: Date | null = null;
+
+  for (let dayOffset = 0; dayOffset < 7; dayOffset += 1) {
+    const date = new Date(now);
+    date.setDate(now.getDate() + dayOffset);
+    const dayKey = DAY_OF_WEEK_KEYS[date.getDay()];
+    const daySchedules = validSchedules.filter((schedule) => schedule.dayOfWeek === dayKey);
+    const daySlots: StoreScheduleSlotOption[] = [];
+
+    daySchedules.forEach((schedule) => {
+      const openDate = buildDateWithTime(date, schedule.openTime);
+      const closeDate = buildDateWithTime(date, schedule.closeTime);
+      if (closeDate <= openDate) {
+        closeDate.setDate(closeDate.getDate() + 1);
+      }
+
+      if (dayKey === todayKey) {
+        todayWindows.push(formatWindowLabel(openDate, closeDate));
+        if (now >= openDate && now < closeDate) {
+          isOpenNow = true;
+        }
+      }
+
+      if (openDate > now && (!firstFutureOpening || openDate < firstFutureOpening)) {
+        firstFutureOpening = new Date(openDate);
+      }
+
+      let slot = new Date(openDate);
+      while (slot < closeDate) {
+        const slotEnd = new Date(Math.min(slot.getTime() + (30 * 60 * 1000), closeDate.getTime()));
+        if (dayOffset > 0 || slot > now) {
+          daySlots.push({
+            id: `slot:${slot.toISOString()}`,
+            label: `${formatHourLabel(slot)} - ${formatHourLabel(slotEnd)}`,
+            startDate: new Date(slot),
+          });
+        }
+        slot = new Date(slot.getTime() + 30 * 60 * 1000);
+      }
+    });
+
+    if (daySlots.length > 0) {
+      const dayId = `day:${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+      dayOptions.push({
+        id: dayId,
+        label: formatScheduleDayLabel(date),
+        slots: daySlots,
+      });
+    }
+  }
+
+  const nextOpeningLabel = firstFutureOpening
+    ? firstFutureOpening.toLocaleString('es-AR', {
+      weekday: 'short',
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).replace('.', '')
+    : '';
+
+  return {
+    isOpenNow,
+    hasSchedules: true,
+    todayWindowLabel: todayWindows.join(' | '),
+    nextOpeningLabel,
+    dayOptions,
+  };
+};
 
 export function PublicStorefrontView() {
   const { slug = '' } = useParams<{ slug: string }>();
@@ -65,18 +193,15 @@ export function PublicStorefrontView() {
   const [storeDefaultHeadquarterId, setStoreDefaultHeadquarterId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [storeLoadState, setStoreLoadState] = useState<StoreLoadState>('idle');
-  const [selectedScheduleId, setSelectedScheduleId] = useState('asap');
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('asap');
+  const [selectedScheduleDayId, setSelectedScheduleDayId] = useState('');
+  const [selectedScheduleSlotId, setSelectedScheduleSlotId] = useState('');
+  const [scheduleNow, setScheduleNow] = useState(() => new Date());
   const [activeProduct, setActiveProduct] = useState<PublicStoreProduct | null>(null);
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
   const [productDialogQuantity, setProductDialogQuantity] = useState(1);
   const [visibleProductsCount, setVisibleProductsCount] = useState(PRODUCT_BATCH_SIZE);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
-  const scheduleOptions = useMemo<StoreScheduleOption[]>(
-    () => [
-      { id: 'asap', label: 'Lo antes posible' },
-    ],
-    [],
-  );
 
   const categoryEntries = useMemo(
     () => Object.entries(categoriesById).sort(([, leftName], [, rightName]) => leftName.localeCompare(rightName, 'es')),
@@ -122,7 +247,17 @@ export function PublicStorefrontView() {
 
   const pickupHeadquarter = headquarters.find((headquarter) => headquarter.id === selectedHeadquarterId);
   const fallbackHeadquarter = headquarters.find((headquarter) => headquarter.id === storeDefaultHeadquarterId) ?? headquarters[0];
-  const selectedSchedule = scheduleOptions.find((option) => option.id === selectedScheduleId) ?? scheduleOptions[0];
+  const isPickupZonePending = orderType === 'pickup' && !selectedHeadquarterId;
+  const activeScheduleHeadquarter = orderType === 'pickup'
+    ? (isPickupZonePending ? undefined : pickupHeadquarter)
+    : fallbackHeadquarter;
+  const scheduleState = useMemo(
+    () => buildScheduleState(activeScheduleHeadquarter?.schedules, scheduleNow),
+    [activeScheduleHeadquarter?.schedules, scheduleNow],
+  );
+  const availableScheduleDays = scheduleState.dayOptions;
+  const selectedScheduleDay = availableScheduleDays.find((day) => day.id === selectedScheduleDayId) ?? availableScheduleDays[0];
+  const selectedScheduleSlot = selectedScheduleDay?.slots.find((slot) => slot.id === selectedScheduleSlotId) ?? selectedScheduleDay?.slots[0];
   const productDialogTotal = (activeProduct?.price ?? 0) * productDialogQuantity;
   const canConfirmCheckout = (
     customerName.trim().length > 0
@@ -191,9 +326,21 @@ export function PublicStorefrontView() {
       const mergedHeadquartersMap = new Map<string, PublicStoreHeadquarter>();
 
       [...(storeData.pickupHeadquarters ?? []), ...productsData.headquarters].forEach((headquarter) => {
-        if (!mergedHeadquartersMap.has(headquarter.id)) {
+        const currentHeadquarter = mergedHeadquartersMap.get(headquarter.id);
+        if (!currentHeadquarter) {
           mergedHeadquartersMap.set(headquarter.id, headquarter);
+          return;
         }
+
+        mergedHeadquartersMap.set(headquarter.id, {
+          ...currentHeadquarter,
+          schedules: currentHeadquarter.schedules?.length
+            ? currentHeadquarter.schedules
+            : headquarter.schedules,
+          name: currentHeadquarter.name || headquarter.name,
+          location: currentHeadquarter.location ?? headquarter.location,
+          phone: currentHeadquarter.phone ?? headquarter.phone,
+        });
       });
 
       const mergedHeadquarters = Array.from(mergedHeadquartersMap.values());
@@ -212,7 +359,7 @@ export function PublicStorefrontView() {
           return current;
         }
 
-        return nextDefaultHeadquarterId;
+        return '';
       });
 
       const categoryMap: Record<string, string> = {};
@@ -248,8 +395,65 @@ export function PublicStorefrontView() {
   }, [slug]);
 
   useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    document.title = store?.name ? `${store.name} - Menu Online` : 'Menu Online';
+
+    const faviconElement = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+    if (!faviconElement) {
+      return;
+    }
+
+    const fallbackFavicon = faviconElement.dataset.defaultFavicon || faviconElement.href;
+    if (!faviconElement.dataset.defaultFavicon) {
+      faviconElement.dataset.defaultFavicon = fallbackFavicon;
+    }
+
+    faviconElement.href = store?.logoUrl || fallbackFavicon;
+  }, [store?.name, store?.logoUrl]);
+
+  useEffect(() => {
     setVisibleProductsCount(PRODUCT_BATCH_SIZE);
   }, [slug, searchTerm, selectedCategoryId, products.length]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setScheduleNow(new Date());
+    }, 60 * 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    if (scheduleMode === 'scheduled' && availableScheduleDays.length === 0) {
+      setScheduleMode('asap');
+      return;
+    }
+
+    if (!selectedScheduleDay || selectedScheduleDay.id !== selectedScheduleDayId) {
+      setSelectedScheduleDayId(selectedScheduleDay?.id ?? '');
+    }
+  }, [scheduleMode, availableScheduleDays, selectedScheduleDay, selectedScheduleDayId]);
+
+  useEffect(() => {
+    if (!selectedScheduleDay) {
+      if (selectedScheduleSlotId) {
+        setSelectedScheduleSlotId('');
+      }
+      return;
+    }
+
+    const currentSlotExists = selectedScheduleDay.slots.some((slot) => slot.id === selectedScheduleSlotId);
+    if (!currentSlotExists) {
+      setSelectedScheduleSlotId(selectedScheduleDay.slots[0]?.id ?? '');
+    }
+  }, [selectedScheduleDay, selectedScheduleSlotId]);
 
   useEffect(() => {
     const target = loadMoreTriggerRef.current;
@@ -394,7 +598,15 @@ export function PublicStorefrontView() {
     const trimmedAddress = deliveryAddress.trim();
     const trimmedAddressExtra = deliveryAddressExtra.trim();
     const trimmedNotes = notes.trim();
-    const mergedNotes = [trimmedAddressExtra ? `Piso/Depto: ${trimmedAddressExtra}` : '', trimmedNotes].filter(Boolean).join(' | ');
+    const isAsapSchedule = scheduleMode === 'asap';
+    const scheduleNotes = isAsapSchedule
+      ? 'Horario solicitado: lo antes posible'
+      : (selectedScheduleDay && selectedScheduleSlot
+        ? `Horario solicitado: ${selectedScheduleDay.label} ${selectedScheduleSlot.label}`
+        : '');
+    const mergedNotes = [trimmedAddressExtra ? `Piso/Depto: ${trimmedAddressExtra}` : '', scheduleNotes, trimmedNotes]
+      .filter(Boolean)
+      .join(' | ');
 
     if (!slug) {
       toast.error('No se encontro el slug de la tienda');
@@ -438,6 +650,11 @@ export function PublicStorefrontView() {
       }
     }
 
+    if (!isAsapSchedule && !selectedScheduleSlot?.startDate) {
+      toast.error('Selecciona un horario valido para el pedido');
+      return;
+    }
+
     setIsCreatingOrder(true);
 
     try {
@@ -458,6 +675,8 @@ export function PublicStorefrontView() {
         productIds,
         items,
         headquarterId: orderType === 'pickup' ? selectedHeadquarterId : undefined,
+        scheduledFor: isAsapSchedule ? undefined : selectedScheduleSlot?.startDate.toISOString(),
+        isAsap: isAsapSchedule,
       });
 
       const paymentLabel = paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo';
@@ -544,9 +763,19 @@ export function PublicStorefrontView() {
               </div>
               <div>
                 <h1 className="text-4xl font-extrabold leading-tight tracking-tight">{store?.name ?? 'Tienda'}</h1>
-                <p className="mt-2 inline-flex items-center gap-2 rounded-full bg-emerald-300/30 px-3 py-1 text-xs font-medium text-emerald-100">
+                <p
+                  className={`mt-2 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${
+                    isPickupZonePending
+                      ? 'bg-white/25 text-white'
+                      : scheduleState.hasSchedules
+                      ? (scheduleState.isOpenNow ? 'bg-emerald-300/30 text-emerald-100' : 'bg-rose-300/30 text-rose-100')
+                      : 'bg-white/25 text-white'
+                  }`}
+                >
                   <Clock3 className="h-3.5 w-3.5" />
-                  Disponible
+                  {isPickupZonePending
+                    ? 'Selecciona sede'
+                    : (!scheduleState.hasSchedules ? 'Horarios no cargados' : (scheduleState.isOpenNow ? 'Abierto ahora' : 'Cerrado ahora'))}
                 </p>
               </div>
             </div>
@@ -604,32 +833,8 @@ export function PublicStorefrontView() {
             </Button>
           </div>
 
-          <div className="mt-4 grid items-center gap-3 md:grid-cols-[1fr_1.4fr]">
-            <p className="text-3md font-medium text-[#4d4d4d] md:pl-10">Horario de entrega:</p>
-            <Select
-              value={selectedSchedule?.id ?? 'asap'}
-              onValueChange={setSelectedScheduleId}
-              disabled={scheduleOptions.length === 0}
-            >
-              <SelectTrigger className="h-12 rounded-lg border border-[#bdbdbd] !bg-[#f4f4f4] !text-[#3e3e3e] [&_svg]:!text-[#575757]">
-                <SelectValue className="!text-[#3f3f3f] text-base" placeholder="Sin horarios disponibles" />
-              </SelectTrigger>
-              <SelectContent className="!bg-white !text-[#1f2937]">
-                {scheduleOptions.map((option) => (
-                  <SelectItem
-                    key={option.id}
-                    value={option.id}
-                    className="!text-[#1f2937] focus:!bg-[#f3f4f6] focus:!text-[#1f2937] data-[state=checked]:!bg-[#f3f4f6] data-[state=checked]:!text-[#1f2937]"
-                  >
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           {orderType === 'pickup' ? (
-            <div className="mt-3 grid items-center gap-3 md:grid-cols-[1fr_1.4fr]">
+            <div className="mt-4 grid items-center gap-3 md:grid-cols-[1fr_1.4fr]">
               <p className="text-3md font-medium text-[#4d4d4d] md:pl-10">Sede para retirar:</p>
               <Select
                 value={selectedHeadquarterId}
@@ -657,20 +862,120 @@ export function PublicStorefrontView() {
             </div>
           ) : null}
 
+          <div className="mt-3 grid items-center gap-3 md:grid-cols-[1fr_1.4fr]">
+            <p className="text-3md font-medium text-[#4d4d4d] md:pl-10">Horario de entrega:</p>
+            <Select
+              value={scheduleMode}
+              onValueChange={(value) => setScheduleMode(value as ScheduleMode)}
+              disabled={isPickupZonePending}
+            >
+              <SelectTrigger className="h-12 rounded-lg border border-[#bdbdbd] !bg-[#f4f4f4] !text-[#3e3e3e] [&_svg]:!text-[#575757]">
+                <SelectValue className="!text-[#3f3f3f] text-base" placeholder={isPickupZonePending ? 'Selecciona una sede primero' : undefined} />
+              </SelectTrigger>
+              <SelectContent className="!bg-white !text-[#1f2937]">
+                <SelectItem
+                  value="asap"
+                  className="!text-[#1f2937] focus:!bg-[#f3f4f6] focus:!text-[#1f2937] data-[state=checked]:!bg-[#f3f4f6] data-[state=checked]:!text-[#1f2937]"
+                >
+                  Lo antes posible
+                </SelectItem>
+                <SelectItem
+                  value="scheduled"
+                  disabled={availableScheduleDays.length === 0}
+                  className="!text-[#1f2937] focus:!bg-[#f3f4f6] focus:!text-[#1f2937] data-[state=checked]:!bg-[#f3f4f6] data-[state=checked]:!text-[#1f2937]"
+                >
+                  Programar pedido
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {scheduleMode === 'scheduled' ? (
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <Select
+                value={selectedScheduleDay?.id ?? ''}
+                onValueChange={setSelectedScheduleDayId}
+                disabled={availableScheduleDays.length === 0 || isPickupZonePending}
+              >
+                <SelectTrigger className="h-12 rounded-lg border border-[#bdbdbd] !bg-[#f4f4f4] !text-[#3e3e3e] data-[placeholder]:!text-[#6b7280] [&_svg]:!text-[#575757]">
+                  <SelectValue
+                    className="!text-[#3f3f3f] text-base"
+                    placeholder={isPickupZonePending ? 'Selecciona una sede primero' : (availableScheduleDays.length === 0 ? 'Sin dias disponibles' : 'Elegir dia')}
+                  />
+                </SelectTrigger>
+                <SelectContent className="!bg-white !text-[#1f2937] h-full">
+                  {availableScheduleDays.map((dayOption) => (
+                    <SelectItem
+                      key={dayOption.id}
+                      value={dayOption.id}
+                      className="!text-[#1f2937] focus:!bg-[#f3f4f6] focus:!text-[#1f2937] data-[state=checked]:!bg-[#f3f4f6] data-[state=checked]:!text-[#1f2937]"
+                    >
+                      {dayOption.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={selectedScheduleSlot?.id ?? ''}
+                onValueChange={setSelectedScheduleSlotId}
+                disabled={!selectedScheduleDay || selectedScheduleDay.slots.length === 0 || isPickupZonePending}
+              >
+                <SelectTrigger className="h-12 rounded-lg border border-[#bdbdbd] !bg-[#f4f4f4] !text-[#3e3e3e] data-[placeholder]:!text-[#6b7280] [&_svg]:!text-[#575757]">
+                  <SelectValue
+                    className="!text-[#3f3f3f] text-base"
+                    placeholder={isPickupZonePending ? 'Selecciona una sede primero' : (selectedScheduleDay ? 'Elegir hora' : 'Elegir dia primero')}
+                  />
+                </SelectTrigger>
+                <SelectContent className="!bg-white !text-[#1f2937] h-full">
+                  {(selectedScheduleDay?.slots ?? []).map((slotOption) => (
+                    <SelectItem
+                      key={slotOption.id}
+                      value={slotOption.id}
+                      className="!text-[#1f2937] focus:!bg-[#f3f4f6] focus:!text-[#1f2937] data-[state=checked]:!bg-[#f3f4f6] data-[state=checked]:!text-[#1f2937]"
+                    >
+                      {slotOption.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+
+          {isPickupZonePending ? (
+            <p className="mt-2 text-xs text-[#6b7280]">
+              Selecciona la sede para habilitar los horarios disponibles.
+            </p>
+          ) : !scheduleState.hasSchedules ? (
+            <p className="mt-2 text-xs text-[#6b7280]">
+              Esta sede no tiene horarios configurados. El pedido quedara como lo antes posible.
+            </p>
+          ) : null}
+
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#e3e3e3] pt-3">
-            <span className="rounded-xl bg-[#c8e9d2] px-4 py-1 text-sm font-semibold text-[#2ea65f]">
-              Disponible
+            <span
+              className={`rounded-xl px-4 py-1 text-sm font-semibold ${
+                isPickupZonePending
+                  ? 'bg-[#e5e7eb] text-[#4b5563]'
+                  : scheduleState.hasSchedules
+                  ? (scheduleState.isOpenNow ? 'bg-[#c8e9d2] text-[#2ea65f]' : 'bg-[#ffd9d9] text-[#c53030]')
+                  : 'bg-[#e5e7eb] text-[#4b5563]'
+              }`}
+            >
+              {isPickupZonePending
+                ? 'Selecciona sede'
+                : (!scheduleState.hasSchedules ? 'Sin horarios' : (scheduleState.isOpenNow ? 'Abierto ahora' : 'Cerrado ahora'))}
             </span>
             <div className="flex items-center gap-2 text-[#757575]">
               <Clock3 className="h-4 w-4" />
               <span className="text-2md">
-                {orderType === 'pickup' ? '11:30 a 00:00' : '11:30 a 16:00'}
+                {isPickupZonePending ? 'Elige una sede para ver horarios' : (scheduleState.todayWindowLabel || 'Sin horarios para hoy')}
               </span>
-              {orderType === 'delivery' ? (
+              {!isPickupZonePending && !scheduleState.isOpenNow && scheduleState.nextOpeningLabel ? (
                 <>
                   <span className="text-[#bbbbbb]">|</span>
                   <Clock3 className="h-4 w-4" />
-                  <span className="text-2md">19:30 a 00:00</span>
+                  <span className="text-2md">Proxima apertura: {scheduleState.nextOpeningLabel}</span>
                 </>
               ) : null}
             </div>

@@ -5,6 +5,7 @@ type SlugImportMeta = ImportMeta & {
     VITE_API_URL?: string;
     VITE_SLUG_LIST_PATH?: string;
     VITE_SLUG_CREATE_PATH?: string;
+    VITE_SLUG_UPDATE_PATH?: string;
   };
 };
 
@@ -29,8 +30,9 @@ interface BackendSlug {
 }
 
 const API_URL = (import.meta as SlugImportMeta).env?.VITE_API_URL;
-const SLUG_LIST_PATH = (import.meta as SlugImportMeta).env?.VITE_SLUG_LIST_PATH ?? '/slug';
-const SLUG_CREATE_PATH = (import.meta as SlugImportMeta).env?.VITE_SLUG_CREATE_PATH ?? '/slug/create';
+const SLUG_LIST_PATH = (import.meta as SlugImportMeta).env?.VITE_SLUG_LIST_PATH ?? '/v1/slug';
+const SLUG_CREATE_PATH = (import.meta as SlugImportMeta).env?.VITE_SLUG_CREATE_PATH ?? '/v1/slug/create';
+const SLUG_UPDATE_PATH = (import.meta as SlugImportMeta).env?.VITE_SLUG_UPDATE_PATH ?? '/v1/slug/update/:id';
 
 const ensureApiUrl = () => {
   if (!API_URL) {
@@ -78,15 +80,8 @@ const normalizeSlug = (item: BackendSlug): StoreSlug => {
 };
 
 export const fetchCustomerSlugs = async (customerId?: number): Promise<StoreSlug[]> => {
-  const resolvedCustomerId = customerId ?? getSessionCustomerId();
-
-  if (!resolvedCustomerId || resolvedCustomerId <= 0) {
-    throw new Error('No se encontro customer_id del usuario logueado');
-  }
-
   const baseUrl = ensureApiUrl();
-  const query = new URLSearchParams({ customerId: String(resolvedCustomerId) });
-  const response = await fetch(`${baseUrl}${SLUG_LIST_PATH}?${query.toString()}`, {
+  const response = await fetch(`${baseUrl}${SLUG_LIST_PATH}`, {
     method: 'GET',
     headers: buildAuthHeaders(),
   });
@@ -97,11 +92,17 @@ export const fetchCustomerSlugs = async (customerId?: number): Promise<StoreSlug
     throw new Error(data?.error || data?.detail || 'No se pudieron obtener los slugs');
   }
 
-  if (!Array.isArray(data)) {
-    return [];
-  }
+  const rows = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.rows)
+      ? data.rows
+      : Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.slugs)
+          ? data.slugs
+          : [];
 
-  return data.map(normalizeSlug);
+  return rows.map((item) => normalizeSlug(item as BackendSlug));
 };
 
 interface CreateSlugInput {
@@ -135,6 +136,51 @@ export const createCustomerSlug = async (input: CreateSlugInput) => {
 
   if (!response.ok) {
     throw new Error(data?.error || data?.detail || 'No se pudo crear el slug');
+  }
+
+  return normalizeSlug(data as BackendSlug);
+};
+
+interface UpdateSlugInput {
+  slugId: string;
+  slugUrl: string;
+  statusId?: number;
+  customerId?: number;
+}
+
+const resolveSlugUpdatePath = (slugId: string) => (
+  SLUG_UPDATE_PATH.includes(':id')
+    ? SLUG_UPDATE_PATH.replace(':id', encodeURIComponent(slugId))
+    : `${SLUG_UPDATE_PATH.replace(/\/$/, '')}/${encodeURIComponent(slugId)}`
+);
+
+export const updateCustomerSlug = async (input: UpdateSlugInput) => {
+  const resolvedCustomerId = input.customerId ?? getSessionCustomerId();
+
+  if (!resolvedCustomerId || resolvedCustomerId <= 0) {
+    throw new Error('No se encontro customer_id del usuario logueado');
+  }
+
+  const baseUrl = ensureApiUrl();
+  const path = resolveSlugUpdatePath(input.slugId);
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildAuthHeaders(),
+    },
+    body: JSON.stringify({
+      id: input.slugId,
+      customer_id: resolvedCustomerId,
+      slug_url: input.slugUrl,
+      status_id: input.statusId ?? 1,
+    }),
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(data?.error || data?.detail || 'No se pudo actualizar el slug');
   }
 
   return normalizeSlug(data as BackendSlug);
