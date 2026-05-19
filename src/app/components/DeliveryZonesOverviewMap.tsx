@@ -70,29 +70,6 @@ export function DeliveryZonesOverviewMap({ zones }: { zones: PublicStoreDelivery
           });
           overlaysRef.current.push(polygon);
 
-          const firstPoint = zone.polygon[0];
-          if (firstPoint) {
-            const marker = new google.maps.Marker({
-              position: firstPoint,
-              map,
-              label: {
-                text: String(index + 1),
-                color: '#ffffff',
-                fontWeight: '700',
-              },
-              icon: {
-                path: google.maps.SymbolPath.CIRCLE,
-                fillColor: color,
-                fillOpacity: 1,
-                strokeColor: '#0f172a',
-                strokeWeight: 1,
-                scale: 9,
-              },
-              title: zone.name || `Zona ${index + 1}`,
-            });
-            overlaysRef.current.push(marker);
-          }
-
           zone.polygon.forEach((point) => {
             bounds.extend(point);
             hasBounds = true;

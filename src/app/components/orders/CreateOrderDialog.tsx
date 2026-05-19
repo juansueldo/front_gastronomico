@@ -239,6 +239,10 @@ const formatTimeForPayload = (date: Date) => (
   `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:00`
 );
 
+const formatLocalDateTimeForPayload = (date: Date) => (
+  `${formatDateForPayload(date)}T${formatTimeForPayload(date)}`
+);
+
 const buildScheduleState = (schedules: HeadquarterSchedule[] | undefined, now: Date) => {
   if (!schedules || schedules.length === 0) {
     return {
@@ -703,7 +707,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
       delivery_address: orderType === 'delivery' ? trimmedDeliveryAddress : undefined,
       delivery_latitude: resolvedCoordinates?.latitude,
       delivery_longitude: resolvedCoordinates?.longitude,
-      scheduled_for: scheduledSlotDate?.toISOString(),
+      scheduled_for: scheduledSlotDate ? formatLocalDateTimeForPayload(scheduledSlotDate) : undefined,
       scheduled_date: scheduledDate,
       scheduled_time: scheduledTime,
       is_asap: isAsapSchedule,

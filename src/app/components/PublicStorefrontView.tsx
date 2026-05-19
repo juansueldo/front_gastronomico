@@ -85,6 +85,10 @@ const formatTimeForPayload = (date: Date) => (
   `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:00`
 );
 
+const formatLocalDateTimeForPayload = (date: Date) => (
+  `${formatDateForPayload(date)}T${formatTimeForPayload(date)}`
+);
+
 const formatWindowLabel = (open: Date, close: Date) => {
   const openLabel = formatHourLabel(open);
   const closeLabel = formatHourLabel(close);
@@ -335,13 +339,6 @@ export function PublicStorefrontView() {
   const availableScheduleDays = scheduleState.dayOptions;
   const selectedScheduleDay = availableScheduleDays.find((day) => day.id === selectedScheduleDayId) ?? availableScheduleDays[0];
   const selectedScheduleSlot = selectedScheduleDay?.slots.find((slot) => slot.id === selectedScheduleSlotId) ?? selectedScheduleDay?.slots[0];
-  const headquarterNameById = useMemo(() => {
-    const namesById: Record<string, string> = {};
-    headquarters.forEach((headquarter) => {
-      namesById[headquarter.id] = headquarter.name;
-    });
-    return namesById;
-  }, [headquarters]);
   const productDialogTotal = (activeProduct?.price ?? 0) * productDialogQuantity;
   const canConfirmCheckout = (
     customerName.trim().length > 0
@@ -873,7 +870,9 @@ export function PublicStorefrontView() {
         headquarterId: orderType === 'pickup' ? selectedHeadquarterId : undefined,
         scheduledDate,
         scheduledTime,
-        scheduledFor: isAsapSchedule ? undefined : selectedScheduleSlot?.startDate.toISOString(),
+        scheduledFor: isAsapSchedule || !selectedScheduleSlot?.startDate
+          ? undefined
+          : formatLocalDateTimeForPayload(selectedScheduleSlot.startDate),
         isAsap: isAsapSchedule,
       });
 
@@ -1004,6 +1003,14 @@ export function PublicStorefrontView() {
                 <div className="h-11 w-11 rounded-full bg-white text-[#ff5a2f] shadow flex items-center justify-center">
                   <Store className="h-5 w-5" />
                 </div>
+                <button
+                  type="button"
+                  onClick={openDeliveryZonesDialog}
+                  className="h-11 w-11 rounded-full bg-white text-[#ff5a2f] shadow flex items-center justify-center transition hover:bg-[#fff3ef]"
+                  aria-label="Ver zonas de entrega"
+                >
+                  <MapPin className="h-5 w-5" />
+                </button>
               </div>
               <p className="text-xs text-[#f2f2f2]/90">Atencion por redes y retiro en tienda.</p>
             </div>
@@ -1098,7 +1105,7 @@ export function PublicStorefrontView() {
           {scheduleMode === 'scheduled' ? (
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <Select
-                value={selectedScheduleDay?.id ?? ''}
+                value={selectedScheduleDayId}
                 onValueChange={setSelectedScheduleDayId}
                 disabled={availableScheduleDays.length === 0 || isPickupZonePending}
               >
@@ -1122,7 +1129,7 @@ export function PublicStorefrontView() {
               </Select>
 
               <Select
-                value={selectedScheduleSlot?.id ?? ''}
+                value={selectedScheduleSlotId}
                 onValueChange={setSelectedScheduleSlotId}
                 disabled={!selectedScheduleDay || selectedScheduleDay.slots.length === 0 || isPickupZonePending}
               >
@@ -1304,17 +1311,7 @@ export function PublicStorefrontView() {
 
                   {orderType === 'delivery' ? (
                     <section className="space-y-4 border-b border-[#e4e4e4] pb-6">
-                      <div className="flex items-center justify-between gap-3">
-                        <h3 className="text-3xl font-extrabold text-[#2f2f2f]">Dirección</h3>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-9 rounded-lg border-[#ff5a2f] text-[#ff5a2f] hover:bg-[#fff3ef]"
-                          onClick={openDeliveryZonesDialog}
-                        >
-                          Ver zonas
-                        </Button>
-                      </div>
+                      <h3 className="text-3xl font-extrabold text-[#2f2f2f]">Dirección</h3>
                       <div className="grid gap-4 md:grid-cols-2">
                         <div className="space-y-1">
                           <label className="text-sm font-semibold text-[#2f2f2f]">Calle y número*</label>
@@ -1672,43 +1669,18 @@ export function PublicStorefrontView() {
               Visualiza todos los polígonos habilitados para delivery.
             </p>
           </div>
-          <div className="grid h-[70vh] gap-0 md:grid-cols-[1.7fr_1fr]">
-            <div className="h-full min-h-[320px] border-b border-[#ececec] md:border-b-0 md:border-r">
-              {isLoadingDeliveryZones ? (
-                <div className="flex h-full items-center justify-center text-sm text-[#6b7280]">
-                  Cargando zonas...
-                </div>
-              ) : deliveryZones.length === 0 ? (
-                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-[#6b7280]">
-                  No hay zonas activas disponibles para esta tienda.
-                </div>
-              ) : (
-                <DeliveryZonesOverviewMap zones={deliveryZones} />
-              )}
-            </div>
-            <div className="h-full overflow-y-auto p-4">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-                Zonas ({deliveryZones.length})
-              </p>
-              <div className="space-y-2">
-                {deliveryZones.map((zone, index) => (
-                  <div key={zone.id} className="rounded-lg border border-[#e5e7eb] bg-[#fafafa] px-3 py-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-[#1f2937]">
-                        {index + 1}. {zone.name || `Zona ${index + 1}`}
-                      </p>
-                      <span className="rounded-full bg-[#dcfce7] px-2 py-0.5 text-[10px] font-semibold text-[#166534]">
-                        Activa
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-[#6b7280]">
-                      {zone.polygon.length} vértices
-                      {zone.headquarterId ? ` · ${headquarterNameById[zone.headquarterId] ?? `Sede ${zone.headquarterId}`}` : ''}
-                    </p>
-                  </div>
-                ))}
+          <div className="h-[70vh] min-h-[320px]">
+            {isLoadingDeliveryZones ? (
+              <div className="flex h-full items-center justify-center text-sm text-[#6b7280]">
+                Cargando zonas...
               </div>
-            </div>
+            ) : deliveryZones.length === 0 ? (
+              <div className="flex h-full items-center justify-center px-6 text-center text-sm text-[#6b7280]">
+                No hay zonas activas disponibles para esta tienda.
+              </div>
+            ) : (
+              <DeliveryZonesOverviewMap zones={deliveryZones} />
+            )}
           </div>
         </DialogContent>
       </Dialog>
