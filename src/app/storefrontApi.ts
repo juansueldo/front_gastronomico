@@ -4,6 +4,7 @@ type StorefrontImportMeta = ImportMeta & {
     VITE_STOREFRONT_STORE_PATH?: string;
     VITE_STOREFRONT_PRODUCTS_PATH?: string;
     VITE_STOREFRONT_ORDERS_PATH?: string;
+    VITE_STOREFRONT_DELIVERY_ZONES_PATH?: string;
   };
 };
 
@@ -55,6 +56,19 @@ export interface PublicStoreSchedule {
   openTime: string;
   closeTime: string;
   isClosed: boolean;
+}
+
+export interface PublicStoreDeliveryZonePoint {
+  lat: number;
+  lng: number;
+}
+
+export interface PublicStoreDeliveryZone {
+  id: string;
+  name: string;
+  active: boolean;
+  headquarterId?: string;
+  polygon: PublicStoreDeliveryZonePoint[];
 }
 
 interface BackendStoreInfo {
@@ -133,10 +147,35 @@ interface BackendSchedule {
   isClosed?: boolean;
 }
 
+interface BackendDeliveryZone {
+  id?: string | number;
+  name?: string;
+  active?: boolean;
+  statusId?: string | number;
+  status_id?: string | number;
+  headquarterId?: string | number;
+  headquarter_id?: string | number;
+  polygon?: Array<{ lat?: number; lng?: number }>;
+  points?: Array<{ lat?: number; lng?: number }>;
+  vertices?: Array<{ lat?: number; lng?: number }>;
+  geojson?: {
+    type?: string;
+    coordinates?: number[][][];
+  };
+  geometry?: {
+    type?: string;
+    coordinates?: number[][][];
+  };
+  zone?: BackendDeliveryZone;
+  deliveryZone?: BackendDeliveryZone;
+  item?: BackendDeliveryZone;
+}
+
 const API_URL = (import.meta as StorefrontImportMeta).env?.VITE_API_URL;
 const STOREFRONT_STORE_PATH = (import.meta as StorefrontImportMeta).env?.VITE_STOREFRONT_STORE_PATH ?? '/v1/store/:slug';
 const STOREFRONT_PRODUCTS_PATH = (import.meta as StorefrontImportMeta).env?.VITE_STOREFRONT_PRODUCTS_PATH ?? '/v1/store/:slug/products';
 const STOREFRONT_ORDERS_PATH = (import.meta as StorefrontImportMeta).env?.VITE_STOREFRONT_ORDERS_PATH ?? '/v1/store/:slug/orders';
+const STOREFRONT_DELIVERY_ZONES_PATH = (import.meta as StorefrontImportMeta).env?.VITE_STOREFRONT_DELIVERY_ZONES_PATH ?? '/v1/delivery-zone';
 
 const ensureApiUrl = () => {
   if (!API_URL) {
@@ -449,6 +488,86 @@ const normalizeProductsAndCategories = (payload: unknown): PublicStoreCatalog =>
   };
 };
 
+const normalizeGeoJsonZonePoints = (coordinates: number[][][] | undefined): PublicStoreDeliveryZonePoint[] => {
+  const firstRing = Array.isArray(coordinates) && coordinates.length > 0 && Array.isArray(coordinates[0])
+    ? coordinates[0]
+    : [];
+
+  return firstRing
+    .map((pair) => {
+      if (!Array.isArray(pair) || pair.length < 2) {
+        return null;
+      }
+
+      const [lng, lat] = pair;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return null;
+      }
+
+      return { lat: Number(lat), lng: Number(lng) };
+    })
+    .filter((point): point is PublicStoreDeliveryZonePoint => point !== null);
+};
+
+const normalizeDeliveryZonePoints = (zone: BackendDeliveryZone): PublicStoreDeliveryZonePoint[] => {
+  const toPoint = (point: { lat?: number; lng?: number }) => {
+    if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng)) {
+      return null;
+    }
+    return { lat: Number(point.lat), lng: Number(point.lng) };
+  };
+
+  const polygonPoints = Array.isArray(zone.polygon)
+    ? zone.polygon.map((point) => toPoint(point ?? {})).filter((point): point is PublicStoreDeliveryZonePoint => point !== null)
+    : [];
+  if (polygonPoints.length > 0) return polygonPoints;
+
+  const points = Array.isArray(zone.points)
+    ? zone.points.map((point) => toPoint(point ?? {})).filter((point): point is PublicStoreDeliveryZonePoint => point !== null)
+    : [];
+  if (points.length > 0) return points;
+
+  const vertices = Array.isArray(zone.vertices)
+    ? zone.vertices.map((point) => toPoint(point ?? {})).filter((point): point is PublicStoreDeliveryZonePoint => point !== null)
+    : [];
+  if (vertices.length > 0) return vertices;
+
+  return normalizeGeoJsonZonePoints(zone.geojson?.coordinates ?? zone.geometry?.coordinates);
+};
+
+const extractRawPublicDeliveryZone = (input: BackendDeliveryZone | null | undefined): BackendDeliveryZone | null => {
+  if (!input || typeof input !== 'object') {
+    return null;
+  }
+
+  if (input.zone && typeof input.zone === 'object') return input.zone;
+  if (input.deliveryZone && typeof input.deliveryZone === 'object') return input.deliveryZone;
+  if (input.item && typeof input.item === 'object') return input.item;
+  return input;
+};
+
+const normalizePublicDeliveryZone = (input: BackendDeliveryZone | null | undefined): PublicStoreDeliveryZone | null => {
+  const zone = extractRawPublicDeliveryZone(input);
+  if (!zone) return null;
+
+  const id = parseEntityId(zone.id);
+  const polygon = normalizeDeliveryZonePoints(zone);
+  if (!id || polygon.length < 3) {
+    return null;
+  }
+
+  const statusId = Number(zone.statusId ?? zone.status_id ?? (zone.active === false ? 2 : 1));
+  const active = typeof zone.active === 'boolean' ? zone.active : statusId === 1;
+
+  return {
+    id,
+    name: String(zone.name ?? `Zona ${id}`).trim(),
+    active,
+    headquarterId: parseEntityId(zone.headquarterId, zone.headquarter_id) || undefined,
+    polygon,
+  };
+};
+
 export const fetchPublicStore = async (slug: string): Promise<PublicStoreInfo> => {
   const baseUrl = ensureApiUrl();
   const path = resolveSlugPath(STOREFRONT_STORE_PATH, slug);
@@ -494,6 +613,60 @@ export const fetchPublicStoreCatalog = async (slug: string): Promise<PublicStore
   }
 
   return normalizeProductsAndCategories(data);
+};
+
+export const fetchPublicStoreDeliveryZones = async (params: {
+  storeId?: string | number;
+  headquarterId?: string | number;
+  activeOnly?: boolean;
+}): Promise<PublicStoreDeliveryZone[]> => {
+  const baseUrl = ensureApiUrl();
+  const storeId = parseEntityId(params.storeId);
+  if (!storeId) {
+    return [];
+  }
+
+  const path = STOREFRONT_DELIVERY_ZONES_PATH;
+  const url = new URL(buildApiUrl(baseUrl, path));
+  url.searchParams.set('storeId', storeId);
+  url.searchParams.set('store_id', storeId);
+
+  const headquarterId = parseEntityId(params.headquarterId);
+  if (headquarterId) {
+    url.searchParams.set('headquarterId', headquarterId);
+    url.searchParams.set('headquarter_id', headquarterId);
+  }
+
+  if (params.activeOnly !== false) {
+    url.searchParams.set('statusId', '1');
+    url.searchParams.set('status_id', '1');
+    url.searchParams.set('active', 'true');
+  }
+
+  const response = await fetch(url.toString(), { method: 'GET' });
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new ApiError(
+      data?.code ?? `HTTP_${response.status}`,
+      response.status,
+      data?.error || data?.detail || 'No se pudieron cargar las zonas de entrega',
+      data?.details,
+    );
+  }
+
+  const rows = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.rows)
+      ? data.rows
+      : Array.isArray(data?.data)
+        ? data.data
+        : [];
+
+  return rows
+    .map((row) => normalizePublicDeliveryZone(row as BackendDeliveryZone))
+    .filter((zone): zone is PublicStoreDeliveryZone => zone !== null)
+    .filter((zone) => (params.activeOnly === false ? true : zone.active));
 };
 
 interface CreatePublicOrderInput {

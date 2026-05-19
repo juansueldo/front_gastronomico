@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
@@ -31,6 +31,17 @@ import { listHeadquarters, type Headquarter } from '../../api/headquarter';
 
 type OrderType = 'delivery' | 'dine-in';
 type Step = 'phone' | 'customer' | 'type' | 'address' | 'products' | 'confirm';
+type ScheduleMode = 'asap' | 'scheduled';
+type ScheduleSlotOption = {
+  id: string;
+  label: string;
+  startDate: Date;
+};
+type ScheduleDayOption = {
+  id: string;
+  label: string;
+  slots: ScheduleSlotOption[];
+};
 
 interface CustomerData {
   id?: number;
@@ -74,6 +85,24 @@ interface AddressSuggestion {
 interface DeliveryCoordinates {
   latitude: number;
   longitude: number;
+}
+
+interface HeadquarterSchedule {
+  dayOfWeek: string;
+  openTime: string;
+  closeTime: string;
+  isClosed?: boolean;
+}
+
+interface RawHeadquarterSchedule {
+  dayOfWeek?: string;
+  day_of_week?: string;
+  openTime?: string;
+  open_time?: string;
+  closeTime?: string;
+  close_time?: string;
+  isClosed?: boolean;
+  is_closed?: boolean;
 }
 
 interface Props {
@@ -183,6 +212,120 @@ async function resolveAddressCoordinates(query: string): Promise<DeliveryCoordin
   };
 }
 
+const DAY_OF_WEEK_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+const DAY_OF_WEEK_SHORT_LABELS = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'] as const;
+
+const buildDateWithTime = (date: Date, time: string) => {
+  const [hours, minutes] = time.split(':').map((value) => Number(value) || 0);
+  const result = new Date(date);
+  result.setHours(hours, minutes, 0, 0);
+  return result;
+};
+
+const formatHourLabel = (date: Date) => (
+  date.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+);
+
+const formatScheduleDayLabel = (date: Date) => {
+  const dayLabel = DAY_OF_WEEK_SHORT_LABELS[date.getDay()];
+  return `${dayLabel}-${date.getDate()}/${date.getMonth() + 1}`;
+};
+
+const formatDateForPayload = (date: Date) => (
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+);
+
+const formatTimeForPayload = (date: Date) => (
+  `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:00`
+);
+
+const buildScheduleState = (schedules: HeadquarterSchedule[] | undefined, now: Date) => {
+  if (!schedules || schedules.length === 0) {
+    return {
+      hasSchedules: false,
+      dayOptions: [] as ScheduleDayOption[],
+    };
+  }
+
+  const validSchedules = schedules.filter((schedule) => !schedule.isClosed);
+  if (validSchedules.length === 0) {
+    return {
+      hasSchedules: false,
+      dayOptions: [] as ScheduleDayOption[],
+    };
+  }
+
+  const dayOptions: ScheduleDayOption[] = [];
+
+  for (let dayOffset = 0; dayOffset < 7; dayOffset += 1) {
+    const date = new Date(now);
+    date.setDate(now.getDate() + dayOffset);
+    const dayKey = DAY_OF_WEEK_KEYS[date.getDay()];
+    const daySchedules = validSchedules.filter((schedule) => schedule.dayOfWeek === dayKey);
+    const daySlots: ScheduleSlotOption[] = [];
+
+    daySchedules.forEach((schedule) => {
+      const openDate = buildDateWithTime(date, schedule.openTime);
+      const closeDate = buildDateWithTime(date, schedule.closeTime);
+      if (closeDate <= openDate) {
+        closeDate.setDate(closeDate.getDate() + 1);
+      }
+
+      let slot = new Date(openDate);
+      while (slot < closeDate) {
+        const slotEnd = new Date(Math.min(slot.getTime() + 30 * 60 * 1000, closeDate.getTime()));
+        if (slotEnd > now) {
+          daySlots.push({
+            id: `${dayKey}-${slot.toISOString()}`,
+            label: `${formatHourLabel(slot)} - ${formatHourLabel(slotEnd)}`,
+            startDate: new Date(slot),
+          });
+        }
+
+        slot = new Date(slot.getTime() + 30 * 60 * 1000);
+      }
+    });
+
+    if (daySlots.length > 0) {
+      dayOptions.push({
+        id: `day:${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`,
+        label: formatScheduleDayLabel(date),
+        slots: daySlots,
+      });
+    }
+  }
+
+  return {
+    hasSchedules: true,
+    dayOptions,
+  };
+};
+
+const normalizeHeadquarterSchedules = (input: unknown): HeadquarterSchedule[] => {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input
+    .map((item) => {
+      const schedule = item as RawHeadquarterSchedule;
+      const dayOfWeek = String(schedule.dayOfWeek ?? schedule.day_of_week ?? '').trim().toLowerCase();
+      const openTime = String(schedule.openTime ?? schedule.open_time ?? '').trim();
+      const closeTime = String(schedule.closeTime ?? schedule.close_time ?? '').trim();
+      if (!dayOfWeek || !openTime || !closeTime) {
+        return null;
+      }
+
+      return {
+        dayOfWeek,
+        openTime,
+        closeTime,
+        isClosed: Boolean(schedule.isClosed ?? schedule.is_closed ?? false),
+      };
+    })
+    .filter((schedule): schedule is HeadquarterSchedule => schedule !== null);
+};
+
 // ─── Subcomponentes ───────────────────────────────────────────────────────────
 
 function StepIndicator({ current, steps }: { current: Step; steps: Step[] }) {
@@ -245,6 +388,10 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
   const [headquarters, setHeadquarters] = useState<Headquarter[]>([]);
   const [selectedHeadquarterId, setSelectedHeadquarterId] = useState(() => getStoredHeadquarterId());
   const [isLoadingHeadquarters, setIsLoadingHeadquarters] = useState(false);
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('asap');
+  const [selectedScheduleDayId, setSelectedScheduleDayId] = useState('');
+  const [selectedScheduleSlotId, setSelectedScheduleSlotId] = useState('');
+  const [scheduleNow, setScheduleNow] = useState(() => new Date());
   const [newOrderTableId, setNewOrderTableId] = useState('');
   const [newOrderWaiterId, setNewOrderWaiterId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -255,6 +402,14 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
   const STEPS_DINE_IN: Step[] = ['phone', 'customer', 'type', 'products', 'confirm'];
 
   const activeSteps = orderType === 'delivery' ? STEPS : STEPS_DINE_IN;
+  const selectedHeadquarter = headquarters.find((headquarter) => String(headquarter.id) === selectedHeadquarterId);
+  const scheduleState = useMemo(
+    () => buildScheduleState(normalizeHeadquarterSchedules(selectedHeadquarter?.schedules), scheduleNow),
+    [selectedHeadquarter?.schedules, scheduleNow],
+  );
+  const availableScheduleDays = scheduleState.dayOptions;
+  const selectedScheduleDay = availableScheduleDays.find((day) => day.id === selectedScheduleDayId) ?? availableScheduleDays[0];
+  const selectedScheduleSlot = selectedScheduleDay?.slots.find((slot) => slot.id === selectedScheduleSlotId) ?? selectedScheduleDay?.slots[0];
 
   // ── Efectos ──────────────────────────────────────────────────────────────────
 
@@ -322,6 +477,39 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
       // noop
     }
   }, [selectedHeadquarterId]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setScheduleNow(new Date());
+    }, 60 * 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    if (scheduleMode === 'scheduled' && availableScheduleDays.length === 0) {
+      setScheduleMode('asap');
+      return;
+    }
+
+    if (!selectedScheduleDay || selectedScheduleDay.id !== selectedScheduleDayId) {
+      setSelectedScheduleDayId(selectedScheduleDay?.id ?? '');
+    }
+  }, [scheduleMode, availableScheduleDays, selectedScheduleDay, selectedScheduleDayId]);
+
+  useEffect(() => {
+    if (!selectedScheduleDay) {
+      if (selectedScheduleSlotId) {
+        setSelectedScheduleSlotId('');
+      }
+      return;
+    }
+
+    const currentSlotExists = selectedScheduleDay.slots.some((slot) => slot.id === selectedScheduleSlotId);
+    if (!currentSlotExists) {
+      setSelectedScheduleSlotId(selectedScheduleDay.slots[0]?.id ?? '');
+    }
+  }, [selectedScheduleDay, selectedScheduleSlotId]);
 
   useEffect(() => {
     if (orderType !== 'delivery') {
@@ -485,6 +673,16 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
       return;
     }
 
+    const isAsapSchedule = scheduleMode === 'asap';
+    const scheduledSlotDate = !isAsapSchedule ? selectedScheduleSlot?.startDate : undefined;
+    if (!isAsapSchedule && !scheduledSlotDate) {
+      toast.error('Seleccioná un horario válido para el pedido');
+      return;
+    }
+
+    const scheduledDate = scheduledSlotDate ? formatDateForPayload(scheduledSlotDate) : undefined;
+    const scheduledTime = scheduledSlotDate ? formatTimeForPayload(scheduledSlotDate) : undefined;
+
     let resolvedCoordinates = deliveryCoordinates;
     if (orderType === 'delivery' && !resolvedCoordinates) {
       resolvedCoordinates = await resolveAddressCoordinates(trimmedDeliveryAddress);
@@ -505,6 +703,10 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
       delivery_address: orderType === 'delivery' ? trimmedDeliveryAddress : undefined,
       delivery_latitude: resolvedCoordinates?.latitude,
       delivery_longitude: resolvedCoordinates?.longitude,
+      scheduled_for: scheduledSlotDate?.toISOString(),
+      scheduled_date: scheduledDate,
+      scheduled_time: scheduledTime,
+      is_asap: isAsapSchedule,
       tableId: orderType === 'dine-in' && newOrderTableId ? Number(newOrderTableId) : undefined,
       waiterId: newOrderWaiterId ? Number(newOrderWaiterId) : undefined,
     };
@@ -536,6 +738,10 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
     setShowDeliveryAddressSuggestions(false);
     setIsLoadingDeliveryAddressSuggestions(false);
     setDeliveryCoordinates(null);
+    setScheduleMode('asap');
+    setSelectedScheduleDayId('');
+    setSelectedScheduleSlotId('');
+    setScheduleNow(new Date());
     setSelectedQuantities({});
     setProductFilter('');
     setCategoryFilter('all');
@@ -907,8 +1113,13 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
 
   const renderConfirm = () => {
     const customerName = customerFound?.name ?? newCustomerName;
-    const selectedHeadquarter = headquarters.find((headquarter) => String(headquarter.id) === selectedHeadquarterId);
     const formattedAddress = orderType === 'delivery' ? deliveryAddress.trim() : null;
+    const hasScheduleOptions = availableScheduleDays.length > 0;
+    const scheduleSummary = scheduleMode === 'asap'
+      ? 'Lo antes posible'
+      : (selectedScheduleDay && selectedScheduleSlot
+        ? `${selectedScheduleDay.label} ${selectedScheduleSlot.label}`
+        : 'Sin horario seleccionado');
 
     return (
       <div className="space-y-4">
@@ -939,6 +1150,78 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
               <span className="text-white text-right">{formattedAddress}</span>
             </div>
           )}
+          <div className="flex justify-between items-start gap-4 px-3 py-2 text-sm">
+            <span className="text-gray-400 shrink-0">Entrega</span>
+            <span className="text-white text-right">{scheduleSummary}</span>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-gray-800 p-3 space-y-3">
+          <p className="text-xs text-gray-400 uppercase tracking-wide">Horario del pedido</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setScheduleMode('asap')}
+              className={`rounded-md border px-3 py-2 text-xs font-medium transition-colors ${
+                scheduleMode === 'asap'
+                  ? 'border-orange-500 bg-orange-500/10 text-white'
+                  : 'border-gray-700 bg-card text-gray-300'
+              }`}
+            >
+              Lo antes posible
+            </button>
+            <button
+              type="button"
+              onClick={() => setScheduleMode('scheduled')}
+              className={`rounded-md border px-3 py-2 text-xs font-medium transition-colors ${
+                scheduleMode === 'scheduled'
+                  ? 'border-orange-500 bg-orange-500/10 text-white'
+                  : 'border-gray-700 bg-card text-gray-300'
+              }`}
+              disabled={!hasScheduleOptions}
+            >
+              Programado
+            </button>
+          </div>
+
+          {scheduleMode === 'scheduled' ? (
+            hasScheduleOptions ? (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <FieldLabel>Día</FieldLabel>
+                  <Select value={selectedScheduleDayId} onValueChange={setSelectedScheduleDayId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccioná un día" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableScheduleDays.map((day) => (
+                        <SelectItem key={day.id} value={day.id}>
+                          {day.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <FieldLabel>Horario</FieldLabel>
+                  <Select value={selectedScheduleSlotId} onValueChange={setSelectedScheduleSlotId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccioná un horario" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(selectedScheduleDay?.slots ?? []).map((slot) => (
+                        <SelectItem key={slot.id} value={slot.id}>
+                          {slot.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-yellow-400">La sede seleccionada no tiene horarios disponibles.</p>
+            )
+          ) : null}
         </div>
 
         <div className="rounded-lg border border-gray-800 overflow-hidden">
@@ -964,7 +1247,11 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
           <Button variant="outline" className="flex-1" onClick={goBack} disabled={isSubmitting}>
             ← Atrás
           </Button>
-          <Button className="flex-1" onClick={() => void handleSubmit()} disabled={isSubmitting}>
+          <Button
+            className="flex-1"
+            onClick={() => void handleSubmit()}
+            disabled={isSubmitting || (scheduleMode === 'scheduled' && !selectedScheduleSlot?.startDate)}
+          >
             {isSubmitting ? 'Creando...' : '✓ Crear orden'}
           </Button>
         </div>

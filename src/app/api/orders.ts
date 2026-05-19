@@ -49,6 +49,10 @@ export interface CreateOrderRequest {
   delivery_latitude?: number;
   delivery_longitude?: number;
   delivery_date?: string;
+  scheduled_for?: string;
+  scheduled_date?: string;
+  scheduled_time?: string;
+  is_asap?: boolean;
 }
 
 export interface LegacyCreateOrderRequest {
@@ -75,6 +79,10 @@ export interface LegacyCreateOrderRequest {
   delivery_latitude?: number;
   delivery_longitude?: number;
   delivery_date?: string;
+  scheduled_for?: string;
+  scheduled_date?: string;
+  scheduled_time?: string;
+  is_asap?: boolean;
   storeId?: number;
 }
 
@@ -99,6 +107,10 @@ type ResolvedCreateOrderPayload = {
   delivery_latitude?: number;
   delivery_longitude?: number;
   delivery_date?: string;
+  scheduled_for?: string;
+  scheduled_date?: string;
+  scheduled_time?: string;
+  is_asap?: boolean;
 };
 
 const FALLBACK_ORDERS_STORAGE_KEY = 'mobile_tomatina.ordersApiFallback';
@@ -378,6 +390,10 @@ const toCreateOrderPayload = async (
       delivery_latitude: orderData.delivery_latitude,
       delivery_longitude: orderData.delivery_longitude,
       delivery_date: orderData.delivery_date,
+      scheduled_for: orderData.scheduled_for,
+      scheduled_date: orderData.scheduled_date,
+      scheduled_time: orderData.scheduled_time,
+      is_asap: orderData.is_asap,
     };
   }
 
@@ -395,6 +411,10 @@ const toCreateOrderPayload = async (
     delivery_latitude: orderData.delivery_latitude ?? orderData.latitude,
     delivery_longitude: orderData.delivery_longitude ?? orderData.longitude,
     delivery_date: orderData.delivery_date,
+    scheduled_for: orderData.scheduled_for,
+    scheduled_date: orderData.scheduled_date,
+    scheduled_time: orderData.scheduled_time,
+    is_asap: orderData.is_asap,
   };
 };
 
