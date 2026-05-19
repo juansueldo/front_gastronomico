@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
+import { Input } from './ui/input';
 import {
   Dialog,
   DialogContent,
@@ -15,7 +16,14 @@ import {
   SelectValue,
 } from './ui/select';
 import { toast } from 'sonner';
-import { getLoggedUser } from '../authStorage';
+import {
+  ArrowUpDown,
+  CalendarDays,
+  RotateCw,
+  Search,
+  SlidersHorizontal,
+  ClipboardList
+} from 'lucide-react';
 import {
   ApiError,
   createCashMovement,
@@ -53,6 +61,8 @@ interface ActiveOrderItem {
   status: string;
   total: string;
   createdAt: string;
+  scheduledDate?: string;
+  scheduledTime?: string;
   notes?: string;
 }
 
@@ -101,6 +111,29 @@ const getPriorityMapPinColor = (priority: OrderVisualPriority) => {
   return '#6b7280';
 };
 
+const toLocalDateLabel = (date: Date) => (
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+);
+
+const buildDateFromScheduled = (scheduledDate?: string, scheduledTime?: string) => {
+  const normalizedDate = String(scheduledDate ?? '').trim();
+  if (!normalizedDate) {
+    return null;
+  }
+
+  if (normalizedDate.includes('T')) {
+    const parsed = new Date(normalizedDate);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const timePart = String(scheduledTime ?? '').trim();
+  const normalizedTime = timePart
+    ? (timePart.length <= 5 ? `${timePart}:00` : timePart)
+    : '00:00:00';
+  const parsed = new Date(`${normalizedDate}T${normalizedTime}`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
 export function ActiveOrdersView() {
   const [orders, setOrders] = useState<ActiveOrderItem[]>([]);
   const [detailOrder, setDetailOrder] = useState<ActiveOrderItem | null>(null);
@@ -119,6 +152,16 @@ export function ActiveOrdersView() {
   const [deliveryZonePoints, setDeliveryZonePoints] = useState<DeliveryZonePoint[]>([]);
   const [draftDeliveryZonePoints, setDraftDeliveryZonePoints] = useState<DeliveryZonePoint[]>([]);
   const [isEditingDeliveryZone, setIsEditingDeliveryZone] = useState(false);
+  const [searchValue, setSearchValue] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | string>('all');
+  const [channelFilter, setChannelFilter] = useState<'all' | ActiveOrderItem['type']>('all');
+  const [dateFilter, setDateFilter] = useState('');
+  const [sortBy, setSortBy] = useState<'recent' | 'older' | 'total-high' | 'total-low'>('recent');
+  const [page, setPage] = useState(1);
+  const deliveryOrders = useMemo(
+    () => orders.filter((order) => order.type === 'delivery'),
+    [orders],
+  );
 
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressNextClick = useRef(false);
@@ -131,8 +174,6 @@ export function ActiveOrdersView() {
   const deliveryZoneClickListenerRef = useRef<any>(null);
   const draftVertexMarkersRef = useRef<any[]>([]);
 
-  const deliveryOrders = orders.filter((order) => order.type === 'delivery');
-  const salonOrders = orders.filter((order) => order.type === 'salon');
   const statusOptions = statusOrder
     ? getAvailableOrderStatusTargets(statusOrder.status).map((status) => getOrderStatusLabel(status))
     : [];
@@ -182,6 +223,8 @@ export function ActiveOrdersView() {
       status: getOrderStatusLabel(String(order?.status ?? order?.Status?.name ?? 'pending')),
       total: String(displayTotal),
       createdAt: String(order?.createdAt ?? order?.order_date ?? ''),
+      scheduledDate: order?.scheduled_date ?? order?.scheduledDate ?? order?.requested_date ?? order?.requestedDate ?? undefined,
+      scheduledTime: order?.scheduled_time ?? order?.scheduledTime ?? order?.requested_time ?? order?.requestedTime ?? undefined,
       notes: order?.notes ?? undefined,
     };
   };
@@ -554,22 +597,46 @@ export function ActiveOrdersView() {
 
   // ── Prioridad visual ──────────────────────────────────────────────────────────
 
-  const getOrderAgeMinutes = (createdAt: string) => {
-    if (createdAt.includes('T')) {
-      const d = new Date(createdAt);
-      return Number.isNaN(d.getTime()) ? 0 : Math.max(0, Math.floor((Date.now() - d.getTime()) / 60000));
+  const getOrderReferenceDate = (order: ActiveOrderItem): Date | null => {
+    const scheduledDate = buildDateFromScheduled(order.scheduledDate, order.scheduledTime);
+    if (scheduledDate) {
+      return scheduledDate;
     }
-    const [h, m] = createdAt.split(':').map(Number);
-    if (Number.isNaN(h) || Number.isNaN(m)) return 0;
+
+    if (order.createdAt.includes('T')) {
+      const createdDate = new Date(order.createdAt);
+      if (!Number.isNaN(createdDate.getTime())) {
+        return createdDate;
+      }
+    }
+
+    const [h, m] = order.createdAt.split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
     const now = new Date();
-    const d = new Date(now);
-    d.setHours(h, m, 0, 0);
-    if (d.getTime() > now.getTime()) d.setDate(d.getDate() - 1);
-    return Math.max(0, Math.floor((now.getTime() - d.getTime()) / 60000));
+    const createdDate = new Date(now);
+    createdDate.setHours(h, m, 0, 0);
+    if (createdDate.getTime() > now.getTime()) createdDate.setDate(createdDate.getDate() - 1);
+    return createdDate;
+  };
+
+  const getOrderDateLabel = (order: ActiveOrderItem) => {
+    const referenceDate = getOrderReferenceDate(order);
+    if (!(referenceDate instanceof Date)) {
+      return '';
+    }
+    return toLocalDateLabel(referenceDate);
+  };
+
+  const getOrderAgeMinutes = (order: ActiveOrderItem) => {
+    const referenceDate = getOrderReferenceDate(order);
+    if (!(referenceDate instanceof Date)) {
+      return 0;
+    }
+    return Math.max(0, Math.floor((Date.now() - referenceDate.getTime()) / 60000));
   };
 
   const getOrderVisualPriority = (order: ActiveOrderItem): OrderVisualPriority => {
-    const age = getOrderAgeMinutes(order.createdAt);
+    const age = getOrderAgeMinutes(order);
     if (age >= 45) return 'old';
     if (age >= 30) return 'delayed';
     if (age >= 15) return 'on-time';
@@ -584,14 +651,6 @@ export function ActiveOrdersView() {
     return 'border-orange-700 bg-card';
   };
 
-  const getPriorityBadgeClass = (order: ActiveOrderItem) => {
-    const p = getOrderVisualPriority(order);
-    if (p === 'old') return 'bg-red-500 text-white text-xs';
-    if (p === 'delayed') return 'bg-yellow-500 text-black text-xs';
-    if (p === 'on-time') return 'bg-green-500 text-white text-xs';
-    return 'bg-gray-600 text-white text-xs';
-  };
-
   const getPriorityLabel = (order: ActiveOrderItem) => {
     const p = getOrderVisualPriority(order);
     if (p === 'old') return 'Antiguo';
@@ -600,150 +659,362 @@ export function ActiveOrdersView() {
     return 'Recién ingresado';
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────────
+  const getStatusBadgeClass = (status: string) => {
+    const normalizedStatus = status.trim().toLowerCase();
+    if (normalizedStatus.includes('nuevo')) return 'bg-slate-500/20 text-slate-700 dark:text-slate-200';
+    if (normalizedStatus.includes('prepar')) return 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-200';
+    if (normalizedStatus.includes('listo')) return 'bg-blue-500/20 text-blue-700 dark:text-blue-200';
+    if (normalizedStatus.includes('camino')) return 'bg-violet-500/20 text-violet-700 dark:text-violet-200';
+    if (normalizedStatus.includes('entregado')) return 'bg-emerald-600/20 text-emerald-700 dark:text-emerald-100';
+    if (normalizedStatus.includes('cancel')) return 'bg-red-500/20 text-red-700 dark:text-red-200';
+    return 'bg-gray-500/20 text-gray-700 dark:text-gray-200';
+  };
 
-  const renderOrderCard = (order: ActiveOrderItem) => (
-    <div
-      key={order.id}
-      onClick={() => handleOpenDetail(order)}
-      onContextMenu={(event) => handleContextMenu(event, order)}
-      onTouchStart={() => handleLongPressStart(order)}
-      onTouchEnd={handleLongPressEnd}
-      onMouseDown={() => handleLongPressStart(order)}
-      onMouseUp={handleLongPressEnd}
-      onMouseLeave={handleLongPressEnd}
-      className={`p-4 card cursor-pointer transition-colors hover:bg-[--card-hover] ${getOrderCardClass(order)}`}
-    >
-      <div className="flex items-center justify-between gap-2 mb-1">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400">{order.id}</span>
-          <Badge variant="secondary" className={getPriorityBadgeClass(order)}>
-            {getPriorityLabel(order)}
-          </Badge>
-        </div>
-        <Badge
-          variant="secondary"
-          className={order.type === 'delivery' ? 'bg-label-info text-white text-xs' : 'bg-label-success text-white text-xs'}
-        >
-          {order.type === 'delivery' ? 'Delivery' : 'Salón'}
-        </Badge>
-      </div>
-      <p className="text-sm text-white truncate">{order.customerName}</p>
-      <p className="text-xs text-gray-400 truncate">{order.detail}</p>
-      <div className="flex items-center justify-between mt-1">
-        <span className="text-xs text-gray-400">{order.status}</span>
-        <span className="text-xs text-white">{order.total}</span>
-      </div>
-    </div>
-  );
+  const getOrderDateInfo = (order: ActiveOrderItem) => {
+    const referenceDate = getOrderReferenceDate(order);
+    if (referenceDate instanceof Date) {
+      const today = new Date();
+      const isToday = today.toDateString() === referenceDate.toDateString();
+      return {
+        time: referenceDate.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        dayLabel: isToday ? 'Hoy' : referenceDate.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }),
+      };
+    }
+
+    if (order.createdAt.includes(':')) {
+      const [hours, minutes] = order.createdAt.split(':');
+      return { time: `${hours}:${minutes ?? '00'}`, dayLabel: 'Hoy' };
+    }
+
+    return { time: '--:--', dayLabel: '--' };
+  };
+
+  const getComparableDate = (order: ActiveOrderItem) => {
+    const referenceDate = getOrderReferenceDate(order);
+    return referenceDate instanceof Date ? referenceDate.getTime() : 0;
+  };
+
+  const getStatusFilterOptions = useMemo(() => {
+    const unique = Array.from(new Set(orders.map((order) => order.status)));
+    return ['all', ...unique];
+  }, [orders]);
+
+  const filteredOrders = useMemo(() => {
+    const normalizedSearch = searchValue.trim().toLowerCase();
+    const todayLabel = toLocalDateLabel(new Date());
+
+    const withFilters = orders.filter((order) => {
+      const matchesSearch = !normalizedSearch
+        || order.id.toLowerCase().includes(normalizedSearch)
+        || order.customerName.toLowerCase().includes(normalizedSearch)
+        || order.detail.toLowerCase().includes(normalizedSearch);
+
+      const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+      const matchesChannel = channelFilter === 'all' || order.type === channelFilter;
+
+      const orderDateLabel = getOrderDateLabel(order);
+      let matchesDate = orderDateLabel === todayLabel;
+      if (dateFilter) {
+        matchesDate = orderDateLabel === dateFilter;
+      }
+
+      return matchesSearch && matchesStatus && matchesChannel && matchesDate;
+    });
+
+    withFilters.sort((left, right) => {
+      if (sortBy === 'recent') return getComparableDate(right) - getComparableDate(left);
+      if (sortBy === 'older') return getComparableDate(left) - getComparableDate(right);
+      if (sortBy === 'total-high') return parseMoneyValue(right.total) - parseMoneyValue(left.total);
+      return parseMoneyValue(left.total) - parseMoneyValue(right.total);
+    });
+
+    return withFilters;
+  }, [channelFilter, dateFilter, orders, searchValue, sortBy, statusFilter]);
+
+  const pageSize = 6;
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedOrders = filteredOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchValue, statusFilter, channelFilter, dateFilter, sortBy]);
 
   return (
-    <div className="h-full bg-body overflow-y-auto">
-      <div className="p-4 md:p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl md:text-2xl font-semibold text-white">Pedidos activos</h1>
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="bg-label-warning text-white">
-              {orders.length}
-            </Badge>
-            {/* ← Mismo botón, ahora abre CreateOrderDialog */}
-            <Button size="sm" onClick={() => setIsCreateOrderDialogOpen(true)}>
-              Nueva orden
-            </Button>
-          </div>
+    <div className="h-full overflow-y-auto bg-body">
+      <div className="relative p-4 md:p-6">
+        <div className="pointer-events-none absolute inset-0 opacity-70">
+          <div className="absolute -top-28 left-1/4 h-80 w-80 rounded-full bg-orange-500/10 blur-3xl" />
+          <div className="absolute right-0 top-1/3 h-72 w-72 rounded-full bg-blue-500/10 blur-3xl" />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium text-gray-300">Delivery</h2>
-              <Badge variant="secondary" className="bg-label-info text-white text-xs">
-                {deliveryOrders.length}
-              </Badge>
+        <div className="relative space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="flex items-center gap-3 text-2xl font-semibold text-white md:text-3xl">
+                <ClipboardList className="h-8 w-8 text-orange-400" />
+                Pedidos
+
+            </h1>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                className="size-11 rounded-2xl border-border bg-card/70 text-foreground hover:bg-card"
+              >
+                <SlidersHorizontal className="h-5 w-5" />
+              </Button>
+              <Button size="sm" className="h-11 rounded-2xl px-5" onClick={() => setIsCreateOrderDialogOpen(true)}>
+                Nueva orden
+              </Button>
             </div>
-            <div className="space-y-2">
-              {deliveryOrders.length === 0 ? (
-                <div className="p-4 rounded-lg border card bg-card text-sm text-gray-400">Sin pedidos de delivery</div>
-              ) : (
-                deliveryOrders.map(renderOrderCard)
-              )}
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card/60 p-3 backdrop-blur-sm">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchValue}
+                onChange={(event) => setSearchValue(event.target.value)}
+                placeholder="Buscar por cliente, orden o ID..."
+                className="h-11 rounded-xl border-border bg-background pl-10 text-foreground placeholder:text-muted-foreground"
+              />
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2 md:flex-nowrap">
+              <div className="w-full min-w-0 md:flex-1">
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="h-10 w-full rounded-xl border-border bg-background text-foreground">
+                    <SelectValue placeholder="Todos los estados" />
+                  </SelectTrigger>
+                  <SelectContent className="border-border bg-popover text-popover-foreground">
+                    {getStatusFilterOptions.map((statusValue) => (
+                      <SelectItem key={statusValue} value={statusValue}>
+                        {statusValue === 'all' ? 'Todos los estados' : statusValue}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="w-full min-w-0 md:flex-1">
+                <Select value={channelFilter} onValueChange={(value) => setChannelFilter(value as 'all' | ActiveOrderItem['type'])}>
+                  <SelectTrigger className="h-10 w-full rounded-xl border-border bg-background text-foreground">
+                    <SelectValue placeholder="Canal" />
+                  </SelectTrigger>
+                  <SelectContent className="border-border bg-popover text-popover-foreground">
+                    <SelectItem value="all">Canal: Todos</SelectItem>
+                    <SelectItem value="salon">Salón</SelectItem>
+                    <SelectItem value="delivery">Delivery</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="relative w-full min-w-0 md:flex-1">
+                <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="date"
+                  value={dateFilter}
+                  onChange={(event) => setDateFilter(event.target.value)}
+                  className="h-10 w-full rounded-xl border-border bg-background pl-10 text-foreground"
+                />
+              </div>
+
+              <button
+                type="button"
+                className="shrink-0 whitespace-nowrap text-sm text-primary transition-colors hover:text-primary/80"
+                onClick={() => {
+                  setSearchValue('');
+                  setStatusFilter('all');
+                  setChannelFilter('all');
+                  setDateFilter('');
+                  setSortBy('recent');
+                }}
+              >
+                Limpiar filtros
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border py-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Ordenar por:</span>
+              <Select value={sortBy} onValueChange={(value) => setSortBy(value as typeof sortBy)}>
+                <SelectTrigger className="h-10 min-w-[190px] rounded-xl border-border bg-background text-foreground">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="border-border bg-popover text-popover-foreground">
+                  <SelectItem value="recent">Más recientes</SelectItem>
+                  <SelectItem value="older">Más antiguos</SelectItem>
+                  <SelectItem value="total-high">Mayor importe</SelectItem>
+                  <SelectItem value="total-low">Menor importe</SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card/70 text-muted-foreground">
+                <ArrowUpDown className="h-4 w-4" />
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl text-foreground">Total: {filteredOrders.length} pedidos</span>
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                className="size-10 rounded-xl border-border bg-card/70 text-foreground"
+                onClick={() => void loadOrders()}
+                disabled={isLoadingOrders}
+              >
+                <RotateCw className={`h-4 w-4 ${isLoadingOrders ? 'animate-spin' : ''}`} />
+              </Button>
             </div>
           </div>
 
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium text-gray-300">Salón</h2>
-              <Badge variant="secondary" className="bg-label-success text-white text-xs">
-                {salonOrders.length}
-              </Badge>
-            </div>
-            <div className="space-y-2">
-              {salonOrders.length === 0 ? (
-                <div className="p-4 rounded-lg border card bg-card text-sm text-gray-400">Sin pedidos en salón</div>
-              ) : (
-                salonOrders.map(renderOrderCard)
-              )}
-            </div>
+            {paginatedOrders.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border bg-card/60 p-8 text-center text-sm text-muted-foreground">
+                No hay pedidos para los filtros seleccionados.
+              </div>
+            ) : (
+              paginatedOrders.map((order) => {
+                const orderDateInfo = getOrderDateInfo(order);
+                const isPriority = getOrderVisualPriority(order) === 'default';
+                const priorityStyle = isPriority ? 'border-orange-500/80' : getOrderCardClass(order).replace('bg-card', 'bg-card/70');
+                return (
+                  <article
+                    key={order.id}
+                    onClick={() => handleOpenDetail(order)}
+                    onContextMenu={(event) => handleContextMenu(event, order)}
+                    onTouchStart={() => handleLongPressStart(order)}
+                    onTouchEnd={handleLongPressEnd}
+                    onMouseDown={() => handleLongPressStart(order)}
+                    onMouseUp={handleLongPressEnd}
+                    onMouseLeave={handleLongPressEnd}
+                    className={`cursor-pointer rounded-2xl border bg-card/60 p-4 backdrop-blur-sm transition hover:bg-card ${priorityStyle}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xl font-semibold text-foreground md:text-2xl">{order.id}</span>
+                          <Badge variant="secondary" className={`${getStatusBadgeClass(getPriorityLabel(order))} text-xs`}>
+                            {getPriorityLabel(order)}
+                          </Badge>
+                        </div>
+                        <p className="text-lg text-foreground">{order.customerName}</p>
+                        <p className="text-sm text-muted-foreground">{order.detail}</p>
+                        <p className="text-sm text-muted-foreground">{order.status}</p>
+                      </div>
+
+                      <div className="flex flex-col items-end gap-2">
+                        <Badge
+                          variant="secondary"
+                          className={order.type === 'delivery' ? 'bg-blue-500/20 text-blue-700 dark:text-blue-100' : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-100'}
+                        >
+                          {order.type === 'delivery' ? 'Delivery' : 'Salón'}
+                        </Badge>
+                        <p className="text-lg text-foreground">{orderDateInfo.time}</p>
+                        <p className="text-sm text-muted-foreground">{orderDateInfo.dayLabel}</p>
+                        <p className="mt-4 text-xl font-medium text-foreground">{order.total}</p>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })
+            )}
+          </div>
+
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card/70 text-foreground disabled:opacity-40"
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={currentPage <= 1}
+            >
+              ‹
+            </button>
+            {Array.from({ length: totalPages }).slice(0, 5).map((_, index) => {
+              const pageNumber = index + 1;
+              return (
+                <button
+                  key={pageNumber}
+                  type="button"
+                  onClick={() => setPage(pageNumber)}
+                  className={`inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-2 ${
+                    pageNumber === currentPage ? 'bg-primary text-white' : 'border border-border bg-card/70 text-foreground'
+                  }`}
+                >
+                  {pageNumber}
+                </button>
+              );
+            })}
+            {totalPages > 5 ? <span className="px-1 text-muted-foreground">...</span> : null}
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card/70 text-foreground disabled:opacity-40"
+              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={currentPage >= totalPages}
+            >
+              ›
+            </button>
           </div>
         </div>
       </div>
 
       {/* ── Dialog detalle de orden ── */}
       <Dialog open={!!detailOrder} onOpenChange={() => setDetailOrder(null)}>
-        <DialogContent className="bg-card card text-white">
+        <DialogContent className="bg-card card text-foreground">
           <DialogHeader>
             <DialogTitle>Detalle del pedido {detailOrder?.id}</DialogTitle>
           </DialogHeader>
           {detailOrder && (
             <div className="space-y-3 text-sm">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-gray-400">Tipo</span>
+                <span className="text-muted-foreground">Tipo</span>
                 <Badge variant="secondary" className={detailOrder.type === 'delivery' ? 'bg-label-info text-white text-xs' : 'bg-label-success text-white text-xs'}>
                   {detailOrder.type === 'delivery' ? 'Delivery' : 'Salón'}
                 </Badge>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <span className="text-gray-400">Cliente / mesa</span>
+                <span className="text-muted-foreground">Cliente / mesa</span>
                 <span>{detailOrder.customerName}</span>
               </div>
               {detailOrder.type === 'delivery' && detailOrder.address && (
                 <div className="flex items-start justify-between gap-2">
-                  <span className="text-gray-400">Dirección</span>
+                  <span className="text-muted-foreground">Dirección</span>
                   <span className="text-right">{detailOrder.address}</span>
                 </div>
               )}
               <div className="flex items-center justify-between gap-2">
-                <span className="text-gray-400">Estado</span>
+                <span className="text-muted-foreground">Estado</span>
                 <span>{detailOrder.status}</span>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <span className="text-gray-400">Hora</span>
+                <span className="text-muted-foreground">Hora</span>
                 <span>{detailOrder.createdAt}</span>
               </div>
               <div>
-                <p className="text-gray-400 mb-1">Items</p>
+                <p className="mb-1 text-muted-foreground">Items</p>
                 <ul className="space-y-1">
                   {detailOrder.items.map((item) => (
-                    <li key={item} className="text-white">• {item}</li>
+                    <li key={item} className="text-foreground">• {item}</li>
                   ))}
                 </ul>
               </div>
               <div>
-                <p className="text-gray-400 mb-1">Detalle</p>
+                <p className="mb-1 text-muted-foreground">Detalle</p>
                 <p>{detailOrder.detail}</p>
               </div>
               {detailOrder.notes && (
                 <div>
-                  <p className="text-gray-400 mb-1">Observaciones</p>
+                  <p className="mb-1 text-muted-foreground">Observaciones</p>
                   <p>{detailOrder.notes}</p>
                 </div>
               )}
-              <div className="flex items-center justify-between pt-2 border-t border-orange-700">
-                <span className="text-gray-400">Total</span>
+              <div className="flex items-center justify-between border-t border-border pt-2">
+                <span className="text-muted-foreground">Total</span>
                 <span className="font-medium">{detailOrder.total}</span>
               </div>
-              <div className="space-y-2 pt-2 border-t border-orange-700">
-                <p className="text-gray-400">Finalizar orden</p>
+              <div className="space-y-2 border-t border-border pt-2">
+                <p className="text-muted-foreground">Finalizar orden</p>
                 <Select value={finalizePaymentMethod} onValueChange={(v) => setFinalizePaymentMethod(v as PaymentMethod)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Método de pago" />
@@ -765,19 +1036,19 @@ export function ActiveOrdersView() {
 
       {/* ── Dialog cambio de estado ── */}
       <Dialog open={!!statusOrder} onOpenChange={() => setStatusOrder(null)}>
-        <DialogContent className="bg-card border-orange-700 text-white">
+        <DialogContent className="border-border bg-card text-foreground">
           <DialogHeader>
             <DialogTitle>Cambiar estado {statusOrder ? `(${statusOrder.id})` : ''}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
             {statusOptions.length === 0 ? (
-              <p className="text-sm text-gray-400">No hay transiciones disponibles para este estado.</p>
+              <p className="text-sm text-muted-foreground">No hay transiciones disponibles para este estado.</p>
             ) : (
               statusOptions.map((status) => (
                 <Button
                   key={status}
                   variant="ghost"
-                  className={`w-full justify-start hover:bg-gray-700 ${statusOrder?.status === status ? 'bg-primary text-white' : 'text-white'}`}
+                  className={`w-full justify-start hover:bg-muted ${statusOrder?.status === status ? 'bg-primary text-white' : 'text-foreground'}`}
                   onClick={() => handleChangeStatus(status)}
                 >
                   {status}

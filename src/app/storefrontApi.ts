@@ -501,18 +501,36 @@ interface CreatePublicOrderInput {
   phone: string;
   type: 'delivery' | 'pickup';
   address?: string;
+  deliveryLatitude?: number;
+  deliveryLongitude?: number;
   notes?: string;
   total: number;
   productIds: string[];
   items: string[];
   headquarterId?: string | number;
   scheduledFor?: string;
+  scheduledDate?: string;
+  scheduledTime?: string;
   isAsap?: boolean;
 }
 
 export const createPublicStoreOrder = async (slug: string, input: CreatePublicOrderInput) => {
   const baseUrl = ensureApiUrl();
   const path = resolveSlugPath(STOREFRONT_ORDERS_PATH, slug);
+  const fallbackDateTime = input.scheduledFor ? new Date(input.scheduledFor) : null;
+  const fallbackScheduledDate = (
+    fallbackDateTime && !Number.isNaN(fallbackDateTime.getTime())
+      ? `${fallbackDateTime.getFullYear()}-${String(fallbackDateTime.getMonth() + 1).padStart(2, '0')}-${String(fallbackDateTime.getDate()).padStart(2, '0')}`
+      : undefined
+  );
+  const fallbackScheduledTime = (
+    fallbackDateTime && !Number.isNaN(fallbackDateTime.getTime())
+      ? `${String(fallbackDateTime.getHours()).padStart(2, '0')}:${String(fallbackDateTime.getMinutes()).padStart(2, '0')}:00`
+      : undefined
+  );
+  const scheduledDate = input.scheduledDate ?? fallbackScheduledDate;
+  const scheduledTime = input.scheduledTime ?? fallbackScheduledTime;
+
   const response = await fetch(buildApiUrl(baseUrl, path), {
     method: 'POST',
     headers: {
@@ -524,6 +542,12 @@ export const createPublicStoreOrder = async (slug: string, input: CreatePublicOr
       phone: input.phone,
       type: input.type,
       address: input.address,
+      delivery_latitude: input.deliveryLatitude,
+      deliveryLatitude: input.deliveryLatitude,
+      latitude: input.deliveryLatitude,
+      delivery_longitude: input.deliveryLongitude,
+      deliveryLongitude: input.deliveryLongitude,
+      longitude: input.deliveryLongitude,
       notes: input.notes,
       total: input.total,
       product_ids: input.productIds,
@@ -535,6 +559,22 @@ export const createPublicStoreOrder = async (slug: string, input: CreatePublicOr
       pickupHeadquarterId: input.headquarterId,
       scheduled_for: input.scheduledFor,
       scheduledFor: input.scheduledFor,
+      scheduled_date: scheduledDate,
+      scheduledDate,
+      requested_date: scheduledDate,
+      requestedDate: scheduledDate,
+      delivery_date: scheduledDate,
+      deliveryDate: scheduledDate,
+      pickup_date: scheduledDate,
+      pickupDate: scheduledDate,
+      scheduled_time: scheduledTime,
+      scheduledTime,
+      requested_time: scheduledTime,
+      requestedTime: scheduledTime,
+      delivery_time: scheduledTime,
+      deliveryTime: scheduledTime,
+      pickup_time: scheduledTime,
+      pickupTime: scheduledTime,
       is_asap: input.isAsap,
       isAsap: input.isAsap,
     }),

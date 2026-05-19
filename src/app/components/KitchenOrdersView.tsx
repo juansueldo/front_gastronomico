@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ChefHat, Clock3, Maximize2, Minimize2, RefreshCcw } from 'lucide-react';
+import {
+  AlertTriangle,
+  BellRing,
+  ChefHat,
+  Clock3,
+  Maximize2,
+  Minimize2,
+  RefreshCcw,
+  SlidersHorizontal,
+  Soup,
+  Wifi,
+} from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { toast } from 'sonner';
@@ -13,6 +24,8 @@ interface KitchenOrderItem {
   type: 'delivery' | 'salon';
   status: KitchenOrderStatus;
   createdAt: string;
+  scheduledDate?: string;
+  scheduledTime?: string;
   detail: string;
   notes?: string;
   items: string[];
@@ -28,6 +41,29 @@ const statusColumns: Array<{ key: KitchenOrderStatus; label: string }> = [
   { key: 'En preparación', label: 'En preparación' },
   { key: 'Listo para servir', label: 'Listo para servir' },
 ];
+
+const toLocalDateLabel = (date: Date) => (
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+);
+
+const buildDateFromScheduled = (scheduledDate?: string, scheduledTime?: string) => {
+  const normalizedDate = String(scheduledDate ?? '').trim();
+  if (!normalizedDate) {
+    return null;
+  }
+
+  if (normalizedDate.includes('T')) {
+    const parsed = new Date(normalizedDate);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const timePart = String(scheduledTime ?? '').trim();
+  const normalizedTime = timePart
+    ? (timePart.length <= 5 ? `${timePart}:00` : timePart)
+    : '00:00:00';
+  const parsed = new Date(`${normalizedDate}T${normalizedTime}`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
 
 const normalizeKitchenStatus = (status: string): KitchenOrderStatus => {
   const normalizedStatus = status.trim().toLowerCase();
@@ -72,18 +108,23 @@ const toNextStatus = (order: KitchenOrderItem): KitchenOrderStatus | null => {
   return null;
 };
 
-const getOrderAgeMinutes = (createdAt: string) => {
-  if (createdAt.includes('T')) {
-    const createdDate = new Date(createdAt);
+const getOrderReferenceDate = (order: KitchenOrderItem): Date | null => {
+  const scheduledDate = buildDateFromScheduled(order.scheduledDate, order.scheduledTime);
+  if (scheduledDate) {
+    return scheduledDate;
+  }
+
+  if (order.createdAt.includes('T')) {
+    const createdDate = new Date(order.createdAt);
 
     if (Number.isNaN(createdDate.getTime())) {
       return null;
     }
 
-    return Math.max(0, Math.floor((Date.now() - createdDate.getTime()) / 60000));
+    return createdDate;
   }
 
-  const [hoursText, minutesText] = createdAt.split(':');
+  const [hoursText, minutesText] = order.createdAt.split(':');
   const hours = Number(hoursText);
   const minutes = Number(minutesText);
 
@@ -99,7 +140,23 @@ const getOrderAgeMinutes = (createdAt: string) => {
     createdDate.setDate(createdDate.getDate() - 1);
   }
 
-  return Math.max(0, Math.floor((now.getTime() - createdDate.getTime()) / 60000));
+  return createdDate;
+};
+
+const getOrderDateLabel = (order: KitchenOrderItem) => {
+  const referenceDate = getOrderReferenceDate(order);
+  if (!referenceDate) {
+    return '';
+  }
+  return toLocalDateLabel(referenceDate);
+};
+
+const getOrderAgeMinutes = (order: KitchenOrderItem) => {
+  const referenceDate = getOrderReferenceDate(order);
+  if (!referenceDate) {
+    return null;
+  }
+  return Math.max(0, Math.floor((Date.now() - referenceDate.getTime()) / 60000));
 };
 
 const getDelayLevel = (ageMinutes: number | null): DelayLevel => {
@@ -118,15 +175,9 @@ const getDelayLevel = (ageMinutes: number | null): DelayLevel => {
   return 'normal';
 };
 
-const formatAgeMinutes = (createdAt: string) => {
-  const createdDate = new Date(createdAt);
-
-  if (!Number.isNaN(createdDate.getTime())) {
-    const elapsedMinutes = Math.max(0, Math.floor((Date.now() - createdDate.getTime()) / 60000));
-    return `${elapsedMinutes} min`;
-  }
-
-  return '--';
+const formatAgeMinutes = (order: KitchenOrderItem) => {
+  const ageMinutes = getOrderAgeMinutes(order);
+  return ageMinutes === null ? '--' : `${ageMinutes} min`;
 };
 
 const mapBackendOrder = (order: any): KitchenOrderItem => {
@@ -155,6 +206,8 @@ const mapBackendOrder = (order: any): KitchenOrderItem => {
     type,
     status: normalizeKitchenStatus(String(order?.status ?? order?.Status?.name ?? 'pending')),
     createdAt: String(order?.createdAt ?? order?.order_date ?? ''),
+    scheduledDate: order?.scheduled_date ?? order?.scheduledDate ?? order?.requested_date ?? order?.requestedDate ?? undefined,
+    scheduledTime: order?.scheduled_time ?? order?.scheduledTime ?? order?.requested_time ?? order?.requestedTime ?? undefined,
     detail: String(order?.detail ?? order?.order_number ?? 'Sin detalle'),
     notes: order?.notes ?? undefined,
     items,
@@ -169,10 +222,10 @@ const statusCardClass: Record<KitchenOrderStatus, string> = {
 };
 
 const statusBadgeClass: Record<KitchenOrderStatus, string> = {
-  Nuevo: 'bg-slate-500 text-white',
+  Nuevo: 'bg-slate-500/85 text-white',
   'En preparación': 'bg-amber-500 text-black',
-  'Listo para servir': 'bg-emerald-500 text-white',
-  Entregado: 'bg-gray-600 text-white',
+  'Listo para servir': 'bg-emerald-500/85 text-white',
+  Entregado: 'bg-gray-500 text-white',
 };
 
 export function KitchenOrdersView() {
@@ -180,6 +233,8 @@ export function KitchenOrdersView() {
   const [isLoading, setIsLoading] = useState(false);
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isSoundEnabled, setIsSoundEnabled] = useState(true);
+  const [channelFilter, setChannelFilter] = useState<'all' | KitchenOrderItem['type']>('all');
   const [clockTick, setClockTick] = useState(() => Date.now());
   const delayedAlertedOrdersRef = useRef<Set<string>>(new Set());
   const kdsContainerRef = useRef<HTMLDivElement | null>(null);
@@ -189,18 +244,15 @@ export function KitchenOrdersView() {
 
     try {
       const backendOrders = await fetchActiveOrders();
+      const todayLabel = toLocalDateLabel(new Date());
       const normalizedOrders = backendOrders
         .map(mapBackendOrder)
-        .filter((order) => order.status !== 'Entregado');
+        .filter((order) => order.status !== 'Entregado')
+        .filter((order) => getOrderDateLabel(order) === todayLabel);
 
       normalizedOrders.sort((a, b) => {
-        const aTime = new Date(a.createdAt).getTime();
-        const bTime = new Date(b.createdAt).getTime();
-
-        if (Number.isNaN(aTime) || Number.isNaN(bTime)) {
-          return 0;
-        }
-
+        const aTime = getOrderReferenceDate(a)?.getTime() ?? 0;
+        const bTime = getOrderReferenceDate(b)?.getTime() ?? 0;
         return aTime - bTime;
       });
 
@@ -252,7 +304,7 @@ export function KitchenOrdersView() {
     const nextDelayedIds = new Set<string>();
 
     orders.forEach((order) => {
-      const ageMinutes = getOrderAgeMinutes(order.createdAt);
+      const ageMinutes = getOrderAgeMinutes(order);
       const delayLevel = getDelayLevel(ageMinutes);
 
       if (delayLevel === 'normal') {
@@ -276,20 +328,42 @@ export function KitchenOrdersView() {
     });
   }, [orders, clockTick]);
 
+  const visibleOrders = useMemo(() => {
+    if (channelFilter === 'all') {
+      return orders;
+    }
+
+    return orders.filter((order) => order.type === channelFilter);
+  }, [channelFilter, orders]);
+
   const ordersByStatus = useMemo(() => {
     return statusColumns.reduce((accumulator, column) => {
-      accumulator[column.key] = orders.filter((order) => order.status === column.key);
+      accumulator[column.key] = visibleOrders.filter((order) => order.status === column.key);
       return accumulator;
     }, {} as Record<KitchenOrderStatus, KitchenOrderItem[]>);
-  }, [orders]);
+  }, [visibleOrders]);
 
   const delayedOrdersCount = useMemo(() => {
-    return orders.filter((order) => getDelayLevel(getOrderAgeMinutes(order.createdAt)) !== 'normal').length;
-  }, [orders, clockTick]);
+    return visibleOrders.filter((order) => getDelayLevel(getOrderAgeMinutes(order)) !== 'normal').length;
+  }, [visibleOrders, clockTick]);
 
   const criticalOrdersCount = useMemo(() => {
-    return orders.filter((order) => getDelayLevel(getOrderAgeMinutes(order.createdAt)) === 'critical').length;
-  }, [orders, clockTick]);
+    return visibleOrders.filter((order) => getDelayLevel(getOrderAgeMinutes(order)) === 'critical').length;
+  }, [visibleOrders, clockTick]);
+
+  const averagePrepMinutes = useMemo(() => {
+    const preparingOrders = visibleOrders.filter((order) => order.status === 'En preparación');
+    if (preparingOrders.length === 0) {
+      return 0;
+    }
+
+    const totalMinutes = preparingOrders.reduce((accumulator, order) => {
+      const ageMinutes = getOrderAgeMinutes(order);
+      return accumulator + (ageMinutes ?? 0);
+    }, 0);
+
+    return Math.round(totalMinutes / preparingOrders.length);
+  }, [visibleOrders, clockTick]);
 
   const toggleFullscreen = async () => {
     try {
@@ -339,131 +413,221 @@ export function KitchenOrdersView() {
       ref={kdsContainerRef}
       className={`h-full overflow-y-auto bg-body p-4 md:p-6 ${isFullscreen ? 'kds-fullscreen' : ''}`}
     >
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold text-white md:text-2xl">
-            <ChefHat className="h-6 w-6 text-orange-400" />
-            Cocina
-          </h1>
-          <p className="text-sm text-gray-400">Tablero en tiempo real de preparación de pedidos</p>
+      <div className="relative">
+        <div className="pointer-events-none absolute inset-0 opacity-70">
+          <div className="absolute -top-24 left-1/4 h-72 w-72 rounded-full bg-orange-500/10 blur-3xl" />
+          <div className="absolute right-0 top-1/3 h-72 w-72 rounded-full bg-blue-500/10 blur-3xl" />
         </div>
 
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="bg-label-warning text-white">
-            {orders.length} activos
-          </Badge>
-          <Badge variant="secondary" className={criticalOrdersCount > 0 ? 'bg-red-500 text-white' : 'bg-amber-500 text-black'}>
-            <AlertTriangle className="mr-1 h-3.5 w-3.5" />
-            {delayedOrdersCount} demorados
-          </Badge>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="gap-2"
-            onClick={() => void loadOrders()}
-            disabled={isLoading}
-          >
-            <RefreshCcw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-            Actualizar
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="gap-2"
-            onClick={() => void toggleFullscreen()}
-          >
-            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-            {isFullscreen ? 'Salir KDS' : 'Fullscreen KDS'}
-          </Button>
-        </div>
-      </div>
+        <div className="relative space-y-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h1 className="flex items-center gap-3 text-2xl font-semibold text-white md:text-3xl">
+                <ChefHat className="h-8 w-8 text-orange-400" />
+                Cocina
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground md:text-1xl">Tablero en tiempo real de preparación de pedidos</p>
+            </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        {statusColumns.map((column) => {
-          const columnOrders = ordersByStatus[column.key] ?? [];
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-11 rounded-xl border-border bg-card/70 text-foreground hover:bg-card"
+                onClick={() => setIsSoundEnabled((prev) => !prev)}
+              >
+                <BellRing className="h-4 w-4" />
+                Sonido: {isSoundEnabled ? 'Activado' : 'Silenciado'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="size-11 rounded-xl border-border bg-card/70 text-foreground hover:bg-card"
+              >
+                <SlidersHorizontal className="h-5 w-5" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="size-11 rounded-xl border-border bg-card/70 text-foreground hover:bg-card"
+                onClick={() => void toggleFullscreen()}
+              >
+                {isFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+              </Button>
+            </div>
+          </div>
 
-          return (
-            <section key={column.key} className="rounded-lg border border-orange-700 bg-card p-3">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-medium text-gray-200">{column.label}</h2>
-                <Badge variant="secondary" className="bg-gray-700 text-white text-xs">
-                  {columnOrders.length}
-                </Badge>
-              </div>
+          <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+            <div className="rounded-xl border border-orange-500/70 bg-orange-500/10 p-3">
+              <p className="text-sm text-orange-700 dark:text-orange-200">Nuevos</p>
+              <p className="text-3xl font-semibold text-orange-800 dark:text-orange-100">{ordersByStatus.Nuevo?.length ?? 0}</p>
+            </div>
+            <div className="rounded-xl border border-amber-500/70 bg-amber-500/10 p-3">
+              <p className="text-sm text-amber-700 dark:text-amber-200">En preparación</p>
+              <p className="text-3xl font-semibold text-amber-800 dark:text-amber-100">{ordersByStatus['En preparación']?.length ?? 0}</p>
+            </div>
+            <div className="rounded-xl border border-emerald-500/70 bg-emerald-500/10 p-3">
+              <p className="text-sm text-emerald-700 dark:text-emerald-200">Listos para servir</p>
+              <p className="text-3xl font-semibold text-emerald-800 dark:text-emerald-100">{ordersByStatus['Listo para servir']?.length ?? 0}</p>
+            </div>
+            <div className="rounded-xl border border-slate-400/60 bg-slate-500/10 p-3">
+              <p className="text-sm text-slate-700 dark:text-slate-200">Prom. preparación</p>
+              <p className="text-3xl font-semibold text-slate-800 dark:text-slate-100">{averagePrepMinutes} min</p>
+            </div>
+          </div>
 
-              <div className="space-y-3">
-                {columnOrders.length === 0 ? (
-                  <div className="rounded-md border border-dashed border-orange-700 p-4 text-center text-xs text-gray-500">
-                    Sin pedidos
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border bg-card/60 p-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className={`rounded-xl px-4 py-2 text-sm ${
+                  channelFilter === 'all' ? 'bg-primary text-white' : 'bg-background text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setChannelFilter('all')}
+              >
+                Todos {orders.length}
+              </button>
+              <button
+                type="button"
+                className={`rounded-xl px-4 py-2 text-sm ${
+                  channelFilter === 'salon' ? 'bg-primary text-white' : 'bg-background text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setChannelFilter('salon')}
+              >
+                Salón {orders.filter((order) => order.type === 'salon').length}
+              </button>
+              <button
+                type="button"
+                className={`rounded-xl px-4 py-2 text-sm ${
+                  channelFilter === 'delivery' ? 'bg-primary text-white' : 'bg-background text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setChannelFilter('delivery')}
+              >
+                Delivery {orders.filter((order) => order.type === 'delivery').length}
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+                onClick={() => void loadOrders()}
+                disabled={isLoading}
+              >
+                <RefreshCcw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                Actualizar
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+                onClick={() => void toggleFullscreen()}
+              >
+                {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                {isFullscreen ? 'Salir KDS' : 'Entrar KDS'}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+            {statusColumns.map((column) => {
+              const columnOrders = ordersByStatus[column.key] ?? [];
+
+              return (
+                <section key={column.key} className="rounded-2xl border border-border bg-card/60 p-3 backdrop-blur-sm">
+                  <div className="mb-3 flex items-center justify-between border-b border-border pb-2">
+                    <h2 className="text-xl font-medium text-foreground">{column.label}</h2>
+                    <Badge variant="secondary" className="border border-border bg-muted/70 text-foreground">
+                      {columnOrders.length}
+                    </Badge>
                   </div>
-                ) : (
-                  columnOrders.map((order) => {
-                    const nextStatus = toNextStatus(order);
-                    const ageMinutes = getOrderAgeMinutes(order.createdAt);
-                    const delayLevel = getDelayLevel(ageMinutes);
-                    const delayClass = delayLevel === 'critical'
-                      ? 'ring-2 ring-red-500/80 border-red-500 bg-red-500/10'
-                      : delayLevel === 'warning'
-                      ? 'ring-1 ring-amber-400/70 border-amber-400 bg-amber-500/10'
-                      : '';
 
-                    return (
-                      <article
-                        key={order.id}
-                        className={`rounded-md border p-3 ${statusCardClass[order.status]} ${delayClass}`}
-                      >
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                          <span className="text-xs text-gray-300">{order.id}</span>
-                          <Badge variant="secondary" className={`text-[10px] ${statusBadgeClass[order.status]}`}>
-                            {order.type === 'delivery' ? 'Delivery' : 'Salón'}
-                          </Badge>
+                  <div className="space-y-3">
+                    {columnOrders.length === 0 ? (
+                      <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-dashed border-orange-500/40 p-4 text-center text-sm text-muted-foreground">
+                        <div className="space-y-2">
+                          <Soup className="mx-auto h-8 w-8 text-muted-foreground" />
+                          <p>Sin pedidos</p>
                         </div>
+                      </div>
+                    ) : (
+                      columnOrders.map((order) => {
+                        const nextStatus = toNextStatus(order);
+                        const ageMinutes = getOrderAgeMinutes(order);
+                        const delayLevel = getDelayLevel(ageMinutes);
+                        const delayClass = delayLevel === 'critical'
+                          ? 'ring-2 ring-red-500/80 border-red-500 bg-red-500/10'
+                          : delayLevel === 'warning'
+                            ? 'ring-1 ring-amber-400/70 border-amber-400 bg-amber-500/10'
+                            : '';
 
-                        <p className="truncate text-sm text-white">{order.customerName}</p>
-                        <p className="mt-1 line-clamp-2 text-xs text-gray-300">{order.detail}</p>
-
-                        {order.items.length > 0 ? (
-                          <ul className="mt-2 space-y-1 text-xs text-gray-200">
-                            {order.items.slice(0, 4).map((item) => (
-                              <li key={`${order.id}-${item}`} className="truncate">• {item}</li>
-                            ))}
-                            {order.items.length > 4 ? (
-                              <li className="text-gray-400">+{order.items.length - 4} más</li>
-                            ) : null}
-                          </ul>
-                        ) : null}
-
-                        {order.notes ? (
-                          <p className="mt-2 rounded bg-black/20 px-2 py-1 text-[11px] text-gray-300 line-clamp-2">
-                            Nota: {order.notes}
-                          </p>
-                        ) : null}
-
-                        <div className="mt-3 flex items-center justify-between gap-2">
-                          <span className={`inline-flex items-center gap-1 text-xs ${delayLevel === 'critical' ? 'text-red-200' : delayLevel === 'warning' ? 'text-amber-200' : 'text-gray-300'}`}>
-                            <Clock3 className="h-3.5 w-3.5" />
-                            {ageMinutes !== null ? `${ageMinutes} min` : formatAgeMinutes(order.createdAt)}
-                          </span>
-
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => void handleAdvanceOrder(order)}
-                            disabled={!nextStatus || updatingOrderId === order.id}
+                        return (
+                          <article
+                            key={order.id}
+                            className={`rounded-xl border p-3 ${statusCardClass[order.status]} ${delayClass}`}
                           >
-                            {nextStatus ? `Pasar a ${nextStatus}` : 'Sin acción'}
-                          </Button>
-                        </div>
-                      </article>
-                    );
-                  })
-                )}
-              </div>
-            </section>
-          );
-        })}
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <span className="text-lg font-semibold text-foreground">{order.id}</span>
+                              <Badge variant="secondary" className={`text-xs ${statusBadgeClass[order.status]}`}>
+                                {order.type === 'delivery' ? 'Delivery' : 'Salón'}
+                              </Badge>
+                            </div>
+
+                            <p className="truncate text-base text-foreground">{order.customerName}</p>
+                            <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{order.detail}</p>
+
+                            {order.items.length > 0 ? (
+                              <ul className="mt-3 space-y-1 text-sm text-foreground">
+                                {order.items.slice(0, 3).map((item) => (
+                                  <li key={`${order.id}-${item}`} className="truncate">• {item}</li>
+                                ))}
+                                {order.items.length > 3 ? (
+                                  <li className="text-muted-foreground">+{order.items.length - 3} más</li>
+                                ) : null}
+                              </ul>
+                            ) : null}
+
+                            <div className="mt-4 flex items-center justify-between gap-2">
+                              <span className={`inline-flex items-center gap-1 text-sm ${
+                                delayLevel === 'critical' ? 'text-red-700 dark:text-red-200' : delayLevel === 'warning' ? 'text-amber-700 dark:text-amber-200' : 'text-muted-foreground'
+                              }`}>
+                                <Clock3 className="h-4 w-4" />
+                                {ageMinutes !== null ? `${ageMinutes} min` : formatAgeMinutes(order)}
+                              </span>
+
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="rounded-xl"
+                                onClick={() => void handleAdvanceOrder(order)}
+                                disabled={!nextStatus || updatingOrderId === order.id}
+                              >
+                                {nextStatus ? `Pasar a ${nextStatus}` : 'Sin acción'}
+                              </Button>
+                            </div>
+                          </article>
+                        );
+                      })
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center justify-between rounded-2xl border border-border bg-card/60 px-4 py-3 text-sm text-muted-foreground">
+            <span>Última actualización: {new Date(clockTick).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
+            <span className="inline-flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+              <Wifi className="h-4 w-4" />
+              Conectado
+            </span>
+            <span className="inline-flex items-center gap-2">
+              <AlertTriangle className={`h-4 w-4 ${criticalOrdersCount > 0 ? 'text-red-700 dark:text-red-300' : 'text-amber-700 dark:text-amber-300'}`} />
+              {delayedOrdersCount} demorados
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -13,6 +13,7 @@ export interface DeliveryZone {
   name?: string;
   active?: boolean;
   polygon: DeliveryZonePoint[];
+  headquarterId?: number;
   updatedAt?: string;
   zoneid?: string;
   storeId?: number;
@@ -28,6 +29,7 @@ export interface UpsertDeliveryZoneRequest {
 export interface CreateDeliveryZoneRequest {
   name: string;
   polygon: DeliveryZonePoint[];
+  headquarterId?: number;
   metadata?: Record<string, unknown>;
   zoneid?: string;
   storeId?: number;
@@ -36,6 +38,7 @@ export interface CreateDeliveryZoneRequest {
 export interface UpdateDeliveryZoneRequest {
   name?: string;
   polygon?: DeliveryZonePoint[];
+  headquarterId?: number;
   metadata?: Record<string, unknown>;
   zoneid?: string;
 }
@@ -63,6 +66,11 @@ type DeliveryZoneApiRaw = {
   store_id?: number;
   statusId?: number;
   status_id?: number;
+  headquarterId?: number;
+  headquarter_id?: number;
+  Headquarter?: {
+    id?: number;
+  };
   Status?: {
     id?: number;
     name?: string;
@@ -186,6 +194,14 @@ const normalizeZone = (raw: DeliveryZoneApiRaw | null | undefined): DeliveryZone
     : String(zoneRaw.Status?.name ?? '').toLowerCase() === 'active'
       ? true
       : resolvedStatusId === 1;
+  const metadataHeadquarterId = Number((zoneRaw.metadata as { headquarterId?: unknown; headquarter_id?: unknown } | undefined)?.headquarterId
+    ?? (zoneRaw.metadata as { headquarterId?: unknown; headquarter_id?: unknown } | undefined)?.headquarter_id);
+  const resolvedHeadquarterId = Number(
+    zoneRaw.headquarterId
+    ?? zoneRaw.headquarter_id
+    ?? zoneRaw.Headquarter?.id
+    ?? metadataHeadquarterId
+  );
 
   if (polygon.length === 0) {
     return null;
@@ -197,6 +213,7 @@ const normalizeZone = (raw: DeliveryZoneApiRaw | null | undefined): DeliveryZone
     name: zoneRaw.name,
     active: resolvedActive,
     polygon,
+    headquarterId: Number.isInteger(resolvedHeadquarterId) && resolvedHeadquarterId > 0 ? resolvedHeadquarterId : undefined,
     updatedAt: zoneRaw.updatedAt ?? zoneRaw.updated_at,
     zoneid: zoneRaw.zoneid,
     storeId: zoneRaw.storeId ?? zoneRaw.store_id,
@@ -259,6 +276,13 @@ export async function createDeliveryZone(payload: CreateDeliveryZoneRequest): Pr
   const resolvedStoreId = payload.storeId ?? getCurrentStoreId();
   const data = await endpoints.createDeliveryZone({
     ...payload,
+    headquarterId: payload.headquarterId,
+    headquarter_id: payload.headquarterId,
+    metadata: {
+      ...(payload.metadata ?? {}),
+      headquarterId: payload.headquarterId,
+      headquarter_id: payload.headquarterId,
+    },
     storeId: resolvedStoreId,
   });
 
@@ -266,7 +290,18 @@ export async function createDeliveryZone(payload: CreateDeliveryZoneRequest): Pr
 }
 
 export async function updateDeliveryZone(zoneId: string, payload: UpdateDeliveryZoneRequest): Promise<DeliveryZone | null> {
-  const data = await endpoints.updateDeliveryZone(zoneId, payload);
+  const data = await endpoints.updateDeliveryZone(zoneId, {
+    ...payload,
+    headquarterId: payload.headquarterId,
+    headquarter_id: payload.headquarterId,
+    metadata: payload.headquarterId
+      ? {
+        ...(payload.metadata ?? {}),
+        headquarterId: payload.headquarterId,
+        headquarter_id: payload.headquarterId,
+      }
+      : payload.metadata,
+  });
   return normalizeZone(data as DeliveryZoneApiRaw | null | undefined);
 }
 

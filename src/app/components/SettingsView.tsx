@@ -462,47 +462,6 @@ export function SettingsView() {
             </div>
           </div>
 
-          {/* Appearance Section */}
-          <div className="bg-card rounded-lg p-6">
-            <h2 className="text-white font-medium mb-4 flex items-center gap-2">
-              <Moon className="h-5 w-5" />
-              Apariencia
-            </h2>
-
-            <div className="space-y-4">
-              <div>
-                <Label className="text-gray-300">Tema</Label>
-                <Select value={theme} onValueChange={handleThemeChange}>
-                  <SelectTrigger className="bg-body border-orange-600 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="dark">Oscuro</SelectItem>
-                    <SelectItem value="light">Claro</SelectItem>
-                    <SelectItem value="auto">Automático</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label className="text-gray-300 flex items-center gap-2">
-                  <Globe className="h-4 w-4" />
-                  Idioma
-                </Label>
-                <Select value={language} onValueChange={setLanguage}>
-                  <SelectTrigger className="bg-body border-orange-600 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="es">Español</SelectItem>
-                    <SelectItem value="en">English</SelectItem>
-                    <SelectItem value="pt">Português</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-
           {/* Security Section */}
           <div className="bg-card rounded-lg p-6">
             <h2 className="text-white font-medium mb-4 flex items-center gap-2">
@@ -532,77 +491,6 @@ export function SettingsView() {
             </div>
           </div>
 
-          {/* Storefront Slugs Section */}
-          <div className="bg-card rounded-lg p-6 space-y-4">
-            <h2 className="text-white font-medium">Tienda publica</h2>
-            <p className="text-sm text-gray-400">
-              Configura el slug público de tu tienda (uno por cuenta).
-            </p>
-
-            <div className="grid md:grid-cols-[1fr_180px_auto] gap-3">
-              <Input
-                value={slugUrlInput}
-                onChange={(event) => setSlugUrlInput(event.target.value)}
-                className="bg-body border-orange-600 text-white"
-                placeholder="Ej: tienda/mi-negocio o https://pedidos.mi-negocio.com"
-              />
-              <Select value={slugStatusId} onValueChange={setSlugStatusId}>
-                <SelectTrigger className="bg-body border-orange-600 text-white">
-                  <SelectValue placeholder="Estado" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Activo (1)</SelectItem>
-                  <SelectItem value="2">Inactivo (2)</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button onClick={() => void handleSaveSlug()} disabled={isSavingSlug}>
-                {isSavingSlug ? 'Guardando...' : (storeSlug ? 'Actualizar slug' : 'Crear slug')}
-              </Button>
-            </div>
-
-            <div className="rounded-md border border-orange-700 bg-body p-3 space-y-2">
-              {isLoadingSlugs ? (
-                <p className="text-sm text-gray-400">Cargando slugs...</p>
-              ) : null}
-
-              {!isLoadingSlugs && !storeSlug ? (
-                <p className="text-sm text-gray-500">Todavía no tienes slug creado</p>
-              ) : null}
-
-              {!isLoadingSlugs && storeSlug ? (() => {
-                const normalizedUrl = normalizeStoreUrl(storeSlug.slugUrl);
-
-                return (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-orange-700 p-3">
-                    <div className="min-w-0">
-                      <p className="text-sm text-white truncate">{storeSlug.slugUrl}</p>
-                      <p className="text-xs text-gray-400 truncate">{normalizedUrl}</p>
-                      <p className="text-xs text-gray-500">Estado: {storeSlug.statusId}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
-                        onClick={() => void handleCopyStoreUrl(storeSlug.slugUrl)}
-                      >
-                        Copiar URL
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => window.open(normalizedUrl, '_blank', 'noopener,noreferrer')}
-                      >
-                        Abrir
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })() : null}
-            </div>
-          </div>
 
           {/* Logout Section */}
           <div className="bg-card rounded-lg p-6">

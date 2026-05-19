@@ -19,7 +19,6 @@ import { toast } from 'sonner';
 import { getLoggedUser } from '../../authStorage';
 import {
   ApiError,
-  checkDeliveryZonePoint,
   createOrder as createBackendOrder,
   type CreateOrderRequest,
   type ProductCategory,
@@ -42,9 +41,9 @@ interface CustomerData {
 }
 
 interface SavedAddress {
-  street: string;
-  number: string;
-  locality: string;
+  street?: string;
+  number?: string;
+  locality?: string;
   crossStreets?: string;
   latitude?: number;
   longitude?: number;
@@ -58,28 +57,23 @@ interface OrderHistoryItem {
   items: string[];
 }
 
-interface Locality {
-  id: string;
-  name: string;
-}
-
 interface NominatimResult {
+  place_id?: string | number;
   display_name: string;
   lat: string;
   lon: string;
-  address?: {
-    road?: string;
-    suburb?: string;
-    city?: string;
-    town?: string;
-    village?: string;
-  };
 }
 
-interface GeocodedPoint {
+interface AddressSuggestion {
+  id: string;
+  label: string;
   latitude: number;
   longitude: number;
-  formatted: string;
+}
+
+interface DeliveryCoordinates {
+  latitude: number;
+  longitude: number;
 }
 
 interface Props {
@@ -98,6 +92,7 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
   maximumFractionDigits: 0,
 });
 const ORDER_HEADQUARTER_STORAGE_KEY = 'cash:selected-headquarter-id';
+const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search';
 
 const getStoredHeadquarterId = () => {
   try {
@@ -134,57 +129,58 @@ function getNormalizedProductCategoryIds(product: ProductItem): string[] {
   return [...new Set(collected.map((value) => String(value).trim()).filter(Boolean))];
 }
 
-async function geocodeStructuredAddress(
-  street: string,
-  number: string,
-  locality: string,
-): Promise<GeocodedPoint | null> {
-  const query = `${street} ${number}, ${locality}, Argentina`;
-  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`;
-
-  try {
-    const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
-    if (!res.ok) return null;
-    const data = (await res.json()) as NominatimResult[];
-    if (!data.length) return null;
-
-    const lat = Number(data[0].lat);
-    const lon = Number(data[0].lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-
-    return { latitude: lat, longitude: lon, formatted: data[0].display_name };
-  } catch {
-    return null;
+async function searchAddressSuggestions(query: string, signal?: AbortSignal): Promise<AddressSuggestion[]> {
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery || trimmedQuery.length < 4) {
+    return [];
   }
-}
-
-async function fetchCrossStreetSuggestions(
-  street: string,
-  locality: string,
-): Promise<string[]> {
-  // Buscamos intersecciones con Nominatim usando el nombre de la calle
-  const query = `${street}, ${locality}, Argentina`;
-  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=8&q=${encodeURIComponent(query)}&addressdetails=1`;
 
   try {
-    const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
-    if (!res.ok) return [];
-    const data = (await res.json()) as NominatimResult[];
+    const response = await fetch(
+      `${NOMINATIM_SEARCH_URL}?format=json&addressdetails=1&limit=5&countrycodes=ar&q=${encodeURIComponent(trimmedQuery)}`,
+      { method: 'GET', signal, headers: { 'Accept-Language': 'es' } },
+    );
+    if (!response.ok) {
+      return [];
+    }
 
-    // Extraemos nombres de calles cercanas del campo display_name
-    const streets = data
-      .map((r) => {
-        const parts = r.display_name.split(',');
-        return parts[0]?.trim() ?? '';
+    const payload = await response.json().catch(() => []);
+    if (!Array.isArray(payload)) {
+      return [];
+    }
+
+    return payload
+      .map((item: NominatimResult, index: number) => {
+        const latitude = Number(item?.lat);
+        const longitude = Number(item?.lon);
+        const label = String(item?.display_name ?? '').trim();
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !label) {
+          return null;
+        }
+
+        return {
+          id: String(item?.place_id ?? `${label}-${index}`),
+          label,
+          latitude,
+          longitude,
+        };
       })
-      .filter((s) => s && s !== street)
-      .filter((s, i, arr) => arr.indexOf(s) === i)
-      .slice(0, 5);
-
-    return streets;
+      .filter((item: AddressSuggestion | null): item is AddressSuggestion => item !== null);
   } catch {
     return [];
   }
+}
+
+async function resolveAddressCoordinates(query: string): Promise<DeliveryCoordinates | null> {
+  const suggestions = await searchAddressSuggestions(query);
+  if (suggestions.length === 0) {
+    return null;
+  }
+
+  return {
+    latitude: suggestions[0].latitude,
+    longitude: suggestions[0].longitude,
+  };
 }
 
 // ─── Subcomponentes ───────────────────────────────────────────────────────────
@@ -232,19 +228,12 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
   // Paso 3 — Tipo de orden
   const [orderType, setOrderType] = useState<OrderType>('delivery');
 
-  // Paso 4 — Dirección estructurada
-  const [localities, setLocalities] = useState<Locality[]>([]);
-  const [isLoadingLocalities, setIsLoadingLocalities] = useState(false);
-  const [selectedLocality, setSelectedLocality] = useState('');
-  const [streetName, setStreetName] = useState('');
-  const [streetNumber, setStreetNumber] = useState('');
-  const [crossStreets, setCrossStreets] = useState('');
-  const [crossStreetSuggestions, setCrossStreetSuggestions] = useState<string[]>([]);
-  const [isLoadingCrossStreets, setIsLoadingCrossStreets] = useState(false);
-  const [showCrossStreetSuggestions, setShowCrossStreetSuggestions] = useState(false);
-  const [geocodedPoint, setGeocodedPoint] = useState<GeocodedPoint | null>(null);
-  const [isGeocodingAddress, setIsGeocodingAddress] = useState(false);
-  const [addressZoneStatus, setAddressZoneStatus] = useState<'idle' | 'valid' | 'outside' | 'error'>('idle');
+  // Paso 4 — Dirección delivery
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliveryAddressSuggestions, setDeliveryAddressSuggestions] = useState<AddressSuggestion[]>([]);
+  const [showDeliveryAddressSuggestions, setShowDeliveryAddressSuggestions] = useState(false);
+  const [isLoadingDeliveryAddressSuggestions, setIsLoadingDeliveryAddressSuggestions] = useState(false);
+  const [deliveryCoordinates, setDeliveryCoordinates] = useState<DeliveryCoordinates | null>(null);
 
   // Paso 5 — Productos
   const [selectedQuantities, setSelectedQuantities] = useState<Record<string, number>>({});
@@ -260,8 +249,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
   const [newOrderWaiterId, setNewOrderWaiterId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const crossStreetDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const geocodeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deliverySuggestAbortRef = useRef<AbortController | null>(null);
 
   const STEPS: Step[] = ['phone', 'customer', 'type', 'address', 'products', 'confirm'];
   const STEPS_DINE_IN: Step[] = ['phone', 'customer', 'type', 'products', 'confirm'];
@@ -335,74 +323,50 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
     }
   }, [selectedHeadquarterId]);
 
-  // Cargar localidades cuando llegamos al paso address
   useEffect(() => {
-    if (step !== 'address') return;
-    setIsLoadingLocalities(true);
-
-    endpoints
-      .fetchLocalities?.()
-      .then((data: Locality[]) => setLocalities(data ?? []))
-      .catch(() => toast.error('No se pudieron cargar las localidades'))
-      .finally(() => setIsLoadingLocalities(false));
-  }, [step]);
-
-  // Autocompletar entre calles cuando cambia la calle principal
-  useEffect(() => {
-    if (!streetName || !selectedLocality) {
-      setCrossStreetSuggestions([]);
+    if (orderType !== 'delivery') {
+      setDeliveryAddressSuggestions([]);
+      setShowDeliveryAddressSuggestions(false);
+      setIsLoadingDeliveryAddressSuggestions(false);
       return;
     }
 
-    if (crossStreetDebounceRef.current) clearTimeout(crossStreetDebounceRef.current);
-
-    crossStreetDebounceRef.current = setTimeout(async () => {
-      setIsLoadingCrossStreets(true);
-      const localityName = localities.find((l) => l.id === selectedLocality)?.name ?? selectedLocality;
-      const suggestions = await fetchCrossStreetSuggestions(streetName, localityName);
-      setCrossStreetSuggestions(suggestions);
-      setIsLoadingCrossStreets(false);
-    }, 600);
-  }, [streetName, selectedLocality, localities]);
-
-  // Geocodificar cuando cambian calle, altura o localidad
-  useEffect(() => {
-    if (!streetName || !streetNumber || !selectedLocality) {
-      setGeocodedPoint(null);
-      setAddressZoneStatus('idle');
+    const query = deliveryAddress.trim();
+    if (query.length < 4) {
+      setDeliveryAddressSuggestions([]);
+      setShowDeliveryAddressSuggestions(false);
+      setIsLoadingDeliveryAddressSuggestions(false);
       return;
     }
 
-    if (geocodeDebounceRef.current) clearTimeout(geocodeDebounceRef.current);
+    setIsLoadingDeliveryAddressSuggestions(true);
+    const timeoutId = window.setTimeout(() => {
+      deliverySuggestAbortRef.current?.abort();
+      const abortController = new AbortController();
+      deliverySuggestAbortRef.current = abortController;
 
-    geocodeDebounceRef.current = setTimeout(async () => {
-      setIsGeocodingAddress(true);
-      const localityName = localities.find((l) => l.id === selectedLocality)?.name ?? selectedLocality;
-      const point = await geocodeStructuredAddress(streetName, streetNumber, localityName);
-
-      if (!point) {
-        setGeocodedPoint(null);
-        setAddressZoneStatus('error');
-        setIsGeocodingAddress(false);
-        return;
-      }
-
-      setGeocodedPoint(point);
-
-      try {
-        const check = await checkDeliveryZonePoint({
-          latitude: point.latitude,
-          longitude: point.longitude,
+      void searchAddressSuggestions(query, abortController.signal)
+        .then((suggestions) => {
+          setDeliveryAddressSuggestions(suggestions);
+          setShowDeliveryAddressSuggestions(suggestions.length > 0);
+        })
+        .catch((error) => {
+          if ((error as { name?: string })?.name !== 'AbortError') {
+            setDeliveryAddressSuggestions([]);
+            setShowDeliveryAddressSuggestions(false);
+          }
+        })
+        .finally(() => {
+          if (!abortController.signal.aborted) {
+            setIsLoadingDeliveryAddressSuggestions(false);
+          }
         });
+    }, 350);
 
-        setAddressZoneStatus(check.hasZone && !check.inside ? 'outside' : 'valid');
-      } catch {
-        setAddressZoneStatus('error');
-      }
-
-      setIsGeocodingAddress(false);
-    }, 800);
-  }, [streetName, streetNumber, selectedLocality, localities]);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [deliveryAddress, orderType]);
 
   // ── Búsqueda de cliente por teléfono ─────────────────────────────────────────
 
@@ -421,10 +385,16 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
         setCustomerFound(result);
         // Precargar dirección si el cliente la tiene guardada
         if (result.savedAddress) {
-          setStreetName(result.savedAddress.street ?? '');
-          setStreetNumber(result.savedAddress.number ?? '');
-          setSelectedLocality(result.savedAddress.locality ?? '');
-          setCrossStreets(result.savedAddress.crossStreets ?? '');
+          setDeliveryAddress(result.savedAddress.formatted ?? '');
+          if (
+            Number.isFinite(result.savedAddress.latitude)
+            && Number.isFinite(result.savedAddress.longitude)
+          ) {
+            setDeliveryCoordinates({
+              latitude: Number(result.savedAddress.latitude),
+              longitude: Number(result.savedAddress.longitude),
+            });
+          }
         }
         setStep('type');
       } else {
@@ -499,18 +469,29 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
       ? parsedHeadquarterId
       : null;
 
-    if (orderType === 'dine-in' && !resolvedHeadquarterId) {
-      toast.error('Seleccioná una sede para el pedido de salón');
+    if (!resolvedHeadquarterId) {
+      toast.error(orderType === 'delivery'
+        ? 'Seleccioná una sede para el pedido delivery'
+        : 'Seleccioná una sede para el pedido de salón');
       return;
     }
 
     const loggedUser = getLoggedUser();
     const storeId = Number(loggedUser?.storeId);
+    const trimmedDeliveryAddress = deliveryAddress.trim();
 
-    const localityName = localities.find((l) => l.id === selectedLocality)?.name ?? selectedLocality;
-    const formattedAddress = orderType === 'delivery'
-      ? `${streetName} ${streetNumber}${crossStreets ? ` e/ ${crossStreets}` : ''}, ${localityName}`
-      : undefined;
+    if (orderType === 'delivery' && !trimmedDeliveryAddress) {
+      toast.error('Ingresá el domicilio de entrega');
+      return;
+    }
+
+    let resolvedCoordinates = deliveryCoordinates;
+    if (orderType === 'delivery' && !resolvedCoordinates) {
+      resolvedCoordinates = await resolveAddressCoordinates(trimmedDeliveryAddress);
+      if (resolvedCoordinates) {
+        setDeliveryCoordinates(resolvedCoordinates);
+      }
+    }
 
     const payload: CreateOrderRequest = {
       storeId,
@@ -521,9 +502,9 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
       userId,
       type: orderType,
       items: selectedItems.map((p) => ({ productId: p.id, quantity: p.quantity })),
-      delivery_address: formattedAddress,
-      delivery_latitude: geocodedPoint?.latitude,
-      delivery_longitude: geocodedPoint?.longitude,
+      delivery_address: orderType === 'delivery' ? trimmedDeliveryAddress : undefined,
+      delivery_latitude: resolvedCoordinates?.latitude,
+      delivery_longitude: resolvedCoordinates?.longitude,
       tableId: orderType === 'dine-in' && newOrderTableId ? Number(newOrderTableId) : undefined,
       waiterId: newOrderWaiterId ? Number(newOrderWaiterId) : undefined,
     };
@@ -550,12 +531,11 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
     setCustomerNotFound(false);
     setNewCustomerName('');
     setOrderType('delivery');
-    setSelectedLocality('');
-    setStreetName('');
-    setStreetNumber('');
-    setCrossStreets('');
-    setGeocodedPoint(null);
-    setAddressZoneStatus('idle');
+    setDeliveryAddress('');
+    setDeliveryAddressSuggestions([]);
+    setShowDeliveryAddressSuggestions(false);
+    setIsLoadingDeliveryAddressSuggestions(false);
+    setDeliveryCoordinates(null);
     setSelectedQuantities({});
     setProductFilter('');
     setCategoryFilter('all');
@@ -746,119 +726,89 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
   );
 
   const renderAddress = () => {
-    const zoneColor =
-      addressZoneStatus === 'valid' ? 'text-emerald-400' :
-      addressZoneStatus === 'outside' ? 'text-red-400' :
-      addressZoneStatus === 'error' ? 'text-yellow-400' : 'text-gray-500';
-
-    const zoneMsg =
-      addressZoneStatus === 'valid' ? '✓ Dentro de zona de entrega' :
-      addressZoneStatus === 'outside' ? '✗ Fuera de la zona de entrega' :
-      addressZoneStatus === 'error' ? '⚠ No se pudo verificar la zona' :
-      isGeocodingAddress ? 'Verificando dirección...' : '';
-
-    const canContinue = geocodedPoint && addressZoneStatus === 'valid';
+    const canContinue = Boolean(selectedHeadquarterId) && deliveryAddress.trim().length > 0;
 
     return (
       <div className="space-y-4">
         <SectionTitle>Dirección de entrega</SectionTitle>
 
-        {/* Localidad */}
         <div>
-          <FieldLabel>Localidad</FieldLabel>
-          <Select value={selectedLocality} onValueChange={setSelectedLocality}>
+          <FieldLabel>Sede *</FieldLabel>
+          <Select value={selectedHeadquarterId} onValueChange={setSelectedHeadquarterId}>
             <SelectTrigger>
-              <SelectValue placeholder={isLoadingLocalities ? 'Cargando localidades...' : 'Seleccioná una localidad'} />
+              <SelectValue placeholder={isLoadingHeadquarters ? 'Cargando sedes...' : 'Seleccioná una sede'} />
             </SelectTrigger>
             <SelectContent>
-              {localities.map((l) => (
-                <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
+              {headquarters.map((headquarter) => (
+                <SelectItem key={headquarter.id} value={String(headquarter.id)}>
+                  {headquarter.name}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
-        </div>
-
-        {/* Calle y altura */}
-        <div className="grid grid-cols-[1fr_auto] gap-2">
-          <div>
-            <FieldLabel>Calle</FieldLabel>
-            <Input
-              placeholder="Ej: Av. Mitre"
-              value={streetName}
-              onChange={(e) => {
-                setStreetName(e.target.value);
-                setShowCrossStreetSuggestions(false);
-              }}
-              disabled={!selectedLocality}
-            />
-          </div>
-          <div className="w-24">
-            <FieldLabel>Altura</FieldLabel>
-            <Input
-              placeholder="Ej: 1234"
-              value={streetNumber}
-              onChange={(e) => setStreetNumber(e.target.value)}
-              type="number"
-              disabled={!selectedLocality}
-            />
-          </div>
-        </div>
-
-        {/* Entre calles con sugerencias */}
-        <div className="relative">
-          <FieldLabel>
-            Entre calles {isLoadingCrossStreets && <span className="text-gray-600">(cargando...)</span>}
-          </FieldLabel>
-          <Input
-            placeholder="Ej: Belgrano y San Martín"
-            value={crossStreets}
-            onChange={(e) => {
-              setCrossStreets(e.target.value);
-              setShowCrossStreetSuggestions(true);
-            }}
-            onFocus={() => setShowCrossStreetSuggestions(crossStreetSuggestions.length > 0)}
-            disabled={!streetName}
-          />
-          {showCrossStreetSuggestions && crossStreetSuggestions.length > 0 && (
-            <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-md border border-gray-700 bg-card shadow-lg overflow-hidden">
-              {crossStreetSuggestions.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-gray-800 transition-colors"
-                  onMouseDown={() => {
-                    setCrossStreets(s);
-                    setShowCrossStreetSuggestions(false);
-                  }}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
+          {!selectedHeadquarterId && (
+            <p className="text-xs text-yellow-400 mt-1">Seleccioná una sede para continuar.</p>
           )}
         </div>
 
-        {/* Estado geocodificación */}
-        {zoneMsg && (
-          <p className={`text-xs ${zoneColor}`}>{zoneMsg}</p>
-        )}
+        <div className="relative">
+          <FieldLabel>Domicilio *</FieldLabel>
+          <Input
+            placeholder="Ej: Av. Argentina 1234"
+            value={deliveryAddress}
+            onChange={(event) => {
+              setDeliveryAddress(event.target.value);
+              setDeliveryCoordinates(null);
+            }}
+            onFocus={() => {
+              if (deliveryAddressSuggestions.length > 0) {
+                setShowDeliveryAddressSuggestions(true);
+              }
+            }}
+            onBlur={() => {
+              window.setTimeout(() => setShowDeliveryAddressSuggestions(false), 120);
+            }}
+          />
+          {showDeliveryAddressSuggestions && deliveryAddressSuggestions.length > 0 ? (
+            <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 max-h-56 overflow-y-auto rounded-lg border border-gray-700 bg-card p-1 shadow-lg">
+              {deliveryAddressSuggestions.map((suggestion) => (
+                <button
+                  key={suggestion.id}
+                  type="button"
+                  className="w-full rounded-md px-2 py-2 text-left text-xs text-gray-200 transition hover:bg-gray-800"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    setDeliveryAddress(suggestion.label);
+                    setDeliveryCoordinates({
+                      latitude: suggestion.latitude,
+                      longitude: suggestion.longitude,
+                    });
+                    setShowDeliveryAddressSuggestions(false);
+                  }}
+                >
+                  {suggestion.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
 
-        {/* Dirección formateada */}
-        {geocodedPoint && (
-          <div className="rounded-md bg-gray-900/50 border border-gray-800 px-3 py-2">
-            <p className="text-xs text-gray-500">Dirección encontrada</p>
-            <p className="text-xs text-gray-300 mt-0.5 line-clamp-2">{geocodedPoint.formatted}</p>
-          </div>
-        )}
+        <p className="text-xs text-gray-500">
+          {isLoadingDeliveryAddressSuggestions
+            ? 'Buscando sugerencias de dirección...'
+            : deliveryCoordinates
+              ? `Ubicación detectada: ${deliveryCoordinates.latitude.toFixed(5)}, ${deliveryCoordinates.longitude.toFixed(5)}`
+              : 'Podés escribir la dirección y elegir una sugerencia para precisión de ubicación.'}
+        </p>
 
         <div className="flex gap-2">
           <Button variant="outline" className="flex-1" onClick={goBack}>← Atrás</Button>
           <Button
             className="flex-1"
             onClick={goNext}
-            disabled={!canContinue || isGeocodingAddress}
+            disabled={!canContinue}
           >
-            {isGeocodingAddress ? 'Verificando...' : 'Continuar →'}
+            Continuar →
           </Button>
         </div>
       </div>
@@ -956,11 +906,9 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
   );
 
   const renderConfirm = () => {
-    const localityName = localities.find((l) => l.id === selectedLocality)?.name ?? selectedLocality;
     const customerName = customerFound?.name ?? newCustomerName;
-    const formattedAddress = orderType === 'delivery'
-      ? `${streetName} ${streetNumber}${crossStreets ? ` e/ ${crossStreets}` : ''}, ${localityName}`
-      : null;
+    const selectedHeadquarter = headquarters.find((headquarter) => String(headquarter.id) === selectedHeadquarterId);
+    const formattedAddress = orderType === 'delivery' ? deliveryAddress.trim() : null;
 
     return (
       <div className="space-y-4">
@@ -980,6 +928,10 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
             <Badge className={orderType === 'delivery' ? 'bg-blue-600 text-white text-xs' : 'bg-emerald-600 text-white text-xs'}>
               {orderType === 'delivery' ? 'Delivery' : 'Salón'}
             </Badge>
+          </div>
+          <div className="flex justify-between px-3 py-2 text-sm">
+            <span className="text-gray-400">Sede</span>
+            <span className="text-white">{selectedHeadquarter?.name ?? 'Sin sede'}</span>
           </div>
           {formattedAddress && (
             <div className="flex justify-between items-start gap-4 px-3 py-2 text-sm">

@@ -17,6 +17,19 @@ import {
 } from './ui/select';
 import { toast } from 'sonner';
 import {
+  Armchair,
+  CalendarClock,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  Grid2X2,
+  List,
+  MapPin,
+  Users,
+  UserRoundPlus,
+} from 'lucide-react';
+import {
   ApiError,
   createCashMovement,
   createTable,
@@ -66,20 +79,41 @@ const statusLabels: Record<TableItem['status'], string> = {
 };
 
 const statusCardClasses: Record<TableItem['status'], string> = {
-  libre: 'border-orange-700 bg-card',
-  ocupada: 'border-green-500/70 bg-green-500/10',
-  'por-cerrar': 'border-yellow-500/70 bg-yellow-500/10',
-  reservada: 'border-blue-500/70 bg-blue-500/10',
+  libre: 'border-orange-500/80 bg-gradient-to-b from-orange-500/10 to-transparent',
+  ocupada: 'border-emerald-500/80 bg-gradient-to-b from-emerald-500/10 to-transparent',
+  'por-cerrar': 'border-amber-400/90 bg-gradient-to-b from-amber-500/10 to-transparent',
+  reservada: 'border-blue-500/80 bg-gradient-to-b from-blue-500/10 to-transparent',
 };
 
 const statusBadgeClasses: Record<TableItem['status'], string> = {
-  libre: 'bg-gray-600 text-white text-xs',
-  ocupada: 'bg-green-500 text-white text-xs',
-  'por-cerrar': 'bg-yellow-500 text-black text-xs',
-  reservada: 'bg-blue-500 text-white text-xs',
+  libre: 'border border-orange-400/50 bg-orange-500/20 text-xs text-orange-700 dark:text-orange-200',
+  ocupada: 'border border-emerald-400/50 bg-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-200',
+  'por-cerrar': 'border border-amber-400/50 bg-amber-500/20 text-xs text-amber-700 dark:text-amber-200',
+  reservada: 'border border-blue-400/50 bg-blue-500/20 text-xs text-blue-700 dark:text-blue-200',
+};
+
+const statusActionButtonClasses: Record<TableItem['status'], string> = {
+  libre: 'border-orange-500/60 text-orange-700 dark:text-orange-200',
+  ocupada: 'border-emerald-500/60 text-emerald-700 dark:text-emerald-200',
+  'por-cerrar': 'border-amber-400/70 text-amber-700 dark:text-amber-200',
+  reservada: 'border-blue-500/60 text-blue-700 dark:text-blue-200',
 };
 
 const areaOptions: TableItem['area'][] = ['Salón principal', 'Patio', 'Barra'];
+const statusFilterOptions: Array<{ key: 'todas' | TableItem['status']; label: string }> = [
+  { key: 'todas', label: 'Todas' },
+  { key: 'libre', label: 'Libres' },
+  { key: 'ocupada', label: 'Ocupadas' },
+  { key: 'por-cerrar', label: 'Por cerrar' },
+  { key: 'reservada', label: 'Reservadas' },
+];
+
+const statusActionConfig: Record<TableItem['status'], { label: string; icon: ({ className }: { className?: string }) => JSX.Element }> = {
+  libre: { label: 'Asignar mozo', icon: UserRoundPlus },
+  ocupada: { label: 'Ver detalle', icon: Eye },
+  'por-cerrar': { label: 'Cerrar mesa', icon: CheckCircle2 },
+  reservada: { label: 'Ver reserva', icon: CalendarClock },
+};
 const ACTIVE_TABLE_STATUS_ID = 1;
 const INACTIVE_TABLE_STATUS_ID = 2;
 const TABLES_HEADQUARTER_STORAGE_KEY = 'cash:selected-headquarter-id';
@@ -218,6 +252,13 @@ export function TablesView() {
   const [availableProducts, setAvailableProducts] = useState<ProductItem[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('efectivo');
+  const [activeStatusFilter, setActiveStatusFilter] = useState<'todas' | TableItem['status']>('todas');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [collapsedAreas, setCollapsedAreas] = useState<Record<TableItem['area'], boolean>>({
+    'Salón principal': false,
+    Patio: false,
+    Barra: false,
+  });
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressNextClick = useRef(false);
 
@@ -309,6 +350,25 @@ export function TablesView() {
   const closingCount = tables.filter((table) => table.status === 'por-cerrar').length;
   const reservedCount = tables.filter((table) => table.status === 'reservada').length;
   const selectedHeadquarterName = headquarters.find((item) => String(item.id) === selectedHeadquarterId)?.name;
+  const filteredTables = activeStatusFilter === 'todas'
+    ? tables
+    : tables.filter((table) => table.status === activeStatusFilter);
+  const areaLabelsInUse = areaOptions.filter((area) => filteredTables.some((table) => table.area === area));
+  const tablesByArea = areaLabelsInUse.map((area) => ({
+    area,
+    tables: filteredTables
+      .filter((table) => table.area === area)
+      .sort((left, right) => left.number - right.number),
+  }));
+  const activeFilterCount = activeStatusFilter === 'todas'
+    ? tables.length
+    : tables.filter((table) => table.status === activeStatusFilter).length;
+  const updatedAtLabel = new Date().toLocaleTimeString('es-AR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
 
   const getTableTotalAmount = (table: TableItem) => table.totalAmount ?? 0;
 
@@ -728,159 +788,299 @@ export function TablesView() {
     toast.success(`Mesa ${actionTable.number} cerrada`);
   };
 
+  const getStatusCount = (status: 'todas' | TableItem['status']) => {
+    if (status === 'todas') {
+      return tables.length;
+    }
+
+    return tables.filter((table) => table.status === status).length;
+  };
+
+  const handleTableActionClick = (table: TableItem) => {
+    if (table.status === 'ocupada') {
+      setDetailTable(table);
+      return;
+    }
+
+    if (table.status === 'por-cerrar') {
+      updateTable(table.id, (currentTable) => ({
+        ...currentTable,
+        status: 'libre',
+        guests: 0,
+        openedAt: undefined,
+        totalAmount: undefined,
+      }));
+      toast.success(`Mesa ${table.number} cerrada`);
+      return;
+    }
+
+    setActionTable(table);
+  };
+
+  const toggleAreaCollapse = (area: TableItem['area']) => {
+    setCollapsedAreas((prev) => ({
+      ...prev,
+      [area]: !prev[area],
+    }));
+  };
+
   return (
-    <div className="h-full bg-body overflow-y-auto">
-      <div className="p-4 md:p-6 space-y-6">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <h1 className="text-xl md:text-2xl font-semibold text-white">Mesas</h1>
-            {selectedHeadquarterName && (
-              <p className="text-sm text-gray-400">Sede: {selectedHeadquarterName}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="bg-label-secondary text-white">
-              Total: {tables.length}
-            </Badge>
-            <Button
-              size="sm"
-              onClick={() => setIsCreateTableDialogOpen(true)}
-              disabled={!selectedHeadquarterId || isLoadingHeadquarters}
-            >
-              Nueva mesa
-            </Button>
-          </div>
+    <div className="h-full overflow-y-auto bg-body">
+      <div className="relative p-4 md:p-6">
+        <div className="pointer-events-none absolute inset-0 opacity-70">
+          <div className="absolute -top-32 left-1/4 h-80 w-80 rounded-full bg-orange-500/10 blur-3xl" />
+          <div className="absolute right-0 top-1/3 h-72 w-72 rounded-full bg-blue-500/10 blur-3xl" />
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <Select
-            value={selectedHeadquarterId}
-            onValueChange={(value) => {
-              setSelectedHeadquarterId(value);
-              void loadTables(value);
-            }}
-            disabled={isLoadingHeadquarters || headquarters.length === 0}
-          >
-            <SelectTrigger className="w-[300px]">
-              <SelectValue placeholder={isLoadingHeadquarters ? 'Cargando sedes...' : 'Seleccionar sede'} />
-            </SelectTrigger>
-            <SelectContent>
-              {headquarters.map((headquarter) => (
-                <SelectItem key={headquarter.id} value={String(headquarter.id)}>
-                  {headquarter.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <div className="p-2 rounded-lg bg-orange-700/10 border border-orange-700 text-center">
-            <p className="text-xs dark:text-orange-300 text-orange-900">Libres</p>
-            <p className="text-sm text-white font-medium">{freeCount}</p>
-          </div>
-          <div className="p-2 rounded-lg bg-green-700/10 border border-green-500/60 text-center">
-            <p className="text-xs dark:text-green-300 text-green-900">Ocupadas</p>
-            <p className="text-sm text-white font-medium">{occupiedCount}</p>
-          </div>
-          <div className="p-2 rounded-lg bg-yellow-700/10 border border-yellow-500/60 text-center">
-            <p className="text-xs dark:text-yellow-300 text-yellow-900">Por cerrar</p>
-            <p className="text-sm text-white font-medium">{closingCount}</p>
-          </div>
-          <div className="p-2 rounded-lg bg-blue-700/10 border border-blue-500/60 text-center">
-            <p className="text-xs dark:text-blue-300 text-blue-900">Reservadas</p>
-            <p className="text-sm text-white font-medium">{reservedCount}</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
-          {tables.map((table) => (
-            <div
-              key={table.id}
-              draggable
-              onClick={() => handleOpenDetail(table)}
-              onContextMenu={(event) => handleContextMenu(event, table)}
-              onTouchStart={() => handleLongPressStart(table)}
-              onTouchEnd={handleLongPressEnd}
-              onMouseDown={() => handleLongPressStart(table)}
-              onMouseUp={handleLongPressEnd}
-              onMouseLeave={handleLongPressEnd}
-              onDragStart={() => handleDragStart(table.id)}
-              onDragOver={(event) => handleDragOver(event, table.id)}
-              onDrop={(event) => handleDrop(event, table.id)}
-              onDragEnd={handleDragEnd}
-              className={`p-4 rounded-lg border cursor-pointer transition-colors hover:bg-gray-800/60 ${statusCardClasses[table.status]} ${dragOverTableId === table.id ? 'ring-2 ring-blue-400' : ''} ${draggedTableId === table.id ? 'opacity-60' : ''}`}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-white font-semibold">Mesa {table.number}</h2>
-                <Badge variant="secondary" className={statusBadgeClasses[table.status]}>
-                  {statusLabels[table.status]}
-                </Badge>
-              </div>
-
-              <div className="space-y-1 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-400">Sector</span>
-                  <span className="text-white">{table.area}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-400">Mozo</span>
-                  <span className="text-white">{table.waiter}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-400">Comensales</span>
-                  <span className="text-white">{table.guests}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-400">Hora apertura</span>
-                  <span className="text-white">{table.openedAt ?? '--:--'}</span>
-                </div>
-              </div>
-
-              <div className="mt-2 pt-2 border-t border-orange-700 flex items-center justify-between">
-                <span className="text-xs text-gray-400">Total</span>
-                <span className="text-sm text-white font-medium">{formatCurrency(getTableTotalAmount(table))}</span>
-              </div>
+        <div className="relative space-y-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h1 className="flex items-center gap-3 text-2xl font-semibold text-white md:text-3xl">
+                <Armchair className="h-8 w-8 text-orange-400 md:h-10 md:w-10" />
+                Mesas
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground md:text-1xl">Gestioná el estado de tus mesas en tiempo real</p>
             </div>
-          ))}
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="h-10 rounded-xl border border-border bg-card/70 px-4 text-sm text-foreground">
+                Total: {tables.length}
+              </Badge>
+              <Button
+                size="sm"
+                className="h-10 rounded-xl bg-primary px-4 text-white"
+                onClick={() => setIsCreateTableDialogOpen(true)}
+                disabled={!selectedHeadquarterId || isLoadingHeadquarters}
+              >
+                + Nueva mesa
+              </Button>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card/60 p-3 backdrop-blur-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <MapPin className="h-4 w-4 text-orange-300" />
+              <span className="text-sm text-muted-foreground">Sede:</span>
+              <Select
+                value={selectedHeadquarterId}
+                onValueChange={(value) => {
+                  setSelectedHeadquarterId(value);
+                  void loadTables(value);
+                }}
+                disabled={isLoadingHeadquarters || headquarters.length === 0}
+              >
+                <SelectTrigger className="h-10 min-w-[260px] rounded-xl border-orange-500/50 bg-background text-foreground">
+                  <SelectValue placeholder={isLoadingHeadquarters ? 'Cargando sedes...' : 'Seleccionar sede'} />
+                </SelectTrigger>
+                <SelectContent className="border-border bg-popover text-popover-foreground">
+                  {headquarters.map((headquarter) => (
+                    <SelectItem key={headquarter.id} value={String(headquarter.id)}>
+                      {headquarter.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+            <div className="rounded-xl border border-orange-500/60 bg-orange-500/10 p-3">
+              <p className="text-sm text-orange-700 dark:text-orange-200">Libres</p>
+              <p className="text-3xl font-semibold text-orange-800 dark:text-orange-100">{freeCount}</p>
+            </div>
+            <div className="rounded-xl border border-emerald-500/60 bg-emerald-500/10 p-3">
+              <p className="text-sm text-emerald-700 dark:text-emerald-200">Ocupadas</p>
+              <p className="text-3xl font-semibold text-emerald-800 dark:text-emerald-100">{occupiedCount}</p>
+            </div>
+            <div className="rounded-xl border border-amber-400/70 bg-amber-500/10 p-3">
+              <p className="text-sm text-amber-700 dark:text-amber-200">Por cerrar</p>
+              <p className="text-3xl font-semibold text-amber-800 dark:text-amber-100">{closingCount}</p>
+            </div>
+            <div className="rounded-xl border border-blue-500/60 bg-blue-500/10 p-3">
+              <p className="text-sm text-blue-700 dark:text-blue-200">Reservadas</p>
+              <p className="text-3xl font-semibold text-blue-800 dark:text-blue-100">{reservedCount}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+            <div className="flex flex-wrap items-center gap-4">
+              {statusFilterOptions.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  className={`border-b-2 pb-2 text-sm transition-colors ${
+                    activeStatusFilter === option.key
+                      ? 'border-orange-400 text-orange-700 dark:text-orange-300'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                  onClick={() => setActiveStatusFilter(option.key)}
+                >
+                  {option.label} ({getStatusCount(option.key)})
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center rounded-xl border border-border bg-card/70 p-1">
+              <button
+                type="button"
+                className={`rounded-lg p-2 ${viewMode === 'grid' ? 'bg-primary text-white' : 'text-muted-foreground hover:text-foreground'}`}
+                onClick={() => setViewMode('grid')}
+                title="Vista grilla"
+              >
+                <Grid2X2 className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className={`rounded-lg p-2 ${viewMode === 'list' ? 'bg-primary text-white' : 'text-muted-foreground hover:text-foreground'}`}
+                onClick={() => setViewMode('list')}
+                title="Vista lista"
+              >
+                <List className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {tablesByArea.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border bg-card/60 p-10 text-center text-sm text-muted-foreground">
+              No hay mesas para el filtro seleccionado.
+            </div>
+          ) : (
+            tablesByArea.map(({ area, tables: areaTables }) => (
+              <section key={area} className="space-y-3">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between rounded-xl border border-border bg-card/60 px-3 py-2 text-left"
+                  onClick={() => toggleAreaCollapse(area)}
+                >
+                  <span className="flex items-center gap-2 text-xl font-medium text-foreground">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    {area}
+                  </span>
+                  {collapsedAreas[area] ? (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </button>
+
+                {!collapsedAreas[area] ? (
+                  <div className={viewMode === 'grid' ? 'grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4' : 'space-y-3'}>
+                    {areaTables.map((table) => {
+                      const action = statusActionConfig[table.status];
+                      const ActionIcon = action.icon;
+                      return (
+                        <article
+                          key={table.id}
+                          draggable
+                          onClick={() => handleOpenDetail(table)}
+                          onContextMenu={(event) => handleContextMenu(event, table)}
+                          onTouchStart={() => handleLongPressStart(table)}
+                          onTouchEnd={handleLongPressEnd}
+                          onMouseDown={() => handleLongPressStart(table)}
+                          onMouseUp={handleLongPressEnd}
+                          onMouseLeave={handleLongPressEnd}
+                          onDragStart={() => handleDragStart(table.id)}
+                          onDragOver={(event) => handleDragOver(event, table.id)}
+                          onDrop={(event) => handleDrop(event, table.id)}
+                          onDragEnd={handleDragEnd}
+                          className={`rounded-2xl border bg-card/60 p-4 backdrop-blur-sm transition hover:bg-card ${
+                            statusCardClasses[table.status]
+                          } ${dragOverTableId === table.id ? 'ring-2 ring-blue-400' : ''} ${draggedTableId === table.id ? 'opacity-60' : ''}`}
+                        >
+                          <div className="mb-3 flex items-center justify-between gap-2">
+                            <h2 className="text-3xl font-semibold text-foreground md:text-4xl">Mesa {table.number}</h2>
+                            <Badge variant="secondary" className={statusBadgeClasses[table.status]}>
+                              {statusLabels[table.status]}
+                            </Badge>
+                          </div>
+
+                          <div className="space-y-2 text-sm">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-muted-foreground">Sector</span>
+                              <span className="text-foreground">{table.area}</span>
+                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-muted-foreground">Mozo</span>
+                              <span className="text-foreground">{table.waiter}</span>
+                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-muted-foreground">Comensales</span>
+                              <span className="text-foreground">{table.guests}</span>
+                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-muted-foreground">Hora apertura</span>
+                              <span className="text-foreground">{table.openedAt ?? '--:--'}</span>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 border-t border-border pt-3">
+                            <div className="mb-3 flex items-center justify-between">
+                              <span className="text-sm text-muted-foreground">Total</span>
+                              <span className="text-2xl font-medium text-foreground">{formatCurrency(getTableTotalAmount(table))}</span>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className={`h-10 w-full rounded-xl border bg-transparent text-foreground hover:bg-muted ${statusActionButtonClasses[table.status]}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleTableActionClick(table);
+                              }}
+                            >
+                              <ActionIcon className="h-4 w-4" />
+                              {action.label}
+                            </Button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </section>
+            ))
+          )}
+
+          <div className="flex flex-wrap items-center justify-between border-t border-border pt-3 text-sm text-muted-foreground">
+            <span>Mostrando: {activeFilterCount} mesas</span>
+            <span>Última actualización: {updatedAtLabel}</span>
+          </div>
         </div>
       </div>
 
       <Dialog open={!!detailTable} onOpenChange={() => setDetailTable(null)}>
-        <DialogContent className="bg-card card text-white">
+        <DialogContent className="bg-card card text-foreground">
           <DialogHeader>
             <DialogTitle>Detalle de Mesa {detailTable?.number}</DialogTitle>
           </DialogHeader>
           {detailTable && (
             <div className="space-y-3 text-sm">
               <div className="flex items-center justify-between">
-                <span className="text-gray-400">Estado</span>
+                <span className="text-muted-foreground">Estado</span>
                 <Badge variant="secondary" className={statusBadgeClasses[detailTable.status]}>
                   {statusLabels[detailTable.status]}
                 </Badge>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-400">Sector</span>
+                <span className="text-muted-foreground">Sector</span>
                 <span>{detailTable.area}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-400">Mozo</span>
+                <span className="text-muted-foreground">Mozo</span>
                 <span>{detailTable.waiter}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-400">Comensales</span>
+                <span className="text-muted-foreground">Comensales</span>
                 <span>{detailTable.guests}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-400">Capacidad</span>
+                <span className="text-muted-foreground">Capacidad</span>
                 <span>{detailTable.capacity ?? '-'}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-400">Hora apertura</span>
+                <span className="text-muted-foreground">Hora apertura</span>
                 <span>{detailTable.openedAt ?? '--:--'}</span>
               </div>
-              <div className="flex items-center justify-between pt-2 border-t border-orange-700">
-                <span className="text-gray-400">Total</span>
+              <div className="flex items-center justify-between border-t border-border pt-2">
+                <span className="text-muted-foreground">Total</span>
                 <span className="font-medium">{formatCurrency(getTableTotalAmount(detailTable))}</span>
               </div>
               <Button className="w-full" onClick={() => setActionTable(detailTable)}>
@@ -892,7 +1092,7 @@ export function TablesView() {
       </Dialog>
 
       <Dialog open={!!actionTable} onOpenChange={() => setActionTable(null)}>
-        <DialogContent className="bg-card card text-white">
+        <DialogContent className="bg-card card text-foreground">
           <DialogHeader>
             <DialogTitle>Acciones Mesa {actionTable?.number}</DialogTitle>
           </DialogHeader>
@@ -900,10 +1100,10 @@ export function TablesView() {
             <Button className="w-full" onClick={handleOpenBill}>
               Abrir cuenta
             </Button>
-            <div className="space-y-2 pt-2 border-t border-orange-700">
-              <p className="text-sm text-gray-300">Sumar producto a la mesa</p>
+            <div className="space-y-2 border-t border-border pt-2">
+              <p className="text-sm text-muted-foreground">Sumar producto a la mesa</p>
               {availableProducts.length === 0 ? (
-                <p className="text-xs text-gray-500">No hay productos cargados</p>
+                <p className="text-xs text-muted-foreground">No hay productos cargados</p>
               ) : (
                 <Select value={selectedProductId} onValueChange={setSelectedProductId}>
                   <SelectTrigger>
@@ -922,8 +1122,8 @@ export function TablesView() {
                 Sumar producto
               </Button>
             </div>
-            <div className="space-y-2 pt-2 border-t border-orange-700">
-              <p className="text-sm text-gray-300">Cobrar mesa</p>
+            <div className="space-y-2 border-t border-border pt-2">
+              <p className="text-sm text-muted-foreground">Cobrar mesa</p>
               <Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as PaymentMethod)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar método de pago" />
@@ -962,7 +1162,7 @@ export function TablesView() {
       </Dialog>
 
       <Dialog open={isCreateTableDialogOpen} onOpenChange={setIsCreateTableDialogOpen}>
-        <DialogContent className="bg-card card text-white">
+        <DialogContent className="bg-card card text-foreground">
           <DialogHeader>
             <DialogTitle>Nueva mesa</DialogTitle>
           </DialogHeader>
@@ -1006,7 +1206,7 @@ export function TablesView() {
       </Dialog>
 
       <Dialog open={!!editingTable} onOpenChange={(open) => !open && setEditingTable(null)}>
-        <DialogContent className="bg-card border-orange-700 text-white">
+        <DialogContent className="border-border bg-card text-foreground">
           <DialogHeader>
             <DialogTitle>Editar Mesa {editingTable?.number}</DialogTitle>
           </DialogHeader>
@@ -1055,12 +1255,12 @@ export function TablesView() {
       </Dialog>
 
       <Dialog open={!!tableToDelete} onOpenChange={(open) => !open && setTableToDelete(null)}>
-        <DialogContent className="bg-card border-orange-700 text-white">
+        <DialogContent className="border-border bg-card text-foreground">
           <DialogHeader>
             <DialogTitle>Eliminar Mesa {tableToDelete?.number}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 text-sm">
-            <p className="text-gray-300">Esta acción eliminará la mesa de forma permanente.</p>
+            <p className="text-muted-foreground">Esta acción eliminará la mesa de forma permanente.</p>
             <Button variant="destructive" className="w-full" onClick={handleDeleteTable}>
               Confirmar eliminación
             </Button>
@@ -1069,7 +1269,7 @@ export function TablesView() {
       </Dialog>
 
       <Dialog open={isMoveTableDialogOpen} onOpenChange={setIsMoveTableDialogOpen}>
-        <DialogContent className="bg-card border-orange-700 text-white">
+        <DialogContent className="border-border bg-card text-foreground">
           <DialogHeader>
             <DialogTitle>Mover Mesa {actionTable?.number}</DialogTitle>
           </DialogHeader>

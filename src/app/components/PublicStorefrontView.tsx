@@ -40,6 +40,12 @@ type OrderSuccessSummary = {
   address?: string;
   pickupHeadquarterName?: string;
 };
+type AddressSuggestion = {
+  id: string;
+  label: string;
+  latitude: number;
+  longitude: number;
+};
 
 const currencyFormatter = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -50,6 +56,7 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
 const PRODUCT_BATCH_SIZE = 12;
 const DAY_OF_WEEK_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
 const DAY_OF_WEEK_SHORT_LABELS = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'] as const;
+const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search';
 
 const buildDateWithTime = (date: Date, time: string) => {
   const [hours, minutes] = time.split(':').map((value) => Number(value) || 0);
@@ -67,10 +74,68 @@ const formatScheduleDayLabel = (date: Date) => {
   return `${dayLabel}-${date.getDate()}/${date.getMonth() + 1}`;
 };
 
+const formatDateForPayload = (date: Date) => (
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+);
+
+const formatTimeForPayload = (date: Date) => (
+  `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:00`
+);
+
 const formatWindowLabel = (open: Date, close: Date) => {
   const openLabel = formatHourLabel(open);
   const closeLabel = formatHourLabel(close);
   return `${openLabel} a ${closeLabel}`;
+};
+
+const searchAddressSuggestions = async (query: string, signal?: AbortSignal): Promise<AddressSuggestion[]> => {
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery || trimmedQuery.length < 4) {
+    return [];
+  }
+
+  const response = await fetch(
+    `${NOMINATIM_SEARCH_URL}?format=json&addressdetails=1&limit=5&countrycodes=ar&q=${encodeURIComponent(trimmedQuery)}`,
+    { method: 'GET', signal },
+  );
+  if (!response.ok) {
+    return [];
+  }
+
+  const payload = await response.json().catch(() => []);
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  return payload
+    .map((item: any, index: number) => {
+      const latitude = Number(item?.lat);
+      const longitude = Number(item?.lon);
+      const label = String(item?.display_name ?? '').trim();
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !label) {
+        return null;
+      }
+      return {
+        id: String(item?.place_id ?? `${label}-${index}`),
+        label,
+        latitude,
+        longitude,
+      };
+    })
+    .filter((item: AddressSuggestion | null): item is AddressSuggestion => item !== null);
+};
+
+const resolveAddressCoordinates = async (query: string): Promise<{ latitude: number; longitude: number } | null> => {
+  const suggestions = await searchAddressSuggestions(query);
+  if (suggestions.length === 0) {
+    return null;
+  }
+
+  const firstSuggestion = suggestions[0];
+  return {
+    latitude: firstSuggestion.latitude,
+    longitude: firstSuggestion.longitude,
+  };
 };
 
 const buildScheduleState = (schedules: PublicStoreSchedule[] | undefined, now: Date) => {
@@ -183,6 +248,10 @@ export function PublicStorefrontView() {
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
   const [selectedHeadquarterId, setSelectedHeadquarterId] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliveryCoordinates, setDeliveryCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
+  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
+  const [isLoadingAddressSuggestions, setIsLoadingAddressSuggestions] = useState(false);
   const [deliveryAddressExtra, setDeliveryAddressExtra] = useState('');
   const [notes, setNotes] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -202,6 +271,7 @@ export function PublicStorefrontView() {
   const [productDialogQuantity, setProductDialogQuantity] = useState(1);
   const [visibleProductsCount, setVisibleProductsCount] = useState(PRODUCT_BATCH_SIZE);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
+  const addressSuggestAbortRef = useRef<AbortController | null>(null);
 
   const categoryEntries = useMemo(
     () => Object.entries(categoriesById).sort(([, leftName], [, rightName]) => leftName.localeCompare(rightName, 'es')),
@@ -479,6 +549,51 @@ export function PublicStorefrontView() {
   }, [selectedScheduleDay, selectedScheduleSlotId]);
 
   useEffect(() => {
+    if (orderType !== 'delivery') {
+      setAddressSuggestions([]);
+      setShowAddressSuggestions(false);
+      setIsLoadingAddressSuggestions(false);
+      return;
+    }
+
+    const query = deliveryAddress.trim();
+    if (query.length < 4) {
+      setAddressSuggestions([]);
+      setShowAddressSuggestions(false);
+      setIsLoadingAddressSuggestions(false);
+      return;
+    }
+
+    setIsLoadingAddressSuggestions(true);
+    const timeoutId = window.setTimeout(() => {
+      addressSuggestAbortRef.current?.abort();
+      const abortController = new AbortController();
+      addressSuggestAbortRef.current = abortController;
+
+      void searchAddressSuggestions(query, abortController.signal)
+        .then((suggestions) => {
+          setAddressSuggestions(suggestions);
+          setShowAddressSuggestions(suggestions.length > 0);
+        })
+        .catch((error) => {
+          if ((error as { name?: string })?.name !== 'AbortError') {
+            setAddressSuggestions([]);
+            setShowAddressSuggestions(false);
+          }
+        })
+        .finally(() => {
+          if (!abortController.signal.aborted) {
+            setIsLoadingAddressSuggestions(false);
+          }
+        });
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [deliveryAddress, orderType]);
+
+  useEffect(() => {
     const target = loadMoreTriggerRef.current;
 
     if (!target || !hasMoreProducts) {
@@ -623,6 +738,9 @@ export function PublicStorefrontView() {
     const trimmedAddressExtra = deliveryAddressExtra.trim();
     const trimmedNotes = notes.trim();
     const isAsapSchedule = scheduleMode === 'asap';
+    const scheduledSlotDate = !isAsapSchedule ? selectedScheduleSlot?.startDate : undefined;
+    const scheduledDate = scheduledSlotDate ? formatDateForPayload(scheduledSlotDate) : undefined;
+    const scheduledTime = scheduledSlotDate ? formatTimeForPayload(scheduledSlotDate) : undefined;
     const scheduleNotes = isAsapSchedule
       ? 'Horario solicitado: lo antes posible'
       : (selectedScheduleDay && selectedScheduleSlot
@@ -682,6 +800,14 @@ export function PublicStorefrontView() {
     setIsCreatingOrder(true);
 
     try {
+      let resolvedDeliveryCoordinates = deliveryCoordinates;
+      if (orderType === 'delivery' && !resolvedDeliveryCoordinates && trimmedAddress) {
+        resolvedDeliveryCoordinates = await resolveAddressCoordinates(trimmedAddress);
+        if (resolvedDeliveryCoordinates) {
+          setDeliveryCoordinates(resolvedDeliveryCoordinates);
+        }
+      }
+
       const productIds = cartItems.flatMap((product) => (
         Array.from({ length: product.quantity }, () => product.id)
       ));
@@ -694,11 +820,15 @@ export function PublicStorefrontView() {
         phone: trimmedPhone,
         type: orderType,
         address: orderType === 'delivery' ? trimmedAddress : undefined,
+        deliveryLatitude: orderType === 'delivery' ? resolvedDeliveryCoordinates?.latitude : undefined,
+        deliveryLongitude: orderType === 'delivery' ? resolvedDeliveryCoordinates?.longitude : undefined,
         notes: mergedNotes || undefined,
         total: cartTotal,
         productIds,
         items,
         headquarterId: orderType === 'pickup' ? selectedHeadquarterId : undefined,
+        scheduledDate,
+        scheduledTime,
         scheduledFor: isAsapSchedule ? undefined : selectedScheduleSlot?.startDate.toISOString(),
         isAsap: isAsapSchedule,
       });
@@ -721,6 +851,9 @@ export function PublicStorefrontView() {
       setDeliveryAddressExtra('');
       setPaymentMethod('');
       setCustomerEmail('');
+      setDeliveryCoordinates(null);
+      setAddressSuggestions([]);
+      setShowAddressSuggestions(false);
       if (orderType === 'delivery') {
         setDeliveryAddress('');
       }
@@ -1100,7 +1233,7 @@ export function PublicStorefrontView() {
                         placeholder="ejemplo@gmail.com"
                         value={customerEmail}
                         onChange={(event) => setCustomerEmail(event.target.value)}
-                        className="h-11 border-0 border-b border-[#c9ccd1] rounded-none px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent"
+                        className="h-11 rounded-none border-0 border-b border-[#c9ccd1] px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent focus-visible:rounded-none focus-visible:border-x-0 focus-visible:border-t-0 focus-visible:border-b-[#ff5a2f] focus-visible:ring-0 focus-visible:ring-transparent"
                       />
                     </div>
                     <div className="grid gap-4 md:grid-cols-2">
@@ -1110,7 +1243,7 @@ export function PublicStorefrontView() {
                           placeholder="Nombre completo"
                           value={customerName}
                           onChange={(event) => setCustomerName(event.target.value)}
-                          className="h-11 border-0 border-b border-[#c9ccd1] rounded-none px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent"
+                          className="h-11 rounded-none border-0 border-b border-[#c9ccd1] px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent focus-visible:rounded-none focus-visible:border-x-0 focus-visible:border-t-0 focus-visible:border-b-[#ff5a2f] focus-visible:ring-0 focus-visible:ring-transparent"
                         />
                       </div>
                       <div className="space-y-1">
@@ -1119,7 +1252,7 @@ export function PublicStorefrontView() {
                           placeholder="011 15-2345-6789"
                           value={customerPhone}
                           onChange={(event) => setCustomerPhone(event.target.value)}
-                          className="h-11 border-0 border-b border-[#c9ccd1] rounded-none px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent"
+                          className="h-11 rounded-none border-0 border-b border-[#c9ccd1] px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent focus-visible:rounded-none focus-visible:border-x-0 focus-visible:border-t-0 focus-visible:border-b-[#ff5a2f] focus-visible:ring-0 focus-visible:ring-transparent"
                         />
                       </div>
                     </div>
@@ -1131,12 +1264,54 @@ export function PublicStorefrontView() {
                       <div className="grid gap-4 md:grid-cols-2">
                         <div className="space-y-1">
                           <label className="text-sm font-semibold text-[#2f2f2f]">Calle y número*</label>
-                          <Input
-                            placeholder="Av. Argentina 1234"
-                            value={deliveryAddress}
-                            onChange={(event) => setDeliveryAddress(event.target.value)}
-                            className="h-11 border-0 border-b border-[#c9ccd1] rounded-none px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent"
-                          />
+                          <div className="relative">
+                            <Input
+                              placeholder="Av. Argentina 1234"
+                              value={deliveryAddress}
+                              onChange={(event) => {
+                                setDeliveryAddress(event.target.value);
+                                setDeliveryCoordinates(null);
+                              }}
+                              onFocus={() => {
+                                if (addressSuggestions.length > 0) {
+                                  setShowAddressSuggestions(true);
+                                }
+                              }}
+                              onBlur={() => {
+                                window.setTimeout(() => setShowAddressSuggestions(false), 120);
+                              }}
+                              className="h-11 rounded-none border-0 border-b border-[#c9ccd1] px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent focus-visible:rounded-none focus-visible:border-x-0 focus-visible:border-t-0 focus-visible:border-b-[#ff5a2f] focus-visible:ring-0 focus-visible:ring-transparent"
+                            />
+                            {showAddressSuggestions && addressSuggestions.length > 0 ? (
+                              <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 max-h-56 overflow-y-auto rounded-lg border border-[#dedede] bg-white p-1 shadow-lg">
+                                {addressSuggestions.map((suggestion) => (
+                                  <button
+                                    key={suggestion.id}
+                                    type="button"
+                                    className="w-full rounded-md px-2 py-2 text-left text-xs text-[#1f2937] transition hover:bg-[#f3f4f6]"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => {
+                                      setDeliveryAddress(suggestion.label);
+                                      setDeliveryCoordinates({
+                                        latitude: suggestion.latitude,
+                                        longitude: suggestion.longitude,
+                                      });
+                                      setShowAddressSuggestions(false);
+                                    }}
+                                  >
+                                    {suggestion.label}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                          <p className="text-[11px] text-[#8a8f98]">
+                            {isLoadingAddressSuggestions
+                              ? 'Buscando sugerencias de dirección...'
+                              : deliveryCoordinates
+                                ? `Ubicación detectada: ${deliveryCoordinates.latitude.toFixed(5)}, ${deliveryCoordinates.longitude.toFixed(5)}`
+                                : 'Elegí una sugerencia para guardar la ubicación exacta.'}
+                          </p>
                         </div>
                         <div className="space-y-1">
                           <label className="text-sm font-semibold text-[#2f2f2f]">Piso y departamento</label>
@@ -1144,7 +1319,7 @@ export function PublicStorefrontView() {
                             placeholder="Por ejemplo: 1B"
                             value={deliveryAddressExtra}
                             onChange={(event) => setDeliveryAddressExtra(event.target.value)}
-                            className="h-11 border-0 border-b border-[#c9ccd1] rounded-none px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent"
+                            className="h-11 rounded-none border-0 border-b border-[#c9ccd1] px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent focus-visible:rounded-none focus-visible:border-x-0 focus-visible:border-t-0 focus-visible:border-b-[#ff5a2f] focus-visible:ring-0 focus-visible:ring-transparent"
                           />
                         </div>
                       </div>
@@ -1154,7 +1329,7 @@ export function PublicStorefrontView() {
                           placeholder="Notas para el pedido"
                           value={notes}
                           onChange={(event) => setNotes(event.target.value)}
-                          className="h-11 border-0 border-b border-[#c9ccd1] rounded-none px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent"
+                          className="h-11 rounded-none border-0 border-b border-[#c9ccd1] px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent focus-visible:rounded-none focus-visible:border-x-0 focus-visible:border-t-0 focus-visible:border-b-[#ff5a2f] focus-visible:ring-0 focus-visible:ring-transparent"
                         />
                       </div>
                     </section>
