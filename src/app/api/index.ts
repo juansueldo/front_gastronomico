@@ -40,6 +40,9 @@ export * from './slugs';
 // Store API
 export * from './store';
 
+// Billing API
+export * from './billing';
+
 // Storefront API
 export * from './storefront';
 

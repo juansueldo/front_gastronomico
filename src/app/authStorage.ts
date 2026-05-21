@@ -2,6 +2,39 @@ export interface AuthUser {
   id?: number;
   customerId?: number;
   storeId?: number | string;
+  headquarterId?: number | string;
+  store?: {
+    id?: number | string;
+    name?: string;
+    slug?: string;
+    profile_image_url?: string | null;
+    profileImageUrl?: string | null;
+    [key: string]: unknown;
+  } | null;
+  subscription?: {
+    id?: number | string;
+    storeId?: number | string;
+    planId?: number | string;
+    startDate?: string;
+    endDate?: string;
+    payment?: number;
+    statusId?: number | string;
+    Plan?: {
+      id?: number | string;
+      name?: string;
+      description?: string;
+      isFree?: boolean;
+    };
+    Status?: {
+      id?: number | string;
+      name?: string;
+    };
+    [key: string]: unknown;
+  } | null;
+  hasSubscription?: boolean;
+  storeName?: string;
+  profile_image_url?: string;
+  profileImageUrl?: string;
   token?: string;
   username?: string;
   firstname?: string;

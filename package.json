@@ -2,14 +2,15 @@
   "name": "cloudcook.app",
   "private": true,
   "version": "0.0.1",
+  "packageManager": "pnpm@11.1.1",
   "type": "module",
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "cap:sync": "npx cap sync",
-    "android:add": "npx cap add android",
-    "android:sync": "npm run build && npx cap sync android",
-    "android:open": "npx cap open android"
+    "cap:sync": "pnpm exec cap sync",
+    "android:add": "pnpm exec cap add android",
+    "android:sync": "pnpm run build && pnpm exec cap sync android",
+    "android:open": "pnpm exec cap open android"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.3",
@@ -69,6 +70,8 @@
     "react-router": "7.13.0",
     "react-slick": "0.31.0",
     "recharts": "2.15.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
     "socket.io-client": "^4.8.3",
     "sonner": "2.0.3",
     "tailwind-merge": "3.2.0",
@@ -83,18 +86,6 @@
     "@vitejs/plugin-react": "4.7.0",
     "tailwindcss": "4.1.12",
     "vite": "6.3.5"
-  },
-  "peerDependencies": {
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
-  },
-  "peerDependenciesMeta": {
-    "react": {
-      "optional": true
-    },
-    "react-dom": {
-      "optional": true
-    }
   },
   "pnpm": {
     "overrides": {

@@ -5,15 +5,15 @@
 
   ## Running the code
 
-  Run `npm i` to install the dependencies.
+  Run `pnpm install` to install the dependencies.
 
-  Run `npm run dev` to start the development server.
+  Run `pnpm run dev` to start the development server.
 
   ## Android (Capacitor)
 
-  - Build and sync native project: `npm run android:sync`
-  - Open Android Studio: `npm run android:open`
-  - First time only (if needed): `npm run android:add`
+  - Build and sync native project: `pnpm run android:sync`
+  - Open Android Studio: `pnpm run android:open`
+  - First time only (if needed): `pnpm run android:add`
 
   The Capacitor configuration is in [capacitor.config.json](capacitor.config.json).
 
