@@ -34,6 +34,7 @@ export interface PublicStoreCategory {
   id: string;
   name: string;
   description?: string;
+  icon?: string;
 }
 
 export interface PublicStoreHeadquarter {
@@ -113,6 +114,14 @@ interface BackendStoreProduct {
     categoryId?: string | number;
     category_id?: string | number;
     name?: string;
+    icon?: string;
+    iconName?: string;
+    icon_name?: string;
+    iconUrl?: string;
+    icon_url?: string;
+    imageUrl?: string;
+    image_url?: string;
+    emoji?: string;
   }>;
 }
 
@@ -122,6 +131,14 @@ interface BackendStoreCategory {
   category_id?: string | number;
   name?: string;
   description?: string;
+  icon?: string;
+  iconName?: string;
+  icon_name?: string;
+  iconUrl?: string;
+  icon_url?: string;
+  imageUrl?: string;
+  image_url?: string;
+  emoji?: string;
 }
 
 interface BackendHeadquarter {
@@ -354,6 +371,7 @@ const normalizeCategory = (item: BackendStoreCategory): PublicStoreCategory | nu
     id,
     name: String(item.name ?? `Categoria ${id}`).trim(),
     description: item.description ?? undefined,
+    icon: parseEntityId(item.icon, item.iconName, item.icon_name, item.iconUrl, item.icon_url, item.imageUrl, item.image_url, item.emoji) || undefined,
   };
 };
 
@@ -364,6 +382,23 @@ const getCategoryNameFromProductCategory = (category: BackendStoreProduct['categ
 
   const name = String(category.name ?? '').trim();
   return name || undefined;
+};
+
+const getCategoryIconFromProductCategory = (category: BackendStoreProduct['categories'][number]) => {
+  if (!category || typeof category !== 'object') {
+    return undefined;
+  }
+
+  return parseEntityId(
+    category.icon,
+    category.iconName,
+    category.icon_name,
+    category.iconUrl,
+    category.icon_url,
+    category.imageUrl,
+    category.image_url,
+    category.emoji,
+  ) || undefined;
 };
 
 const normalizeStore = (slug: string, item: BackendStoreInfo | null): PublicStoreInfo => {
@@ -452,7 +487,17 @@ const normalizeProductsAndCategories = (payload: unknown): PublicStoreCatalog =>
         categoriesMap.set(categoryId, {
           id: categoryId,
           name: getCategoryNameFromProductCategory(category) ?? `Categoria ${categoryId}`,
+          icon: getCategoryIconFromProductCategory(category),
         });
+      } else {
+        const existingCategory = categoriesMap.get(categoryId);
+        const categoryIcon = getCategoryIconFromProductCategory(category);
+        if (existingCategory && !existingCategory.icon && categoryIcon) {
+          categoriesMap.set(categoryId, {
+            ...existingCategory,
+            icon: categoryIcon,
+          });
+        }
       }
     });
   });

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router';
-import { CheckCircle2, ChevronLeft, Clock3, Instagram, Loader2, Mail, MapPin, MessageCircle, Phone, Search, ShoppingBag, Store, Trash2 } from 'lucide-react';
+import { useParams } from 'react-router';
+import { Beer, Bike, CheckCircle2, ChevronLeft, Clock3, Cloud, Coffee, Instagram, Mail, MapPin, MessageCircle, Phone, Pizza, Search, ShoppingBag, Store, Tag, Trash2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -60,6 +60,21 @@ const PRODUCT_BATCH_SIZE = 12;
 const DAY_OF_WEEK_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
 const DAY_OF_WEEK_SHORT_LABELS = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'] as const;
 const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search';
+const CHECKOUT_INPUT_CLASS_NAME = 'h-11 rounded-lg border border-[#e3d7cc] px-3 !bg-white !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-white focus-visible:border-[#ff5a2f] focus-visible:ring-2 focus-visible:ring-[#ff5a2f]/20';
+
+const isImageIconValue = (value: string) => (
+  /^(https?:)?\/\//.test(value)
+  || value.startsWith('/')
+  || value.startsWith('data:image/')
+);
+
+const getFallbackCategoryIcon = (categoryName: string) => {
+  const normalizedName = categoryName.toLowerCase();
+  if (normalizedName.includes('cafe') || normalizedName.includes('café') || normalizedName.includes('cafeter')) return Coffee;
+  if (normalizedName.includes('cerve') || normalizedName.includes('beer')) return Beer;
+  if (normalizedName.includes('pizza')) return Pizza;
+  return Tag;
+};
 
 const buildDateWithTime = (date: Date, time: string) => {
   const [hours, minutes] = time.split(':').map((value) => Number(value) || 0);
@@ -247,6 +262,7 @@ export function PublicStorefrontView() {
   const [products, setProducts] = useState<PublicStoreProduct[]>([]);
   const [headquarters, setHeadquarters] = useState<PublicStoreHeadquarter[]>([]);
   const [categoriesById, setCategoriesById] = useState<Record<string, string>>({});
+  const [categoryIconsById, setCategoryIconsById] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [cartQuantities, setCartQuantities] = useState<Record<string, number>>({});
   const [customerName, setCustomerName] = useState('');
@@ -256,6 +272,7 @@ export function PublicStorefrontView() {
   const [selectedHeadquarterId, setSelectedHeadquarterId] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [deliveryCoordinates, setDeliveryCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [selectedDeliveryAddressLabel, setSelectedDeliveryAddressLabel] = useState('');
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
   const [isLoadingAddressSuggestions, setIsLoadingAddressSuggestions] = useState(false);
@@ -284,8 +301,14 @@ export function PublicStorefrontView() {
   const addressSuggestAbortRef = useRef<AbortController | null>(null);
 
   const categoryEntries = useMemo(
-    () => Object.entries(categoriesById).sort(([, leftName], [, rightName]) => leftName.localeCompare(rightName, 'es')),
-    [categoriesById],
+    () => Object.entries(categoriesById)
+      .map(([categoryId, categoryName]) => ({
+        categoryId,
+        categoryName,
+        icon: categoryIconsById[categoryId],
+      }))
+      .sort((left, right) => left.categoryName.localeCompare(right.categoryName, 'es')),
+    [categoriesById, categoryIconsById],
   );
 
   const filteredProducts = useMemo(() => {
@@ -349,7 +372,7 @@ export function PublicStorefrontView() {
   const visibleProducts = filteredProducts.slice(0, visibleProductsCount);
   const hasMoreProducts = visibleProductsCount < filteredProducts.length;
   const groupedVisibleProducts = useMemo(() => {
-    const categoryOrder = new Map(categoryEntries.map(([categoryId], index) => [categoryId, index]));
+    const categoryOrder = new Map(categoryEntries.map((entry, index) => [entry.categoryId, index]));
     const groups = new Map<string, { categoryId: string; categoryName: string; products: PublicStoreProduct[] }>();
 
     visibleProducts.forEach((product) => {
@@ -393,6 +416,7 @@ export function PublicStorefrontView() {
     setProducts([]);
     setHeadquarters([]);
     setCategoriesById({});
+    setCategoryIconsById({});
 
     try {
       const [storeData, productsData] = await Promise.all([
@@ -444,8 +468,12 @@ export function PublicStorefrontView() {
       });
 
       const categoryMap: Record<string, string> = {};
+      const categoryIconMap: Record<string, string> = {};
       productsData.categories.forEach((category) => {
         categoryMap[category.id] = category.name;
+        if (category.icon) {
+          categoryIconMap[category.id] = category.icon;
+        }
       });
 
       nextProducts.forEach((product) => {
@@ -457,6 +485,7 @@ export function PublicStorefrontView() {
       });
 
       setCategoriesById(categoryMap);
+      setCategoryIconsById(categoryIconMap);
       setStoreLoadState('ready');
     } catch (error) {
       if (isApiError(error) && error.statusCode === 404) {
@@ -572,6 +601,13 @@ export function PublicStorefrontView() {
     }
 
     const query = deliveryAddress.trim();
+    if (selectedDeliveryAddressLabel && query === selectedDeliveryAddressLabel && deliveryCoordinates) {
+      setAddressSuggestions([]);
+      setShowAddressSuggestions(false);
+      setIsLoadingAddressSuggestions(false);
+      return;
+    }
+
     if (query.length < 4) {
       setAddressSuggestions([]);
       setShowAddressSuggestions(false);
@@ -606,7 +642,7 @@ export function PublicStorefrontView() {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [deliveryAddress, orderType]);
+  }, [deliveryAddress, selectedDeliveryAddressLabel, deliveryCoordinates, orderType]);
 
   useEffect(() => {
     const target = loadMoreTriggerRef.current;
@@ -642,32 +678,40 @@ export function PublicStorefrontView() {
 
   if (storeLoadState === 'not-found') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#e6e6e6] px-4">
-        <div className="flex w-full max-w-xl flex-col items-center text-center">
-          <p className="text-5xl font-black tracking-[0.28em] text-[#ff5a2f]">Cloud Cook</p>
-          <h1 className="mt-8 text-2xl font-extrabold uppercase tracking-[0.15em] text-[#2f2f2f] md:text-3xl">
-            Tienda no encontrada
-          </h1>
-          <p className="mt-3 text-sm text-[#6e6e6e] md:text-base">
-            No encontramos la tienda
-            {' '}
-            <span className="font-semibold text-[#454545]">{slug || 'solicitada'}</span>
-            . Verifica el enlace e intenta nuevamente.
-          </p>
+      <div
+        className="relative flex min-h-screen overflow-hidden bg-[#fffaf6] px-4 py-10 text-center text-[#2f2f2f]"
+        style={{
+          backgroundImage: [
+            'radial-gradient(circle at 0% 0%, rgba(255, 120, 48, 0.28), transparent 28%)',
+            'radial-gradient(circle at 100% 100%, rgba(255, 120, 48, 0.22), transparent 30%)',
+            'radial-gradient(circle at 50% 50%, rgba(255, 239, 228, 0.88), transparent 34%)',
+          ].join(', '),
+        }}
+      >
+        <div className="absolute right-8 top-6 h-32 w-48 opacity-40 [background-image:radial-gradient(#ffb884_1px,transparent_1px)] [background-size:16px_16px]" />
+        <div className="absolute bottom-4 left-0 h-40 w-52 opacity-35 [background-image:radial-gradient(#ffb884_1px,transparent_1px)] [background-size:16px_16px]" />
+        <Cloud className="absolute left-[7%] top-[34%] h-12 w-12 text-[#ffd8c2] opacity-70 md:h-16 md:w-16" strokeWidth={1.5} />
+        <Cloud className="absolute right-[8%] top-[34%] h-14 w-14 text-[#ffd8c2] opacity-70 md:h-20 md:w-20" strokeWidth={1.5} />
 
-          <div className="mt-10 relative flex h-52 w-52 items-center justify-center">
-            <div className="absolute h-44 w-44 rounded-full border-[12px] border-[#c9cbd1] bg-[#dde0e6]" />
-            <div className="absolute h-24 w-24 rounded-full border-4 border-[#b8bcc5] bg-[#f4f5f8] shadow-sm flex items-center justify-center">
-              <Store className="h-10 w-10 text-[#9ea3ae]" />
-            </div>
-            <Search className="absolute bottom-4 right-5 h-11 w-11 text-[#bcc0c8]" />
-            <span className="absolute -left-1 top-7 h-3.5 w-3.5 rotate-45 rounded-sm bg-[#ffba2f]" />
-            <span className="absolute right-3 top-5 h-3.5 w-3.5 rotate-45 rounded-sm bg-[#ff6a35]" />
+        <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center justify-center">
+          <div className="relative mb-8 h-52 w-52 sm:h-64 sm:w-64">
+            <div className="absolute inset-6 rounded-full border border-[#ffe4d4]" />
+            <div className="absolute inset-6 rounded-full border-[5px] border-transparent border-r-[#ff5a2f] border-t-[#ff9a5c] shadow-[0_0_18px_rgba(255,90,47,0.22)]" />
+            <div className="absolute inset-[23%] rounded-full bg-[#fff1e8]" />
+            <div className="absolute inset-[34%] rounded-full bg-white shadow-[0_16px_45px_rgba(255,90,47,0.18)]" />
+            <Store className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 text-[#ff8a4c] sm:h-14 sm:w-14" strokeWidth={1.8} />
+            <Search className="absolute bottom-[22%] left-[10%] h-7 w-7 text-[#ffc6a5] sm:h-8 sm:w-8" strokeWidth={1.8} />
+            <span className="absolute right-[18%] top-[18%] h-2 w-2 rounded-full bg-[#ff7a24]" />
+            <span className="absolute bottom-[26%] right-[21%] h-4 w-4 rounded-full bg-[#ff5a2f] shadow-[0_0_16px_rgba(255,90,47,0.55)]" />
+            <span className="absolute left-[15%] top-[36%] text-lg font-black text-[#ffb47e]">+</span>
+            <span className="absolute right-[12%] top-[42%] text-lg font-black text-[#ffb47e]">+</span>
+            <span className="absolute bottom-[18%] right-[2%] text-lg font-black text-[#ffb47e]">+</span>
           </div>
 
-          <Button asChild className="mt-8 h-11 rounded-xl bg-[#ff5a2f] px-6 !text-[#ffffff] hover:bg-[#e94d26]">
-            <Link to="/">Volver al inicio</Link>
-          </Button>
+          <h1 className="text-3xl font-black text-[#2f3137] sm:text-4xl">Tienda no encontrada</h1>
+          <p className="mt-3 max-w-xl text-base text-[#6b7280] sm:text-lg">
+            No encontramos la tienda <span className="font-semibold text-[#454545]">{slug || 'solicitada'}</span>.
+          </p>
         </div>
       </div>
     );
@@ -675,10 +719,37 @@ export function PublicStorefrontView() {
 
   if (storeLoadState === 'loading' || storeLoadState === 'idle') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#e6e6e6] px-4 text-center">
-        <div className="inline-flex items-center gap-2 rounded-xl border border-[#dddddd] bg-white px-5 py-3 text-sm text-[#666666]">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span>Cargando tienda...</span>
+      <div
+        className="relative flex min-h-screen overflow-hidden bg-[#fffaf6] px-4 py-10 text-center text-[#2f2f2f]"
+        style={{
+          backgroundImage: [
+            'radial-gradient(circle at 0% 0%, rgba(255, 120, 48, 0.28), transparent 28%)',
+            'radial-gradient(circle at 100% 100%, rgba(255, 120, 48, 0.22), transparent 30%)',
+            'radial-gradient(circle at 50% 50%, rgba(255, 239, 228, 0.88), transparent 34%)',
+          ].join(', '),
+        }}
+      >
+        <div className="absolute right-8 top-6 h-32 w-48 opacity-40 [background-image:radial-gradient(#ffb884_1px,transparent_1px)] [background-size:16px_16px]" />
+        <div className="absolute bottom-4 left-0 h-40 w-52 opacity-35 [background-image:radial-gradient(#ffb884_1px,transparent_1px)] [background-size:16px_16px]" />
+        <Cloud className="absolute left-[7%] top-[34%] h-12 w-12 text-[#ffd8c2] opacity-70 md:h-16 md:w-16" strokeWidth={1.5} />
+        <Cloud className="absolute right-[8%] top-[34%] h-14 w-14 text-[#ffd8c2] opacity-70 md:h-20 md:w-20" strokeWidth={1.5} />
+
+        <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center justify-center">
+          <div className="relative mb-8 h-52 w-52 sm:h-64 sm:w-64">
+            <div className="absolute inset-6 rounded-full border border-[#ffe4d4]" />
+            <div className="absolute inset-6 rounded-full border-[5px] border-transparent border-r-[#ff5a2f] border-t-[#ff9a5c] shadow-[0_0_18px_rgba(255,90,47,0.22)] animate-spin" />
+            <div className="absolute inset-[23%] rounded-full bg-[#fff1e8]" />
+            <div className="absolute inset-[34%] rounded-full bg-white shadow-[0_16px_45px_rgba(255,90,47,0.18)]" />
+            <Store className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 text-[#ff8a4c] sm:h-14 sm:w-14" strokeWidth={1.8} />
+            <Search className="absolute bottom-[22%] left-[10%] h-7 w-7 text-[#ffc6a5] sm:h-8 sm:w-8" strokeWidth={1.8} />
+            <span className="absolute right-[18%] top-[18%] h-2 w-2 rounded-full bg-[#ff7a24]" />
+            <span className="absolute bottom-[26%] right-[21%] h-4 w-4 rounded-full bg-[#ff5a2f] shadow-[0_0_16px_rgba(255,90,47,0.55)]" />
+            <span className="absolute left-[15%] top-[36%] text-lg font-black text-[#ffb47e]">+</span>
+            <span className="absolute right-[12%] top-[42%] text-lg font-black text-[#ffb47e]">+</span>
+            <span className="absolute bottom-[18%] right-[2%] text-lg font-black text-[#ffb47e]">+</span>
+          </div>
+
+          <h1 className="text-3xl font-black text-[#2f3137] sm:text-4xl">Buscando tienda</h1>
         </div>
       </div>
     );
@@ -895,6 +966,7 @@ export function PublicStorefrontView() {
       setPaymentMethod('');
       setCustomerEmail('');
       setDeliveryCoordinates(null);
+      setSelectedDeliveryAddressLabel('');
       setAddressSuggestions([]);
       setShowAddressSuggestions(false);
       if (orderType === 'delivery') {
@@ -921,24 +993,37 @@ export function PublicStorefrontView() {
     .slice(0, 2)
     .toUpperCase();
 
+  const renderCategoryIcon = (categoryName: string, iconValue?: string) => {
+    if (iconValue) {
+      if (isImageIconValue(iconValue)) {
+        return <img src={iconValue} alt="" className="h-4 w-4 object-contain" />;
+      }
+
+      return <span className="text-sm leading-none">{iconValue}</span>;
+    }
+
+    const CategoryIcon = getFallbackCategoryIcon(categoryName);
+    return <CategoryIcon className="h-4 w-4" />;
+  };
+
   const renderProductCard = (product: PublicStoreProduct) => (
     <button
       key={product.id}
       type="button"
       onClick={() => openProductDialog(product)}
-      className="w-full rounded-xl border border-[#e4e4e4] bg-[#fbfbfb] p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+      className="w-full overflow-hidden rounded-2xl border border-[#efe7df] bg-white p-3 text-left shadow-[0_10px_28px_rgba(29,36,45,0.08)] transition hover:-translate-y-0.5 hover:border-[#ffb08f] hover:shadow-[0_14px_36px_rgba(29,36,45,0.12)]"
     >
       <div className="grid items-center gap-3 md:grid-cols-[1fr_108px]">
         <div>
-          <p className="text-base font-bold text-[#303030]">{product.name}</p>
+          <p className="text-base font-extrabold text-[#1d2530]">{product.name}</p>
           {product.description ? (
-            <p className="mt-1 line-clamp-2 min-h-10 text-xs text-[#656565]">{product.description}</p>
+            <p className="mt-1 line-clamp-2 min-h-10 text-xs text-[#69727d]">{product.description}</p>
           ) : (
-            <p className="mt-1 min-h-10 text-xs text-[#9a9a9a]">Sin descripcion</p>
+            <p className="mt-1 min-h-10 text-xs text-[#9aa3ad]">Sin descripcion</p>
           )}
           <p className="mt-2 text-2xl font-black text-[#ff5a2f]">{currencyFormatter.format(product.price)}</p>
         </div>
-        <div className="h-24 overflow-hidden rounded-lg border border-[#e8e8e8] bg-[#f1f1f1]">
+        <div className="h-24 overflow-hidden rounded-xl border border-[#f0e7de] bg-[#fff7f0]">
           {product.imageUrl ? (
             <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
           ) : (
@@ -952,28 +1037,30 @@ export function PublicStorefrontView() {
   );
 
   return (
-    <div className="min-h-screen bg-[#e6e6e6] text-[#2f2f2f]">
-      <section className="relative overflow-hidden bg-[#6f6f72] pb-24 text-[#ffffff]">
-        <div className="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_15px_15px,rgba(255,255,255,0.26)_2px,transparent_2px),radial-gradient(circle_at_45px_45px,rgba(255,255,255,0.15)_2px,transparent_2px)] bg-[length:60px_60px]" />
-        <div className="relative mx-auto max-w-6xl px-4 pt-8 md:px-6 md:pt-10">
-          <div className="grid gap-6 md:grid-cols-[1.5fr_1fr_1fr]">
+    <div className="min-h-screen bg-[#fff8ef] text-[#1d2530]">
+      <section className="relative overflow-hidden bg-[#141d28] pb-28 text-[#ffffff]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18px_18px,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[length:24px_24px] opacity-70" />
+        <div className="absolute inset-y-0 right-0 hidden w-[36%] bg-[radial-gradient(circle_at_72%_35%,rgba(255,90,47,0.35),transparent_0_24%,transparent_35%),linear-gradient(135deg,transparent,rgba(255,255,255,0.06))] lg:block" />
+        <div className="absolute -right-20 -top-20 hidden h-80 w-80 rounded-full border border-[#ff8a4c]/40 bg-[#ff5a2f]/10 shadow-[0_0_80px_rgba(255,90,47,0.18)] lg:block" />
+        <div className="relative mx-auto max-w-7xl px-4 pt-8 md:px-6 md:pt-10">
+          <div className="grid gap-6 md:grid-cols-[1.45fr_1fr_1fr]">
             <div className="flex items-start gap-4">
-              <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full bg-black/80 shadow-xl ring-2 ring-white/20 flex items-center justify-center">
+              <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#fff7e8] shadow-xl ring-4 ring-white/10">
                 {storeImageUrl ? (
                   <img src={storeImageUrl} alt={`Logo de ${store?.name ?? 'la tienda'}`} className="h-full w-full object-cover" />
                 ) : (
-                  <span className="text-xl font-semibold tracking-widest text-amber-300">{logoText}</span>
+                  <span className="text-xl font-black tracking-widest text-[#ff5a2f]">{logoText}</span>
                 )}
               </div>
               <div>
-                <h1 className="text-4xl font-extrabold leading-tight tracking-tight">{store?.name ?? 'Tienda'}</h1>
+                <h1 className="text-4xl font-black leading-tight tracking-tight md:text-5xl">{store?.name ?? 'Tienda'}</h1>
                 <p
-                  className={`mt-2 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${
+                  className={`mt-4 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-bold ${
                     isPickupZonePending
-                      ? 'bg-white/25 text-white'
+                      ? 'bg-white/15 text-white'
                       : scheduleState.hasSchedules
-                      ? (scheduleState.isOpenNow ? 'bg-emerald-300/30 text-emerald-100' : 'bg-rose-300/30 text-rose-100')
-                      : 'bg-white/25 text-white'
+                      ? (scheduleState.isOpenNow ? 'bg-emerald-400/15 text-emerald-100' : 'bg-[#ff5a2f]/20 text-[#ff9f7d]')
+                      : 'bg-white/15 text-white'
                   }`}
                 >
                   <Clock3 className="h-3.5 w-3.5" />
@@ -984,76 +1071,76 @@ export function PublicStorefrontView() {
               </div>
             </div>
 
-            <div className="space-y-2 border-white/20 md:border-l md:pl-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f2f2f2]/80">Contacto</p>
-              <p className="flex items-center gap-2 text-sm"><Phone className="h-4 w-4" /> {fallbackHeadquarter?.phone ?? 'Sin telefono'}</p>
-              <p className="flex items-center gap-2 text-sm"><Mail className="h-4 w-4" /> {`${slug}@tienda.com`}</p>
-              <p className="flex items-center gap-2 text-sm"><MapPin className="h-4 w-4" /> {fallbackHeadquarter?.location ?? 'Retiro en sede'}</p>
+            <div className="space-y-3 border-white/10 text-[#f3f5f7] md:border-l md:pl-6">
+              <p className="flex items-center gap-3 text-sm"><Phone className="h-4 w-4 text-[#ff9f7d]" /> {fallbackHeadquarter?.phone ?? 'Sin telefono'}</p>
+              <p className="flex items-center gap-3 text-sm"><Mail className="h-4 w-4 text-[#ff9f7d]" /> {`${slug}@tienda.com`}</p>
+              <p className="flex items-center gap-3 text-sm"><MapPin className="h-4 w-4 text-[#ff9f7d]" /> {fallbackHeadquarter?.location ?? 'Retiro en sede'}</p>
             </div>
 
-            <div className="space-y-2 border-white/20 md:border-l md:pl-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f2f2f2]/80">Canales</p>
+            <div className="space-y-3 border-white/10 md:border-l md:pl-6">
+              <p className="text-sm font-semibold text-[#f7f7f7]">Síguenos</p>
               <div className="flex items-center gap-3">
-                <div className="h-11 w-11 rounded-full bg-white text-[#ff5a2f] shadow flex items-center justify-center">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-[#ff5a2f] shadow">
                   <MessageCircle className="h-5 w-5" />
                 </div>
-                <div className="h-11 w-11 rounded-full bg-white text-[#ff5a2f] shadow flex items-center justify-center">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-[#ff5a2f] shadow">
                   <Instagram className="h-5 w-5" />
                 </div>
-                <div className="h-11 w-11 rounded-full bg-white text-[#ff5a2f] shadow flex items-center justify-center">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-[#ff5a2f] shadow">
                   <Store className="h-5 w-5" />
                 </div>
                 <button
                   type="button"
                   onClick={openDeliveryZonesDialog}
-                  className="h-11 w-11 rounded-full bg-white text-[#ff5a2f] shadow flex items-center justify-center transition hover:bg-[#fff3ef]"
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-[#ff5a2f] shadow transition hover:bg-[#fff3ef]"
                   aria-label="Ver zonas de entrega"
                 >
                   <MapPin className="h-5 w-5" />
                 </button>
               </div>
-              <p className="text-xs text-[#f2f2f2]/90">Atencion por redes y retiro en tienda.</p>
             </div>
           </div>
         </div>
       </section>
 
-      <div className="relative mx-auto -mt-12 max-w-6xl px-4 pb-10 md:px-6">
-        <section className="mx-auto mb-5 max-w-2xl rounded-2xl border border-black/10 bg-[#f4f4f4] p-4 shadow-lg">
+      <div className="relative mx-auto -mt-16 max-w-7xl px-4 pb-10 md:px-6">
+        <section className="mx-auto mb-6 max-w-4xl rounded-2xl border border-[#efe2d7] bg-white/95 p-4 shadow-[0_18px_55px_rgba(22,29,39,0.18)] backdrop-blur md:p-5">
           <div className="grid grid-cols-2 gap-3">
             <Button
               type="button"
               onClick={() => setOrderType('delivery')}
-              className={`h-11 rounded-full border text-base font-semibold transition ${
+              className={`h-12 rounded-full border text-base font-bold transition ${
                 orderType === 'delivery'
-                  ? 'border-[#3f3f41] bg-[#3f3f41] !text-[#ffffff]'
-                  : 'border-[#d3d3d3] bg-[#f4f4f4] text-[#454545] hover:bg-[#ededed]'
+                  ? 'border-[#141d28] bg-[#141d28] !text-[#ffffff]'
+                  : 'border-[#f1e5da] bg-[#f8f4ef] text-[#9aa0a8] hover:bg-[#fff7f0]'
               }`}
             >
+              <Bike className="mr-2 h-5 w-5" />
               Delivery
             </Button>
             <Button
               type="button"
               onClick={() => setOrderType('pickup')}
-              className={`h-11 rounded-full border text-base font-semibold transition ${
+              className={`h-12 rounded-full border text-base font-bold transition ${
                 orderType === 'pickup'
-                  ? 'border-[#3f3f41] bg-[#3f3f41] !text-[#ffffff]'
-                  : 'border-[#d3d3d3] bg-[#f4f4f4] text-[#454545] hover:bg-[#ededed]'
+                  ? 'border-[#141d28] bg-[#141d28] !text-[#ffffff]'
+                  : 'border-[#f1e5da] bg-[#f8f4ef] text-[#9aa0a8] hover:bg-[#fff7f0]'
               }`}
             >
+              <ShoppingBag className="mr-2 h-5 w-5" />
               Para retirar
             </Button>
           </div>
 
           {orderType === 'pickup' ? (
             <div className="mt-4 grid items-center gap-3 md:grid-cols-[1fr_1.4fr]">
-              <p className="text-3md font-medium text-[#4d4d4d] md:pl-10">Sede para retirar:</p>
+              <p className="text-sm font-bold text-[#1d2530] md:pl-10">Sede para retirar</p>
               <Select
                 value={selectedHeadquarterId}
                 onValueChange={setSelectedHeadquarterId}
                 disabled={headquarters.length === 0}
               >
-                <SelectTrigger className="h-12 rounded-lg border border-[#bdbdbd] !bg-[#f4f4f4] !text-[#3e3e3e] data-[placeholder]:!text-[#6b7280] [&_svg]:!text-[#575757]">
+                <SelectTrigger className="h-12 rounded-full border border-[#eee2d8] !bg-white !text-[#1d2530] shadow-inner data-[placeholder]:!text-[#8f98a3] [&_svg]:!text-[#6b7280]">
                   <SelectValue
                     className="!text-[#3f3f3f] text-base"
                     placeholder={headquarters.length === 0 ? 'Sin sedes disponibles' : 'Sede de retiro'}
@@ -1075,13 +1162,13 @@ export function PublicStorefrontView() {
           ) : null}
 
           <div className="mt-3 grid items-center gap-3 md:grid-cols-[1fr_1.4fr]">
-            <p className="text-3md font-medium text-[#4d4d4d] md:pl-10">Horario de entrega:</p>
+            <p className="text-sm font-bold text-[#1d2530] md:pl-10">Horario de entrega</p>
             <Select
               value={scheduleMode}
               onValueChange={(value) => setScheduleMode(value as ScheduleMode)}
               disabled={isPickupZonePending}
             >
-              <SelectTrigger className="h-12 rounded-lg border border-[#bdbdbd] !bg-[#f4f4f4] !text-[#3e3e3e] [&_svg]:!text-[#575757]">
+              <SelectTrigger className="h-12 rounded-full border border-[#eee2d8] !bg-white !text-[#1d2530] shadow-inner [&_svg]:!text-[#6b7280]">
                 <SelectValue className="!text-[#3f3f3f] text-base" placeholder={isPickupZonePending ? 'Selecciona una sede primero' : undefined} />
               </SelectTrigger>
               <SelectContent className="!bg-white !text-[#1f2937]">
@@ -1109,7 +1196,7 @@ export function PublicStorefrontView() {
                 onValueChange={setSelectedScheduleDayId}
                 disabled={availableScheduleDays.length === 0 || isPickupZonePending}
               >
-                <SelectTrigger className="h-12 rounded-lg border border-[#bdbdbd] !bg-[#f4f4f4] !text-[#3e3e3e] data-[placeholder]:!text-[#6b7280] [&_svg]:!text-[#575757]">
+                <SelectTrigger className="h-12 rounded-full border border-[#eee2d8] !bg-white !text-[#1d2530] shadow-inner data-[placeholder]:!text-[#8f98a3] [&_svg]:!text-[#6b7280]">
                   <SelectValue
                     className="!text-[#3f3f3f] text-base"
                     placeholder={isPickupZonePending ? 'Selecciona una sede primero' : (availableScheduleDays.length === 0 ? 'Sin dias disponibles' : 'Elegir dia')}
@@ -1133,7 +1220,7 @@ export function PublicStorefrontView() {
                 onValueChange={setSelectedScheduleSlotId}
                 disabled={!selectedScheduleDay || selectedScheduleDay.slots.length === 0 || isPickupZonePending}
               >
-                <SelectTrigger className="h-12 rounded-lg border border-[#bdbdbd] !bg-[#f4f4f4] !text-[#3e3e3e] data-[placeholder]:!text-[#6b7280] [&_svg]:!text-[#575757]">
+                <SelectTrigger className="h-12 rounded-full border border-[#eee2d8] !bg-white !text-[#1d2530] shadow-inner data-[placeholder]:!text-[#8f98a3] [&_svg]:!text-[#6b7280]">
                   <SelectValue
                     className="!text-[#3f3f3f] text-base"
                     placeholder={isPickupZonePending ? 'Selecciona una sede primero' : (selectedScheduleDay ? 'Elegir hora' : 'Elegir dia primero')}
@@ -1164,87 +1251,89 @@ export function PublicStorefrontView() {
             </p>
           ) : null}
 
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#e3e3e3] pt-3">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#f1e5da] pt-4">
             <span
-              className={`rounded-xl px-4 py-1 text-sm font-semibold ${
+              className={`rounded-full px-4 py-2 text-sm font-bold ${
                 isPickupZonePending
-                  ? 'bg-[#e5e7eb] text-[#4b5563]'
+                  ? 'bg-[#eef0f2] text-[#4b5563]'
                   : scheduleState.hasSchedules
-                  ? (scheduleState.isOpenNow ? 'bg-[#c8e9d2] text-[#2ea65f]' : 'bg-[#ffd9d9] text-[#c53030]')
-                  : 'bg-[#e5e7eb] text-[#4b5563]'
+                  ? (scheduleState.isOpenNow ? 'bg-[#dff4e7] text-[#209454]' : 'bg-[#ffe2d9] text-[#d54528]')
+                  : 'bg-[#eef0f2] text-[#4b5563]'
               }`}
             >
               {isPickupZonePending
                 ? 'Selecciona sede'
                 : (!scheduleState.hasSchedules ? 'Sin horarios' : (scheduleState.isOpenNow ? 'Abierto ahora' : 'Cerrado ahora'))}
             </span>
-            <div className="flex items-center gap-2 text-[#757575]">
-              <Clock3 className="h-4 w-4" />
-              <span className="text-2md">
+            <div className="flex flex-wrap items-center gap-2 text-[#5f6873]">
+              <Clock3 className="h-4 w-4 text-[#ff7a45]" />
+              <span className="text-sm">
                 {isPickupZonePending ? 'Elige una sede para ver horarios' : (scheduleState.todayWindowLabel || 'Sin horarios para hoy')}
               </span>
               {!isPickupZonePending && !scheduleState.isOpenNow && scheduleState.nextOpeningLabel ? (
                 <>
-                  <span className="text-[#bbbbbb]">|</span>
-                  <Clock3 className="h-4 w-4" />
-                  <span className="text-2md">Proxima apertura: {scheduleState.nextOpeningLabel}</span>
+                  <span className="text-[#d6c9be]">|</span>
+                  <Clock3 className="h-4 w-4 text-[#ff7a45]" />
+                  <span className="text-sm">Proxima apertura: {scheduleState.nextOpeningLabel}</span>
                 </>
               ) : null}
             </div>
           </div>
         </section>
 
-        <section className="rounded-[28px] border border-black/10 bg-[#f1f1f1] p-4 shadow-xl md:p-7">
+        <section className="rounded-[28px] bg-transparent">
           <div className={`grid gap-5 ${checkoutStep === 'success' ? '' : 'lg:grid-cols-[1.6fr_1fr]'}`}>
-            <div className="rounded-2xl border border-[#dfdfdf] bg-white p-4 md:p-5">
+            <div className="rounded-2xl border border-[#f0e4d9] bg-white/95 p-4 shadow-[0_16px_45px_rgba(29,36,45,0.08)] md:p-6">
               {checkoutStep === 'menu' ? (
                 <>
                   <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6a6a6a]" />
+                    <Search className="pointer-events-none absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#8b949e]" />
                     <Input
                       value={searchTerm}
                       onChange={(event) => setSearchTerm(event.target.value)}
-                      className="h-11 border-[#d2d2d2] !bg-white pl-10 !text-[#333333] placeholder:!text-[#7b7b7b] focus:!bg-white"
-                      placeholder="Buscar por productos"
+                      className="h-14 rounded-full border-[#eee2d8] !bg-white pl-14 pr-4 !text-[#1d2530] shadow-inner placeholder:!text-[#9aa3ad] focus:!bg-white focus-visible:ring-[#ffb08f]"
+                      placeholder="Buscar productos..."
                     />
                   </div>
 
-                  <div className="mt-4 flex flex-wrap gap-2 border-b border-[#ececec] pb-4">
+                  <div className="mt-4 flex flex-wrap gap-2 border-b border-[#f1e6dc] pb-5">
                     <button
                       type="button"
                       onClick={() => setSelectedCategoryId('all')}
-                      className={`rounded-full border px-4 py-1.5 text-sm font-semibold uppercase transition ${
+                      className={`inline-flex items-center gap-2 rounded-full border px-5 py-2 text-sm font-bold transition ${
                         selectedCategoryId === 'all'
-                          ? 'border-[#ff5a2f] bg-[#ff5a2f] !text-[#ffffff]'
-                          : 'border-[#dedede] bg-white text-[#4f4f4f] hover:border-[#ff8d72] hover:text-[#ff5a2f]'
+                          ? 'border-[#ff8a4c] bg-[#ff8a4c] !text-[#ffffff] shadow-[0_8px_20px_rgba(255,90,47,0.22)]'
+                          : 'border-[#eee2d8] bg-[#fffaf4] text-[#4f5864] hover:border-[#ffb08f] hover:text-[#ff5a2f]'
                       }`}
                     >
+                      <Tag className="h-4 w-4" />
                       Todas
                     </button>
-                    {categoryEntries.map(([categoryId, categoryName]) => (
+                    {categoryEntries.map(({ categoryId, categoryName, icon }) => (
                       <button
                         key={categoryId}
                         type="button"
                         onClick={() => setSelectedCategoryId(categoryId)}
-                        className={`rounded-full border px-4 py-1.5 text-sm font-semibold uppercase transition ${
+                        className={`inline-flex items-center gap-2 rounded-full border px-5 py-2 text-sm font-bold transition ${
                           selectedCategoryId === categoryId
-                            ? 'border-[#ff5a2f] bg-[#ff5a2f] !text-[#ffffff]'
-                            : 'border-[#dedede] bg-white text-[#4f4f4f] hover:border-[#ff8d72] hover:text-[#ff5a2f]'
+                            ? 'border-[#ff8a4c] bg-[#ff8a4c] !text-[#ffffff] shadow-[0_8px_20px_rgba(255,90,47,0.22)]'
+                            : 'border-[#eee2d8] bg-[#fffaf4] text-[#4f5864] hover:border-[#ffb08f] hover:text-[#ff5a2f]'
                         }`}
                       >
+                        {renderCategoryIcon(categoryName, icon)}
                         {categoryName}
                       </button>
                     ))}
                   </div>
 
                   <div className="mt-4">
-                    <h2 className="text-xl font-black uppercase tracking-wide text-[#2f2f2f]">
+                    <h2 className="text-xl font-black uppercase tracking-wide text-[#1d2530]">
                       {selectedCategoryId === 'all' ? '' : (categoriesById[selectedCategoryId] ?? 'Categoria')}
                     </h2>
                   </div>
 
                   {filteredProducts.length === 0 ? (
-                    <div className="mt-4 rounded-lg border border-[#e5e5e5] bg-[#fafafa] p-4 text-sm text-[#777777]">
+                    <div className="mt-4 rounded-2xl border border-[#f1e6dc] bg-[#fffaf4] p-4 text-sm text-[#69727d]">
                       No hay productos disponibles para este filtro.
                     </div>
                   ) : (
@@ -1253,7 +1342,7 @@ export function PublicStorefrontView() {
                         <div className="mt-4 space-y-6">
                           {groupedVisibleProducts.map((group) => (
                             <section key={group.categoryId}>
-                              <h2 className="text-xl font-black uppercase tracking-wide text-[#2f2f2f]">
+                              <h2 className="mb-3 text-xl font-black uppercase tracking-wide text-[#1d2530]">
                                 {group.categoryName}
                               </h2>
                               <div className="grid gap-3 md:grid-cols-2">
@@ -1284,7 +1373,7 @@ export function PublicStorefrontView() {
                         placeholder="ejemplo@gmail.com"
                         value={customerEmail}
                         onChange={(event) => setCustomerEmail(event.target.value)}
-                        className="h-11 rounded-none border-0 border-b border-[#c9ccd1] px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent focus-visible:rounded-none focus-visible:border-x-0 focus-visible:border-t-0 focus-visible:border-b-[#ff5a2f] focus-visible:ring-0 focus-visible:ring-transparent"
+                        className={CHECKOUT_INPUT_CLASS_NAME}
                       />
                     </div>
                     <div className="grid gap-4 md:grid-cols-2">
@@ -1294,7 +1383,7 @@ export function PublicStorefrontView() {
                           placeholder="Nombre completo"
                           value={customerName}
                           onChange={(event) => setCustomerName(event.target.value)}
-                          className="h-11 rounded-none border-0 border-b border-[#c9ccd1] px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent focus-visible:rounded-none focus-visible:border-x-0 focus-visible:border-t-0 focus-visible:border-b-[#ff5a2f] focus-visible:ring-0 focus-visible:ring-transparent"
+                          className={CHECKOUT_INPUT_CLASS_NAME}
                         />
                       </div>
                       <div className="space-y-1">
@@ -1303,7 +1392,7 @@ export function PublicStorefrontView() {
                           placeholder="011 15-2345-6789"
                           value={customerPhone}
                           onChange={(event) => setCustomerPhone(event.target.value)}
-                          className="h-11 rounded-none border-0 border-b border-[#c9ccd1] px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent focus-visible:rounded-none focus-visible:border-x-0 focus-visible:border-t-0 focus-visible:border-b-[#ff5a2f] focus-visible:ring-0 focus-visible:ring-transparent"
+                          className={CHECKOUT_INPUT_CLASS_NAME}
                         />
                       </div>
                     </div>
@@ -1320,18 +1409,22 @@ export function PublicStorefrontView() {
                               placeholder="Av. Argentina 1234"
                               value={deliveryAddress}
                               onChange={(event) => {
-                                setDeliveryAddress(event.target.value);
-                                setDeliveryCoordinates(null);
+                                const nextAddress = event.target.value;
+                                setDeliveryAddress(nextAddress);
+                                if (nextAddress.trim() !== selectedDeliveryAddressLabel) {
+                                  setSelectedDeliveryAddressLabel('');
+                                  setDeliveryCoordinates(null);
+                                }
                               }}
                               onFocus={() => {
-                                if (addressSuggestions.length > 0) {
+                                if (addressSuggestions.length > 0 && deliveryAddress.trim() !== selectedDeliveryAddressLabel) {
                                   setShowAddressSuggestions(true);
                                 }
                               }}
                               onBlur={() => {
                                 window.setTimeout(() => setShowAddressSuggestions(false), 120);
                               }}
-                              className="h-11 rounded-none border-0 border-b border-[#c9ccd1] px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent focus-visible:rounded-none focus-visible:border-x-0 focus-visible:border-t-0 focus-visible:border-b-[#ff5a2f] focus-visible:ring-0 focus-visible:ring-transparent"
+                              className={CHECKOUT_INPUT_CLASS_NAME}
                             />
                             {showAddressSuggestions && addressSuggestions.length > 0 ? (
                               <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 max-h-56 overflow-y-auto rounded-lg border border-[#dedede] bg-white p-1 shadow-lg">
@@ -1342,11 +1435,14 @@ export function PublicStorefrontView() {
                                     className="w-full rounded-md px-2 py-2 text-left text-xs text-[#1f2937] transition hover:bg-[#f3f4f6]"
                                     onMouseDown={(event) => event.preventDefault()}
                                     onClick={() => {
+                                      addressSuggestAbortRef.current?.abort();
                                       setDeliveryAddress(suggestion.label);
+                                      setSelectedDeliveryAddressLabel(suggestion.label);
                                       setDeliveryCoordinates({
                                         latitude: suggestion.latitude,
                                         longitude: suggestion.longitude,
                                       });
+                                      setAddressSuggestions([]);
                                       setShowAddressSuggestions(false);
                                     }}
                                   >
@@ -1356,13 +1452,13 @@ export function PublicStorefrontView() {
                               </div>
                             ) : null}
                           </div>
-                          <p className="text-[11px] text-[#8a8f98]">
-                            {isLoadingAddressSuggestions
-                              ? 'Buscando sugerencias de dirección...'
-                              : deliveryCoordinates
-                                ? `Ubicación detectada: ${deliveryCoordinates.latitude.toFixed(5)}, ${deliveryCoordinates.longitude.toFixed(5)}`
-                                : 'Elegí una sugerencia para guardar la ubicación exacta.'}
-                          </p>
+                          <input type="hidden" name="deliveryLatitude" value={deliveryCoordinates?.latitude ?? ''} />
+                          <input type="hidden" name="deliveryLongitude" value={deliveryCoordinates?.longitude ?? ''} />
+                          {isLoadingAddressSuggestions ? (
+                            <p className="text-[11px] text-[#8a8f98]">Buscando sugerencias de dirección...</p>
+                          ) : !deliveryCoordinates ? (
+                            <p className="text-[11px] text-[#8a8f98]">Elegí una sugerencia para guardar la ubicación exacta.</p>
+                          ) : null}
                         </div>
                         <div className="space-y-1">
                           <label className="text-sm font-semibold text-[#2f2f2f]">Piso y departamento</label>
@@ -1370,7 +1466,7 @@ export function PublicStorefrontView() {
                             placeholder="Por ejemplo: 1B"
                             value={deliveryAddressExtra}
                             onChange={(event) => setDeliveryAddressExtra(event.target.value)}
-                            className="h-11 rounded-none border-0 border-b border-[#c9ccd1] px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent focus-visible:rounded-none focus-visible:border-x-0 focus-visible:border-t-0 focus-visible:border-b-[#ff5a2f] focus-visible:ring-0 focus-visible:ring-transparent"
+                            className={CHECKOUT_INPUT_CLASS_NAME}
                           />
                         </div>
                       </div>
@@ -1380,7 +1476,7 @@ export function PublicStorefrontView() {
                           placeholder="Notas para el pedido"
                           value={notes}
                           onChange={(event) => setNotes(event.target.value)}
-                          className="h-11 rounded-none border-0 border-b border-[#c9ccd1] px-0 !bg-transparent !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-transparent focus-visible:rounded-none focus-visible:border-x-0 focus-visible:border-t-0 focus-visible:border-b-[#ff5a2f] focus-visible:ring-0 focus-visible:ring-transparent"
+                          className={CHECKOUT_INPUT_CLASS_NAME}
                         />
                       </div>
                     </section>
@@ -1496,49 +1592,56 @@ export function PublicStorefrontView() {
             </div>
 
             {checkoutStep !== 'success' ? (
-              <aside className="h-fit rounded-2xl border border-[#dedede] bg-white p-4 md:sticky md:top-4">
+              <aside className="relative h-fit overflow-hidden rounded-2xl border border-[#263342] bg-[#141d28] p-5 text-white shadow-[0_18px_45px_rgba(20,29,40,0.22)] md:sticky md:top-4">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12px_12px,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[length:24px_24px] opacity-60" />
+              <div className="pointer-events-none absolute -bottom-24 -right-16 h-56 w-56 rounded-full border border-[#ff8a4c]/20 bg-[#ff5a2f]/10" />
+              <div className="relative">
               <div className="flex items-center justify-between">
-                <h3 className="text-4md font-extrabold leading-none text-[#303030]">Mi pedido</h3>
+                <h3 className="text-2xl font-black leading-none text-white">Mi pedido</h3>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="text-[#5b5b5b]"
+                  className="text-[#ffb18c] hover:bg-white/10 hover:text-[#ffcfba]"
                   onClick={clearCart}
                   disabled={cartItemsCount === 0}
                 >
                   Limpiar
                 </Button>
               </div>
-              <div className="mt-4 h-px bg-[#e9e9e9]" />
+              <div className="mt-4 h-px bg-white/10" />
 
               {cartItems.length === 0 ? (
                 <div className="flex min-h-[420px] flex-col items-center justify-center text-center">
-                  <div className="mb-6 rounded-full border border-[#e6e6e6] bg-[#f8f8f8] p-8 text-[#b8bcc5]">
+                  <div className="mb-6 rounded-full border border-[#ff8a4c]/35 bg-white/5 p-8 text-[#d6dce4]">
                     <ShoppingBag className="h-16 w-16" />
                   </div>
-                  <p className="text-2xl font-medium text-[#8b8e94]">Pedido vacio</p>
+                  <p className="text-2xl font-black text-white">Tu pedido está vacío</p>
+                  <p className="mt-3 max-w-56 text-sm leading-6 text-[#d5dbe4]">Agrega productos para comenzar tu pedido</p>
+                  <div className="mt-10 rounded-2xl border border-[#ff8a4c]/50 bg-white/5 p-5 text-sm font-semibold leading-6 text-[#ffbf9f]">
+                    Agrega productos y podrás ver el total de tu pedido aquí
+                  </div>
                 </div>
               ) : (
                 <div className="mt-4 space-y-5">
                   {cartItems.map((item) => (
-                    <article key={item.id}>
+                    <article key={item.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                       <div className="flex items-center justify-between gap-2">
-                        <h4 className="text-3md font-black text-[#3b3b3b]">{item.name}</h4>
+                        <h4 className="text-base font-black text-white">{item.name}</h4>
                         <button
                           type="button"
                           onClick={() => openProductDialog(item)}
-                          className="text-sm font-medium text-[#1f5ea8] underline-offset-2 hover:underline"
+                          className="text-sm font-medium text-[#ffb18c] underline-offset-2 hover:underline"
                         >
                           Editar
                         </button>
                       </div>
                       <div className="mt-3 flex items-center justify-between">
-                        <p className="text-lg text-[#4f4f4f]">(x{item.quantity}) <span className="ml-3 font-semibold text-[#ff5a2f]">{currencyFormatter.format(item.price * item.quantity)}</span></p>
+                        <p className="text-sm text-[#d5dbe4]">(x{item.quantity}) <span className="ml-3 text-lg font-black text-[#ff9f7d]">{currencyFormatter.format(item.price * item.quantity)}</span></p>
                         <button
                           type="button"
                           onClick={() => removeProductFromCart(item.id)}
-                          className="rounded-lg border border-[#cfcfcf] p-2 text-[#7d7d7d] transition hover:border-[#ff5a2f] hover:text-[#ff5a2f]"
+                          className="rounded-lg border border-white/15 p-2 text-[#d5dbe4] transition hover:border-[#ff8a4c] hover:text-[#ff9f7d]"
                         >
                           <Trash2 className="h-5 w-5" />
                         </button>
@@ -1546,11 +1649,11 @@ export function PublicStorefrontView() {
                     </article>
                   ))}
 
-                  <div className="h-px border-t border-dashed border-[#d9d9d9]" />
+                  <div className="h-px border-t border-dashed border-white/20" />
 
                   <section>
-                    <h4 className="text-3xl font-extrabold text-[#3b3b3b]">Resumen</h4>
-                    <div className="mt-3 space-y-1 text-lg text-[#606060]">
+                    <h4 className="text-2xl font-black text-white">Resumen</h4>
+                    <div className="mt-3 space-y-1 text-base text-[#d5dbe4]">
                       <p className="flex items-center justify-between">
                         <span className="font-semibold">Subtotal</span>
                         <span>{currencyFormatter.format(cartTotal)}</span>
@@ -1560,13 +1663,13 @@ export function PublicStorefrontView() {
                         <span>-</span>
                       </p>
                     </div>
-                    <div className="mt-4 border-t border-[#dfdfdf] pt-3">
-                      <p className="flex items-center justify-between text-4xl font-black text-[#2f2f2f]">
+                    <div className="mt-4 border-t border-white/15 pt-3">
+                      <p className="flex items-center justify-between text-3xl font-black text-white">
                         <span>Total</span>
-                        <span className="text-[#ff5a2f]">{currencyFormatter.format(cartTotal)}</span>
+                        <span className="text-[#ff9f7d]">{currencyFormatter.format(cartTotal)}</span>
                       </p>
                       {orderType === 'pickup' && (pickupHeadquarter || fallbackHeadquarter) ? (
-                        <p className="mt-2 text-sm text-[#666666]">
+                        <p className="mt-2 text-sm text-[#d5dbe4]">
                           Retiro en: {(pickupHeadquarter ?? fallbackHeadquarter)?.name}
                         </p>
                       ) : null}
@@ -1575,6 +1678,7 @@ export function PublicStorefrontView() {
                 </div>
               )}
 
+              </div>
               </aside>
             ) : null}
           </div>
@@ -1597,51 +1701,59 @@ export function PublicStorefrontView() {
       ) : null}
 
       <Dialog open={isProductDialogOpen} onOpenChange={(open) => (!open ? closeProductDialog() : setIsProductDialogOpen(true))}>
-        <DialogContent className="max-h-[94vh] max-w-[460px] overflow-y-auto border-0 p-0 !bg-[#ffffff]">
+        <DialogContent className="max-h-[94vh] max-w-4xl overflow-hidden rounded-2xl border border-[#f0e4d9] p-0 !bg-[#fffaf4] shadow-[0_28px_90px_rgba(20,29,40,0.35)]">
           {activeProduct ? (
-            <div>
-              <div className="relative h-[380px] overflow-hidden bg-[#efefef]">
+            <div className="grid max-h-[94vh] overflow-y-auto md:grid-cols-[1.2fr_0.8fr]">
+              <div className="relative min-h-[320px] overflow-hidden bg-[#141d28] md:min-h-[620px]">
                 {activeProduct.imageUrl ? (
                   <img src={activeProduct.imageUrl} alt={activeProduct.name} className="h-full w-full object-cover" />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-[#9ea3ae]">
+                  <div className="flex h-full items-center justify-center text-[#ffb18c]">
                     <Store className="h-20 w-20" />
                   </div>
                 )}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#141d28]/35 via-transparent to-transparent" />
                 <button
                   type="button"
                   onClick={closeProductDialog}
-                  className="absolute left-3 top-3 rounded-full bg-[#ffffff] p-2 text-[#1f2937] shadow-md"
+                  className="absolute left-4 top-4 rounded-full bg-white p-2.5 text-[#1f2937] shadow-lg transition hover:bg-[#fff3ef] hover:text-[#ff5a2f]"
+                  aria-label="Volver"
                 >
                   <ChevronLeft className="h-5 w-5" />
                 </button>
               </div>
 
-              <div className="space-y-3 p-4">
-                <h3 className="text-xl font-black text-[#2f2f2f]">{activeProduct.name}</h3>
-                <p className="text-sm text-[#5f636b]">{activeProduct.description ?? 'Sin descripcion.'}</p>
-                <p className="text-xl font-black text-[#ff5a2f]">{currencyFormatter.format(activeProduct.price)}</p>
-                <p className="text-sm text-[#7a7a7a]">
+              <div className="flex flex-col p-5 md:p-7">
+                <div className="space-y-3">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#ff5a2f]">Producto</p>
+                  <h3 className="text-3xl font-black leading-tight text-[#1d2530]">{activeProduct.name}</h3>
+                  <p className="text-sm leading-6 text-[#69727d]">{activeProduct.description ?? 'Sin descripcion.'}</p>
+                  <p className="text-3xl font-black text-[#ff5a2f]">{currencyFormatter.format(activeProduct.price)}</p>
+                </div>
+
+                <p className="mt-4 rounded-xl bg-white px-4 py-3 text-sm text-[#69727d]">
                   Sin impuestos nacionales:
                   {' '}
                   {currencyFormatter.format(activeProduct.price * 0.83)}
                 </p>
 
-                <div className="grid grid-cols-3 items-center rounded-2xl border border-[#dfdfdf] bg-[#fbfbfb]">
+                <div className="mt-6 grid grid-cols-3 items-center overflow-hidden rounded-2xl border border-[#eaded4] bg-white">
                   <button
                     type="button"
                     onClick={() => setProductDialogQuantity((qty) => Math.max(1, qty - 1))}
-                    className="h-11 text-center text-3md font-semibold text-[#4a4a4a]"
+                    className="h-12 text-center text-xl font-black text-[#1d2530] transition hover:bg-[#fff3ef] hover:text-[#ff5a2f]"
+                    aria-label="Quitar unidad"
                   >
                     -
                   </button>
-                  <p className="h-11 border-x border-[#dfdfdf] text-center text-2md font-bold leading-[44px] text-[#2f2f2f]">
+                  <p className="h-12 border-x border-[#eaded4] text-center text-lg font-black leading-[48px] text-[#1d2530]">
                     {productDialogQuantity}
                   </p>
                   <button
                     type="button"
                     onClick={() => setProductDialogQuantity((qty) => qty + 1)}
-                    className="h-11 text-center text-3md font-semibold text-[#4a4a4a]"
+                    className="h-12 text-center text-xl font-black text-[#1d2530] transition hover:bg-[#fff3ef] hover:text-[#ff5a2f]"
+                    aria-label="Agregar unidad"
                   >
                     +
                   </button>
@@ -1650,7 +1762,7 @@ export function PublicStorefrontView() {
                 <button
                   type="button"
                   onClick={confirmProductSelection}
-                  className="flex h-12 w-full items-center justify-between rounded-2xl bg-[#ff5a2f] px-6 text-2md font-black !text-[#ffffff]"
+                  className="mt-5 flex h-14 w-full items-center justify-between rounded-2xl bg-[#ff5a2f] px-6 text-base font-black !text-[#ffffff] shadow-[0_14px_30px_rgba(255,90,47,0.28)] transition hover:bg-[#ed4f25]"
                 >
                   <span>Agregar a mi pedido</span>
                   <span>{currencyFormatter.format(productDialogTotal)}</span>
@@ -1662,20 +1774,20 @@ export function PublicStorefrontView() {
       </Dialog>
 
       <Dialog open={isDeliveryZonesDialogOpen} onOpenChange={setIsDeliveryZonesDialogOpen}>
-        <DialogContent className="max-h-[90vh] w-[95vw] max-w-6xl overflow-hidden rounded-2xl border border-[#dddddd] bg-white p-0">
-          <div className="border-b border-[#ececec] px-5 py-4">
-            <h3 className="text-lg font-extrabold text-[#2f2f2f]">Zonas de entrega activas</h3>
-            <p className="mt-1 text-xs text-[#6b7280]">
-              Visualiza todos los polígonos habilitados para delivery.
+        <DialogContent className="max-h-[92vh] w-[96vw] max-w-6xl overflow-hidden rounded-2xl border border-[#f0e4d9] bg-white p-0 shadow-[0_28px_90px_rgba(20,29,40,0.35)]">
+          <div className="border-b border-[#efe2d7] bg-[#fffaf4] px-5 py-4">
+            <h3 className="text-xl font-black text-[#1d2530]">Zonas de entrega activas</h3>
+            <p className="mt-1 text-sm text-[#69727d]">
+              Buscá una dirección y comprobá si está dentro de una zona de cobertura.
             </p>
           </div>
-          <div className="h-[70vh] min-h-[320px]">
+          <div className="h-[72vh] min-h-[420px]">
             {isLoadingDeliveryZones ? (
-              <div className="flex h-full items-center justify-center text-sm text-[#6b7280]">
+              <div className="flex h-full items-center justify-center bg-[#fffaf4] text-sm text-[#6b7280]">
                 Cargando zonas...
               </div>
             ) : deliveryZones.length === 0 ? (
-              <div className="flex h-full items-center justify-center px-6 text-center text-sm text-[#6b7280]">
+              <div className="flex h-full items-center justify-center bg-[#fffaf4] px-6 text-center text-sm text-[#6b7280]">
                 No hay zonas activas disponibles para esta tienda.
               </div>
             ) : (
