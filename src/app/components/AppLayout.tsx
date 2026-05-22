@@ -618,7 +618,11 @@ export function AppLayout({ children }: AppLayoutProps) {
 
           <div className="app-search">
             <Search className="h-5 w-5 text-app-muted" />
-            <input type="search" style="outline: none !important; border: none !important; box-shadow: none !important;" placeholder="Buscar pedidos, clientes, productos..." />
+            <input type="search"  style={{
+              outline: "none",
+              border: "none",
+              boxShadow: "none",
+            }} placeholder="Buscar pedidos, clientes, productos..." />
           </div>
 
           <DropdownMenu>
