@@ -5,6 +5,11 @@ export interface UpdateStoreProfileImageRequest {
   image: string;
 }
 
+export interface UpdateStoreProfileImageResponse {
+  profile_image_url?: string;
+  profileImageUrl?: string;
+}
+
 export interface StoreProfile {
   id?: number | string;
   name?: string;
@@ -24,7 +29,7 @@ export function updateStoreProfile(payload: UpdateStoreProfileRequest): Promise<
   return apiClient.patch(`${API_VERSION}/store/profile`, payload);
 }
 
-export function updateStoreProfileImage(payload: UpdateStoreProfileImageRequest) {
+export function updateStoreProfileImage(payload: UpdateStoreProfileImageRequest): Promise<UpdateStoreProfileImageResponse> {
   return apiClient.patch(`${API_VERSION}/store/profile-image`, {
     image: payload.image,
     profileImage: payload.image,

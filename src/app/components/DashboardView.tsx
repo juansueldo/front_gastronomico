@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { MapContainer, Polygon, Popup, TileLayer, Tooltip, ZoomControl, useMap } from 'react-leaflet';
+import type { LatLngBoundsExpression, LatLngExpression } from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import {
   Bike,
   Check,
   ClipboardList,
   Filter,
-  MapPin,
   MoreVertical,
   Plus,
   ReceiptText,
@@ -21,6 +23,7 @@ import { fetchActiveOrders } from '../api/orders';
 import { fetchTables } from '../api/tables';
 import { listHeadquarters } from '../api/headquarter';
 import { fetchCashMovements, type CashMovement } from '../api/cash';
+import { fetchDeliveryZones, type DeliveryZone } from '../api/delivery-zone';
 import { getLoggedUser } from '../authStorage';
 
 interface DashboardMetrics {
@@ -48,6 +51,8 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
 });
 
 const DASHBOARD_HEADQUARTER_STORAGE_KEY = 'cash:selected-headquarter-id';
+const DEFAULT_MAP_CENTER: LatLngExpression = [-34.603722, -58.381592];
+const DASHBOARD_ZONE_COLORS = ['#22c55e', '#ff5a0a', '#3b82f6', '#f59e0b', '#a855f7', '#ef4444'];
 
 const salesPoints = [5, 12, 18, 32, 24, 38, 72, 86, 122, 116, 148, 132, 142, 156];
 const sparkPoints = [10, 26, 18, 38, 31, 42, 36, 58, 51, 66, 59, 78];
@@ -212,8 +217,102 @@ function StatusPill({ status }: { status: string }) {
   return <span className={className}>{status}</span>;
 }
 
+function DashboardMapBounds({ bounds }: { bounds?: LatLngBoundsExpression }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (bounds) {
+      map.fitBounds(bounds, { padding: [24, 24], maxZoom: 14 });
+    }
+  }, [bounds, map]);
+
+  return null;
+}
+
+function DeliveryZonesDashboardMap({ zones }: { zones: DeliveryZone[] }) {
+  const validZones = useMemo(
+    () => zones.filter((zone) => zone.polygon.length >= 3),
+    [zones],
+  );
+  const bounds = useMemo<LatLngBoundsExpression | undefined>(() => {
+    const points = validZones.flatMap((zone) => zone.polygon.map((point) => [point.lat, point.lng] as [number, number]));
+    return points.length > 0 ? points : undefined;
+  }, [validZones]);
+
+  return (
+    <div className="delivery-map">
+      {validZones.length > 0 ? (
+        <div className="map-legend">
+          {validZones.slice(0, 4).map((zone, index) => (
+            <span key={zone.id ?? `${zone.name}-${index}`}>
+              <i style={{ backgroundColor: DASHBOARD_ZONE_COLORS[index % DASHBOARD_ZONE_COLORS.length] }} />
+              {zone.name ?? `Zona ${index + 1}`}
+              <small>{zone.active === false ? 'Inactiva' : 'Activa'} · {zone.polygon.length} puntos</small>
+            </span>
+          ))}
+          {validZones.length > 4 ? (
+            <span>
+              <i style={{ backgroundColor: '#94a3b8' }} />
+              +{validZones.length - 4} zonas
+              <small>Configuradas</small>
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {validZones.length === 0 ? (
+        <div className="flex h-full min-h-[230px] items-center justify-center px-6 text-center text-sm text-app-muted">
+          No hay zonas de delivery configuradas.
+        </div>
+      ) : (
+        <MapContainer
+          center={DEFAULT_MAP_CENTER}
+          zoom={12}
+          className="h-full min-h-[230px] w-full"
+          scrollWheelZoom={false}
+          zoomControl={false}
+        >
+          <ZoomControl position="bottomright" />
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          <DashboardMapBounds bounds={bounds} />
+          {validZones.map((zone, index) => {
+            const color = DASHBOARD_ZONE_COLORS[index % DASHBOARD_ZONE_COLORS.length];
+            const positions = zone.polygon.map((point) => [point.lat, point.lng] as [number, number]);
+            return (
+              <Polygon
+                key={zone.id ?? `${zone.name}-${index}`}
+                positions={positions}
+                pathOptions={{
+                  color,
+                  fillColor: color,
+                  fillOpacity: 0.18,
+                  opacity: zone.active === false ? 0.45 : 0.95,
+                  weight: 2,
+                }}
+              >
+                <Tooltip sticky>{zone.name ?? `Zona ${index + 1}`}</Tooltip>
+                <Popup>
+                  <div className="text-sm">
+                    <strong>{zone.name ?? `Zona ${index + 1}`}</strong>
+                    <br />
+                    {zone.active === false ? 'Inactiva' : 'Activa'} · {zone.polygon.length} puntos
+                  </div>
+                </Popup>
+              </Polygon>
+            );
+          })}
+        </MapContainer>
+      )}
+    </div>
+  );
+}
+
 export function DashboardView() {
   const [metrics, setMetrics] = useState<DashboardMetrics>(initialMetrics);
+  const [deliveryZones, setDeliveryZones] = useState<DeliveryZone[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -223,12 +322,13 @@ export function DashboardView() {
       setLoading(true);
       try {
         const userHeadquarterId = resolveDashboardHeadquarterId();
-        const [activeOrders, products, tables, headquarters, cashMovements] = await Promise.all([
+        const [activeOrders, products, tables, headquarters, cashMovements, zones] = await Promise.all([
           fetchActiveOrders(),
           fetchProducts(),
           userHeadquarterId ? fetchTables(userHeadquarterId) : Promise.resolve([]),
           listHeadquarters({ page: 1, pageSize: 100 }),
           userHeadquarterId ? fetchCashMovements(userHeadquarterId, { sinceLastClosing: true }) : Promise.resolve([]),
+          fetchDeliveryZones(),
         ]);
 
         if (cancelled) return;
@@ -251,8 +351,12 @@ export function DashboardView() {
           totalCash,
           salesIncome,
         });
+        setDeliveryZones(zones);
       } catch {
-        if (!cancelled) setMetrics(initialMetrics);
+        if (!cancelled) {
+          setMetrics(initialMetrics);
+          setDeliveryZones([]);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -391,28 +495,7 @@ export function DashboardView() {
               <h2>Zonas de delivery</h2>
               <button type="button" className="link-action small">Ver todas</button>
             </div>
-            <div className="delivery-map">
-              <div className="map-legend">
-                <span><i className="bg-emerald-500" /> Zona Norte <small>30-45 min</small></span>
-                <span><i className="bg-orange-500" /> Zona Centro <small>20-35 min</small></span>
-                <span><i className="bg-blue-500" /> Zona Sur <small>30-50 min</small></span>
-              </div>
-              <svg viewBox="0 0 520 260" aria-hidden="true">
-                <path d="M20 36 L150 18 L250 56 L390 30 L500 90 L458 230 L300 236 L176 214 L54 242 Z" className="map-roads" />
-                <path d="M260 42 L355 64 L324 132 L220 112 Z" className="zone north" />
-                <path d="M250 122 L332 104 L386 150 L318 198 L230 180 Z" className="zone center" />
-                <path d="M300 190 L430 178 L468 216 L390 250 L276 236 Z" className="zone south" />
-                <text x="285" y="88">BELGRANO</text>
-                <text x="327" y="155">ALMAGRO</text>
-                <text x="346" y="220">FLORES</text>
-                <text x="168" y="120">CABALLITO</text>
-              </svg>
-              <div className="map-controls">
-                <button>+</button>
-                <button>-</button>
-                <button><MapPin className="h-4 w-4" /></button>
-              </div>
-            </div>
+            <DeliveryZonesDashboardMap zones={deliveryZones} />
           </div>
         </section>
       </div>

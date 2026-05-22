@@ -14,6 +14,8 @@ export interface AppUser {
   headquarterName?: string;
   status?: string;
   active?: boolean;
+  profile_image_url?: string;
+  profileImageUrl?: string;
 }
 
 export interface CreateUserRequest {
@@ -38,6 +40,11 @@ export interface UpdateUserRequest {
   roleId?: number;
   headquarterId?: string | number;
   status?: string;
+}
+
+export interface UpdateUserProfileImageResponse {
+  profile_image_url?: string;
+  profileImageUrl?: string;
 }
 
 export interface ListSortState {
@@ -84,6 +91,8 @@ interface RawUser {
   headquarter_name?: unknown;
   status?: string;
   active?: boolean;
+  profile_image_url?: string;
+  profileImageUrl?: string;
 }
 
 function extractUserRows(payload: unknown): RawUser[] {
@@ -134,6 +143,8 @@ function normalizeUser(item: RawUser): AppUser {
     headquarterName,
     status: status || undefined,
     active: typeof item.active === 'boolean' ? item.active : undefined,
+    profile_image_url: item.profile_image_url,
+    profileImageUrl: item.profileImageUrl ?? item.profile_image_url,
   };
 }
 
@@ -386,4 +397,13 @@ export function updateUser(id: string, data: UpdateUserRequest) {
 
 export function deleteUser(id: string) {
   return endpoints.deleteUser(id);
+}
+
+export function updateUserProfileImage(image: string): Promise<UpdateUserProfileImageResponse> {
+  return apiClient.patch(`${API_VERSION}/user/profile-image`, {
+    image,
+    profileImage: image,
+    profile_image: image,
+    avatar: image,
+  });
 }

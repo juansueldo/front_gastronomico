@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Mail, Shield, UserCircle2 } from 'lucide-react';
+import { Mail, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { createUser, deleteUser, listUsers, updateUser, type AppUser, type CreateUserRequest, type UpdateUserRequest } from '../api/user';
 import { Badge } from './ui/badge';
@@ -14,6 +14,7 @@ import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { type DataTableColumn, RemoteDataTable, createRowActionsColumn } from './ui/data-table';
 import { listHeadquarters, type Headquarter } from '../api/headquarter';
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 
 const roleOptions = ['admin', 'manager', 'supervisor', 'user', 'agent'];
 
@@ -41,6 +42,20 @@ const emptyForm: UserFormState = {
 function getUserDisplayName(user: AppUser) {
   const fullName = `${user.firstname ?? ''} ${user.lastname ?? ''}`.trim();
   return fullName || user.username;
+}
+
+function getUserInitials(user: AppUser) {
+  const source = getUserDisplayName(user);
+  return source
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || 'US';
+}
+
+function getUserAvatarUrl(user: AppUser) {
+  return user.profileImageUrl ?? user.profile_image_url ?? null;
 }
 
 export function UsersView() {
@@ -138,12 +153,19 @@ export function UsersView() {
       sortable: true,
       className: 'text-white',
       cell: (user) => (
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <UserCircle2 className="h-4 w-4 text-orange-400" />
-            <span className="truncate font-medium text-white">{getUserDisplayName(user)}</span>
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar className="h-10 w-10 shrink-0 border border-orange-700/60">
+            {getUserAvatarUrl(user) ? (
+              <AvatarImage src={getUserAvatarUrl(user) ?? ''} alt={getUserDisplayName(user)} />
+            ) : null}
+            <AvatarFallback className="bg-orange-500 text-xs font-semibold text-white">
+              {getUserInitials(user)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="truncate font-medium text-white">{getUserDisplayName(user)}</p>
+            <p className="truncate text-xs text-gray-400">@{user.username}</p>
           </div>
-          <p className="truncate text-xs text-gray-400">@{user.username}</p>
         </div>
       ),
     },

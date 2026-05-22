@@ -5,6 +5,8 @@ import { Input } from './ui/input';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
@@ -15,6 +17,7 @@ import {
   IceCream2, Cake, Candy, Apple, Banana, Carrot, Fish, Egg,
   FlameKindling, ChefHat, UtensilsCrossed, Utensils, CupSoda,
   Milk, Beef, Wheat, Croissant, BaggageClaim,
+  ChevronDown, PlusCircle, Search,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -108,6 +111,7 @@ export function CategoriesView() {
   const [description, setDescription] = useState('');
   const [icon, setIcon] = useState(''); // ahora guarda el nombre, ej: "Pizza"
   const [iconQuery, setIconQuery] = useState('');
+  const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   const filteredIconEntries = Object.entries(ICON_MAP).filter(([iconName]) => {
@@ -147,6 +151,7 @@ export function CategoriesView() {
     setDescription('');
     setIcon('');
     setIconQuery('');
+    setIsIconPickerOpen(false);
     setIsDialogOpen(true);
   };
 
@@ -156,6 +161,7 @@ export function CategoriesView() {
     setDescription(category.description ?? '');
     setIcon(category.icon ?? '');
     setIconQuery('');
+    setIsIconPickerOpen(false);
     setIsDialogOpen(true);
   };
 
@@ -195,6 +201,15 @@ export function CategoriesView() {
     setDescription('');
     setIcon('');
     setIconQuery('');
+    setIsIconPickerOpen(false);
+  };
+
+  const handleDialogOpenChange = (open: boolean) => {
+    setIsDialogOpen(open);
+    if (!open) {
+      setIsIconPickerOpen(false);
+      setIconQuery('');
+    }
   };
 
   const handleDeleteCategory = async (category: ProductCategory) => {
@@ -325,90 +340,143 @@ export function CategoriesView() {
         </div>
       </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="bg-card border-orange-700 text-white">
-          <DialogHeader>
+      <Dialog open={isDialogOpen} onOpenChange={handleDialogOpenChange}>
+        <DialogContent className="max-w-[560px] p-0 overflow-visible">
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+              <ChefHat size={18} />
+            </div>
             <DialogTitle>
               {editingCategoryId ? 'Editar categoría' : 'Nueva categoría'}
             </DialogTitle>
+            <DialogDescription>
+              Organiza tus productos creando una nueva categoría
+            </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
-            {/* Selector de ícono */}
-            <div className="space-y-2 rounded-md border border-orange-700 bg-body p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-300">Ícono (opcional)</p>
-                {icon && (
-                  <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                    {renderCategoryIcon(icon, { size: 14 })}
-                    <span>{icon}</span>
+          <div className="space-y-4 px-5 py-4">
+            <label className="block space-y-1.5">
+              <span className="text-xs font-semibold text-[var(--app-strong)]">Ícono (opcional)</span>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsIconPickerOpen((current) => !current)}
+                  className={`flex h-10 w-full items-center justify-between gap-3 rounded-md border bg-[var(--app-panel-subtle)] px-3 text-left text-sm transition ${
+                    isIconPickerOpen
+                      ? 'border-[var(--primary)] shadow-[0_0_0_1px_var(--primary)]'
+                      : 'border-[var(--app-line)] hover:border-[var(--primary)]/70'
+                  }`}
+                >
+                  <span className="flex min-w-0 items-center gap-2 text-[var(--app-muted)]">
+                    {icon ? renderCategoryIcon(icon, { size: 16, className: 'text-[var(--primary)] shrink-0' }) : (
+                      <ChefHat size={16} className="shrink-0 text-[var(--app-muted)]" />
+                    )}
+                    <span className={icon ? 'truncate text-[var(--app-strong)]' : 'truncate'}>
+                      {icon || 'Selecciona un ícono para la categoría'}
+                    </span>
+                  </span>
+                  <ChevronDown
+                    size={16}
+                    className={`shrink-0 text-[var(--app-muted)] transition-transform ${isIconPickerOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+
+                {isIconPickerOpen ? (
+                  <div className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-[60] overflow-hidden rounded-md border border-[var(--app-line)] bg-[var(--app-panel)] shadow-[0_18px_48px_rgb(0_0_0_/_34%)]">
+                    <div className="m-2 flex h-9 items-center gap-2 rounded-md border border-[var(--app-line)] bg-[var(--app-panel-subtle)] px-3">
+                      <Search size={14} className="shrink-0 text-[var(--app-muted)]" />
+                      <input
+                        autoFocus
+                        value={iconQuery}
+                        onChange={(event) => setIconQuery(event.target.value)}
+                        placeholder="Buscar ícono (ej: café, pizza, oferta...)"
+                        className="h-full min-w-0 flex-1 border-0 bg-transparent text-sm text-[var(--app-strong)] outline-none placeholder:text-[var(--app-muted)] focus:border-0 focus:shadow-none"
+                      />
+                    </div>
+
+                    <div className="max-h-44 overflow-y-auto px-1 pb-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIcon('');
+                          setIsIconPickerOpen(false);
+                        }}
+                        className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition ${
+                          icon === ''
+                            ? 'bg-[var(--app-soft)] text-[var(--primary)]'
+                            : 'text-[var(--app-muted)] hover:bg-[var(--app-soft)] hover:text-[var(--app-strong)]'
+                        }`}
+                      >
+                        <span className="flex h-5 w-5 items-center justify-center text-xs">-</span>
+                        Sin ícono
+                      </button>
+
+                      {filteredIconEntries.map(([iconName, IconComponent]) => (
+                        <button
+                          key={iconName}
+                          type="button"
+                          onClick={() => {
+                            setIcon(iconName);
+                            setIsIconPickerOpen(false);
+                          }}
+                          className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition ${
+                            icon === iconName
+                              ? 'bg-[var(--app-soft)] text-[var(--primary)]'
+                              : 'text-[var(--app-muted)] hover:bg-[var(--app-soft)] hover:text-[var(--app-strong)]'
+                          }`}
+                        >
+                          <IconComponent size={16} className="shrink-0" />
+                          <span>{iconName}</span>
+                        </button>
+                      ))}
+
+                      {filteredIconEntries.length === 0 && (
+                        <p className="px-3 py-4 text-center text-xs text-[var(--app-muted)]">
+                          No hay íconos que coincidan
+                        </p>
+                      )}
+                    </div>
                   </div>
-                )}
+                ) : null}
               </div>
+            </label>
+
+            <label className="block space-y-1.5">
+              <span className="text-xs font-semibold text-[var(--app-strong)]">Nombre *</span>
               <Input
-                placeholder="Buscar ícono (ej: cafe, pizza, oferta…)"
-                value={iconQuery}
-                onChange={(e) => setIconQuery(e.target.value)}
+                placeholder="Ej: Bebidas"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="h-10 rounded-md border-[var(--app-line)] bg-[var(--app-panel-subtle)] text-[var(--app-strong)] placeholder:text-[var(--app-muted)] focus:border-[var(--primary)]"
               />
-              <div className="max-h-48 overflow-y-auto">
-                <div className="grid grid-cols-6 gap-1.5">
-                  {/* Opción "Sin ícono" */}
-                  <button
-                    type="button"
-                    title="Sin ícono"
-                    onClick={() => setIcon('')}
-                    className={`
-                      flex flex-col items-center justify-center gap-1 rounded-md p-2 text-xs transition-colors
-                      ${icon === ''
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'}
-                    `}
-                  >
-                    <span className="text-base leading-none">—</span>
-                    <span className="truncate w-full text-center leading-tight">ninguno</span>
-                  </button>
+            </label>
 
-                  {filteredIconEntries.map(([iconName, IconComponent]) => (
-                    <button
-                      key={iconName}
-                      type="button"
-                      title={iconName}
-                      onClick={() => setIcon(iconName)}
-                      className={`
-                        flex flex-col items-center justify-center gap-1 rounded-md p-2 text-xs transition-colors
-                        ${icon === iconName
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'}
-                      `}
-                    >
-                      <IconComponent size={18} className="shrink-0" />
-                      <span className="truncate w-full text-center leading-tight">{iconName}</span>
-                    </button>
-                  ))}
-                </div>
+            <label className="block space-y-1.5">
+              <span className="text-xs font-semibold text-[var(--app-strong)]">Descripción (opcional)</span>
+              <textarea
+                placeholder="Ej: Bebidas frías y calientes"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                className="min-h-20 w-full resize-none rounded-md border border-[var(--app-line)] bg-[var(--app-panel-subtle)] px-3 py-2 text-sm text-[var(--app-strong)] outline-none placeholder:text-[var(--app-muted)] focus:border-[var(--primary)] focus:shadow-[0_0_0_1px_var(--primary)]"
+              />
+            </label>
+          </div>
 
-                {filteredIconEntries.length === 0 && (
-                  <p className="text-xs text-gray-500 py-2 text-center">
-                    No hay íconos que coincidan
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <Input
-              placeholder="Nombre"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <Input
-              placeholder="Descripción (opcional)"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-            <Button className="w-full" onClick={handleSaveCategory}>
+          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsDialogOpen(false)}
+              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+            >
+              Cancelar
+            </Button>
+            <Button type="button" onClick={handleSaveCategory} className="gap-2">
+              <PlusCircle size={15} />
               {editingCategoryId ? 'Guardar cambios' : 'Crear categoría'}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

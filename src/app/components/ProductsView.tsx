@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { BookOpenText, Pencil, Plus, Trash2 } from 'lucide-react';
+import { BookOpenText, ImageIcon, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
@@ -20,6 +20,10 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
   currency: 'ARS',
   maximumFractionDigits: 0,
 });
+
+const getProductImageUrl = (product: ProductItem) => (
+  product.imageUrl ?? product.image_url ?? product.image ?? null
+);
 
 export function ProductsView() {
   const {
@@ -74,11 +78,25 @@ export function ProductsView() {
       sortable: true,
       className: 'text-white font-medium',
       cell: (product) => (
-        <div className="min-w-0">
-          <p className="text-sm text-white font-medium truncate">{product.name}</p>
-          {product.description ? (
-            <p className="text-xs text-gray-400 mt-1 break-words">{product.description}</p>
-          ) : null}
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-orange-700/60 bg-body">
+            {getProductImageUrl(product) ? (
+              <img
+                src={getProductImageUrl(product) ?? ''}
+                alt={product.name}
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            ) : (
+              <ImageIcon className="h-5 w-5 text-gray-500" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-white">{product.name}</p>
+            {product.description ? (
+              <p className="mt-1 break-words text-xs text-gray-400">{product.description}</p>
+            ) : null}
+          </div>
         </div>
       ),
     },

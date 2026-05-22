@@ -35,6 +35,7 @@ type RawNotification = {
   receivedAt?: string;
   received_at?: string | number;
   read_at?: string | number | null;
+  readAt?: string | number | null;
   createdAt?: string | number;
   created_at?: string | number;
   read?: boolean;
@@ -94,7 +95,9 @@ function normalizeNotification(item: RawNotification, index: number): Notificati
   const isRead =
     item.read === true ||
     (typeof item.read_at === 'string' && item.read_at.trim().length > 0) ||
-    (typeof item.read_at === 'number' && Number.isFinite(item.read_at) && item.read_at > 0);
+    (typeof item.read_at === 'number' && Number.isFinite(item.read_at) && item.read_at > 0) ||
+    (typeof item.readAt === 'string' && item.readAt.trim().length > 0) ||
+    (typeof item.readAt === 'number' && Number.isFinite(item.readAt) && item.readAt > 0);
 
   return {
     id: String(item.id ?? `notification-${Date.now()}-${index}`),
@@ -116,7 +119,7 @@ export async function listNotifications(limit?: number, offset?: number): Promis
       ...(limit !== undefined ? { limit } : {}),
       ...(offset !== undefined ? { offset } : {}),
     },
-    config: { cache: 'short' },
+    config: { cache: 'none' },
   });
 
   const source: unknown[] = Array.isArray(data)

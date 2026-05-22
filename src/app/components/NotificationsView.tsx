@@ -7,6 +7,8 @@ import { Toaster } from './ui/sonner';
 import { APP_NOTIFICATION_EVENT, type AppNotificationDetail } from '../pushNotifications';
 import { listNotifications, markAllNotificationsAsRead, markNotificationAsRead } from '../api';
 
+const NOTIFICATIONS_CHANGED_EVENT = 'app:notifications-changed';
+
 interface AppNotification {
   id: string;
   title: string;
@@ -26,7 +28,7 @@ export function NotificationsView() {
       setIsLoading(true);
       try {
         const data = await listNotifications(50, 0);
-        setNotifications(data);
+        setNotifications(data.filter((item) => !item.read));
       } catch {
         toast.error('No se pudieron cargar las notificaciones');
       } finally {
@@ -69,12 +71,12 @@ export function NotificationsView() {
     }
 
     const previous = notifications;
-    const updated = notifications.map((item) => ({ ...item, read: true }));
-    setNotifications(updated);
+    setNotifications([]);
     setIsMarkingAll(true);
 
     try {
       await markAllNotificationsAsRead();
+      window.dispatchEvent(new CustomEvent(NOTIFICATIONS_CHANGED_EVENT, { detail: { all: true } }));
       toast.success('Notificaciones marcadas como leídas');
     } catch {
       setNotifications(previous);
@@ -91,11 +93,14 @@ export function NotificationsView() {
     }
 
     const previous = notifications;
-    setNotifications((prev) => prev.map((item) => (item.id === notificationId ? { ...item, read: true } : item)));
+    setNotifications((prev) => prev.filter((item) => item.id !== notificationId));
     setMarkingId(notificationId);
 
     try {
-      await markNotificationAsRead(notificationId);
+      if (!notificationId.startsWith('local-')) {
+        await markNotificationAsRead(notificationId);
+      }
+      window.dispatchEvent(new CustomEvent(NOTIFICATIONS_CHANGED_EVENT, { detail: { id: notificationId } }));
     } catch {
       setNotifications(previous);
       toast.error('No se pudo marcar la notificación como leída');
@@ -150,7 +155,7 @@ export function NotificationsView() {
           {isLoading ? (
             <p className="text-gray-400 text-sm">Cargando notificaciones...</p>
           ) : notifications.length === 0 ? (
-            <p className="text-gray-400 text-sm">No hay notificaciones registradas.</p>
+            <p className="text-gray-400 text-sm">No hay notificaciones pendientes.</p>
           ) : (
             <div className="space-y-3">
               {notifications.map((notification) => (

@@ -1,10 +1,11 @@
-import { ChangeEvent, ReactNode, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import {
   Bell,
   Boxes,
   BriefcaseBusiness,
   ChefHat,
+  CheckCheck,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -19,6 +20,7 @@ import {
   MoreHorizontal,
   Search,
   Settings,
+  MonitorCog,
   ShoppingBag,
   SunMedium,
   Tags,
@@ -29,7 +31,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Toaster } from './ui/sonner';
-import { Avatar, AvatarFallback } from './ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,11 +49,14 @@ import {
   listStoreSubscriptions,
   listNotifications,
   listPlans,
+  markNotificationAsRead,
   updateStoreProfile,
   updateStoreProfileImage,
   type NotificationItem,
   type PlanOption,
 } from '../api';
+
+const NOTIFICATIONS_CHANGED_EVENT = 'app:notifications-changed';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -149,9 +154,27 @@ const getStoreDisplay = (user: AuthUser | null) => {
     ?? 'Mi tienda';
   const profileImageUrl =
     getStringValue(store, ['profile_image_url', 'profileImageUrl', 'profileImage', 'logoUrl', 'logo_url'])
-    ?? getStringValue(user, ['profile_image_url', 'profileImageUrl', 'storeProfileImageUrl', 'store_profile_image_url', 'logoUrl']);
+    ?? getStringValue(user, ['storeProfileImageUrl', 'store_profile_image_url', 'storeLogoUrl', 'store_logo_url']);
 
   return { storeName, profileImageUrl };
+};
+
+const getUserAvatarUrl = (user: AuthUser | null) => (
+  getStringValue(user, ['profile_image_url', 'profileImageUrl', 'avatarUrl', 'avatar_url', 'userImageUrl', 'user_image_url'])
+);
+
+const getStoreSlug = (user: AuthUser | null) => {
+  const store = getNestedStore(user);
+  return getStringValue(store, ['slug'])
+    ?? getStringValue(user, ['slug', 'storeSlug', 'store_slug'])
+    ?? '';
+};
+
+const isStoreProfileConfigured = (user: AuthUser | null) => {
+  const { storeName, profileImageUrl } = getStoreDisplay(user);
+  const slug = getStoreSlug(user);
+
+  return Boolean(storeName && storeName !== 'Mi tienda' && slug && profileImageUrl);
 };
 
 export function AppLayout({ children }: AppLayoutProps) {
@@ -265,6 +288,9 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
 
     if (loggedUser.hasSubscription === true || loggedUser.subscription) {
+      if (!isStoreProfileConfigured(loggedUser)) {
+        setOnboardingStep('store');
+      }
       setHasCheckedSubscription(true);
       return;
     }
@@ -288,6 +314,17 @@ export function AppLayout({ children }: AppLayoutProps) {
 
         if (!activeSubscription) {
           setOnboardingStep('plans');
+          return;
+        }
+
+        const nextUser = {
+          ...loggedUser,
+          subscription: activeSubscription,
+          hasSubscription: true,
+        };
+
+        if (!isStoreProfileConfigured(nextUser)) {
+          setOnboardingStep('store');
         }
       } catch {
         setOnboardingStep('plans');
@@ -320,19 +357,67 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (onboardingStep !== 'store') return;
 
     const store = getNestedStore(loggedUser);
-    const currentSlug = getStringValue(store, ['slug']) ?? getStringValue(loggedUser, ['slug', 'storeSlug', 'store_slug']) ?? '';
+    const currentSlug = getStoreSlug(loggedUser);
     setStoreNameInput(storeName === 'Mi tienda' ? '' : storeName);
     setStoreSlugInput(currentSlug);
   }, [loggedUser, onboardingStep, storeName]);
 
-  const loadNotificationDropdown = async () => {
+  const loadNotificationDropdown = useCallback(async (showError = true) => {
     setIsLoadingNotifications(true);
     try {
-      setNotifications(await listNotifications(8, 0));
+      setNotifications(await listNotifications(100, 0));
     } catch {
-      toast.error('No se pudieron cargar las notificaciones');
+      if (showError) {
+        toast.error('No se pudieron cargar las notificaciones');
+      }
     } finally {
       setIsLoadingNotifications(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!loggedUser) {
+      setNotifications([]);
+      return;
+    }
+
+    void loadNotificationDropdown(false);
+  }, [loadNotificationDropdown, loggedUser?.id, loggedUser?.storeId, loggedUser?.headquarterId]);
+
+  useEffect(() => {
+    const handleNotificationsChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string; all?: boolean }>).detail;
+      if (detail?.all) {
+        setNotifications([]);
+        return;
+      }
+
+      if (detail?.id) {
+        setNotifications((prev) => prev.filter((item) => item.id !== detail.id));
+        return;
+      }
+
+      void loadNotificationDropdown(false);
+    };
+
+    window.addEventListener(NOTIFICATIONS_CHANGED_EVENT, handleNotificationsChanged);
+    return () => {
+      window.removeEventListener(NOTIFICATIONS_CHANGED_EVENT, handleNotificationsChanged);
+    };
+  }, [loadNotificationDropdown]);
+
+  const handleMarkNotificationAsRead = async (notificationId: string) => {
+    const previous = notifications;
+    setNotifications((prev) => prev.filter((item) => item.id !== notificationId));
+
+    try {
+      if (!notificationId.startsWith('local-')) {
+        await markNotificationAsRead(notificationId);
+      }
+      window.dispatchEvent(new CustomEvent(NOTIFICATIONS_CHANGED_EVENT, { detail: { id: notificationId } }));
+    } catch {
+      setNotifications(previous);
+      toast.error('No se pudo marcar la notificación como leída');
     }
   };
 
@@ -404,6 +489,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   };
 
   const unreadCount = notifications.filter((item) => !item.read).length;
+  const notificationCount = unreadCount || notifications.length;
+  const userAvatarUrl = getUserAvatarUrl(loggedUser);
 
   const UserMenu = (
     <DropdownMenu>
@@ -411,6 +498,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <button type="button" className="legacy-user-trigger">
           <div className="relative flex-none">
             <Avatar className="h-11 w-11">
+              {userAvatarUrl ? <AvatarImage src={userAvatarUrl} alt="Foto de perfil" /> : null}
               <AvatarFallback className="bg-orange-500 text-white">{getInitials(loggedUser)}</AvatarFallback>
             </Avatar>
             <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-[var(--app-sidebar)] bg-emerald-500" />
@@ -436,7 +524,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <DropdownMenuRadioGroup value={themePreference} onValueChange={(value) => handleThemeChange(value as ThemePreference)}>
           <DropdownMenuRadioItem value="dark"><Moon className="mr-2 h-4 w-4" /> Oscuro</DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="light"><SunMedium className="mr-2 h-4 w-4" /> Claro</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="auto">Sistema</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="auto"><MonitorCog className="mr-2 h-4 w-4" /> Sistema</DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         <DropdownMenuLabel>Estado</DropdownMenuLabel>
@@ -560,9 +648,11 @@ export function AppLayout({ children }: AppLayoutProps) {
             <DropdownMenuTrigger asChild>
               <button type="button" aria-label="Notificaciones" className="app-icon-button relative">
                 <Bell className="h-5 w-5" />
-                <span className="absolute right-1.5 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1 text-[11px] font-bold text-white">
-                  {unreadCount || notifications.length || 0}
-                </span>
+                {notificationCount > 0 ? (
+                  <span className="absolute right-1.5 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1 text-[11px] font-bold text-white">
+                    {notificationCount}
+                  </span>
+                ) : null}
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="app-menu-surface notification-dropdown">
@@ -580,18 +670,28 @@ export function AppLayout({ children }: AppLayoutProps) {
               ) : (
                 <div className="max-h-96 overflow-y-auto py-1">
                   {notifications.map((notification) => (
-                    <button
+                    <div
                       key={notification.id}
-                      type="button"
                       className="notification-dropdown-item"
-                      onClick={() => navigate('/notifications')}
                     >
                       <span className={notification.read ? 'read-dot' : 'unread-dot'} />
                       <span className="min-w-0 flex-1 text-left">
                         <span className="block truncate text-sm font-semibold text-app-strong">{notification.title}</span>
                         <span className="block truncate text-xs text-app-muted">{notification.description || 'Sin detalle'}</span>
                       </span>
-                    </button>
+                      <button
+                        type="button"
+                        aria-label="Marcar como leída"
+                        title="Marcar como leída"
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-app-muted transition hover:bg-app-soft hover:text-orange-500"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleMarkNotificationAsRead(notification.id);
+                        }}
+                      >
+                        <CheckCheck className="h-4 w-4" />
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}

@@ -10,6 +10,8 @@ export interface ProductItem {
   name: string;
   description?: string;
   image?: string;
+  image_url?: string;
+  imageUrl?: string;
   categoryId: string;
   price: number;
   categoryIds?: string[];

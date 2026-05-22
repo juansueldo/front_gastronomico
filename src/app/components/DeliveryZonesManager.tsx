@@ -1,5 +1,8 @@
 import { Moon, Search, SunMedium } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { MapContainer, Marker, Polygon, Polyline, Popup, TileLayer, Tooltip, ZoomControl, useMap, useMapEvents } from 'react-leaflet';
+import { DivIcon, type LatLngBoundsExpression, type LatLngExpression } from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { toast } from 'sonner';
 import {
   createDeliveryZone,
@@ -20,25 +23,15 @@ import {
   SelectValue,
 } from './ui/select';
 
-const DARK_STYLE = [
-  { elementType: 'geometry', stylers: [{ color: '#212121' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#212121' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#757575' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#333330' }] },
-  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#8a8a8a' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#040925' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#3d3d3d' }] },
-  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-];
-
-const LIGHT_STYLE: any[] = [];
-const GOOGLE_MAPS_API_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
-
-let mapsPromise: Promise<any> | null = null;
+const DEFAULT_MAP_CENTER: LatLngExpression = [-34.603722, -58.381592];
+const ZONE_COLORS = ['#22c55e', '#ff5a0a', '#3b82f6', '#f59e0b', '#a855f7', '#ef4444'];
+const LIGHT_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const DARK_TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 
 type MapMode = 'view' | 'draw' | 'edit';
 
 interface ZoneMapProps {
+  zones: DeliveryZone[];
   zone: DeliveryZone | null;
   mode: MapMode;
   draft: DeliveryZonePoint[];
@@ -46,178 +39,200 @@ interface ZoneMapProps {
   darkMode: boolean;
 }
 
-function loadGoogleMaps(): Promise<any> {
-  const win = window as any;
-  if (win.google?.maps) return Promise.resolve(win.google);
-  if (mapsPromise) return mapsPromise;
+const toPositions = (points: DeliveryZonePoint[]) => points.map((point) => [point.lat, point.lng] as [number, number]);
 
-  mapsPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve(win.google);
-    script.onerror = () => reject(new Error('No se pudo cargar Google Maps'));
-    document.head.appendChild(script);
-  });
+const vertexIcon = new DivIcon({
+  className: '',
+  html: '<span style="display:block;width:16px;height:16px;border-radius:999px;background:#f59e0b;border:2px solid #111827;box-shadow:0 2px 8px rgba(0,0,0,.35)"></span>',
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+});
 
-  return mapsPromise;
+function FitZoneBounds({ bounds }: { bounds?: LatLngBoundsExpression }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (bounds) {
+      map.fitBounds(bounds, { padding: [32, 32], maxZoom: 15 });
+    }
+  }, [bounds, map]);
+
+  return null;
 }
 
-function ZoneMap({ zone, mode, draft, onDraftChange, darkMode }: ZoneMapProps) {
-  const divRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<any>(null);
-  const googleRef = useRef<any>(null);
-  const [mapsError, setMapsError] = useState<string | null>(null);
-
-  const savedPolygonRef = useRef<any>(null);
-  const draftPolylineRef = useRef<any>(null);
-  const draftPolygonRef = useRef<any>(null);
-  const vertexMarkersRef = useRef<any[]>([]);
-  const clickListenerRef = useRef<any>(null);
-
-  const clearOverlays = useCallback(() => {
-    savedPolygonRef.current?.setMap(null); savedPolygonRef.current = null;
-    draftPolylineRef.current?.setMap(null); draftPolylineRef.current = null;
-    draftPolygonRef.current?.setMap(null); draftPolygonRef.current = null;
-    vertexMarkersRef.current.forEach((marker) => marker.setMap(null)); vertexMarkersRef.current = [];
-    if (clickListenerRef.current) {
-      googleRef.current?.maps.event.removeListener(clickListenerRef.current);
-      clickListenerRef.current = null;
-    }
-  }, []);
+function InvalidateMapSize() {
+  const map = useMap();
 
   useEffect(() => {
-    if (!mapRef.current) return;
-    mapRef.current.setOptions({ styles: darkMode ? DARK_STYLE : LIGHT_STYLE });
-  }, [darkMode]);
+    const container = map.getContainer();
+    const invalidate = () => {
+      map.invalidateSize({ animate: false });
+    };
 
-  useEffect(() => {
-    if (!GOOGLE_MAPS_API_KEY || !divRef.current) return;
-    let cancelled = false;
+    invalidate();
+    const firstFrame = window.requestAnimationFrame(invalidate);
+    const timeout = window.setTimeout(invalidate, 250);
+    const resizeObserver = new ResizeObserver(invalidate);
+    resizeObserver.observe(container);
 
-    loadGoogleMaps()
-      .then((google) => {
-        if (cancelled || !divRef.current) return;
-        googleRef.current = google;
-        if (!mapRef.current) {
-          mapRef.current = new google.maps.Map(divRef.current, {
-            center: { lat: -34.603722, lng: -58.381592 },
-            zoom: 12,
-            disableDefaultUI: true,
-            zoomControl: true,
-            gestureHandling: 'cooperative',
-            styles: darkMode ? DARK_STYLE : LIGHT_STYLE,
-          });
-        }
-        setMapsError(null);
-      })
-      .catch(() => setMapsError('No se pudo cargar Google Maps'));
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.clearTimeout(timeout);
+      resizeObserver.disconnect();
+    };
+  }, [map]);
 
-    return () => { cancelled = true; };
-  }, []);
+  return null;
+}
 
-  useEffect(() => {
-    const google = googleRef.current;
-    const map = mapRef.current;
-    if (!google || !map) return;
+function DraftMapEvents({
+  enabled,
+  draft,
+  onDraftChange,
+}: {
+  enabled: boolean;
+  draft: DeliveryZonePoint[];
+  onDraftChange: (pts: DeliveryZonePoint[]) => void;
+}) {
+  useMapEvents({
+    click(event) {
+      if (!enabled) return;
+      onDraftChange([...draft, { lat: event.latlng.lat, lng: event.latlng.lng }]);
+    },
+  });
 
-    clearOverlays();
-    const bounds = new google.maps.LatLngBounds();
-    let hasBounds = false;
+  return null;
+}
 
-    const points = zone?.polygon ?? [];
-    if (mode === 'view' && points.length >= 3) {
-      savedPolygonRef.current = new google.maps.Polygon({
-        paths: points,
-        map,
-        strokeColor: '#22c55e',
-        strokeOpacity: 1,
-        strokeWeight: 2,
-        fillColor: '#22c55e',
-        fillOpacity: 0.18,
-      });
-      points.forEach((point) => { bounds.extend(point); hasBounds = true; });
-    }
+function ZoneMap({ zones, zone, mode, draft, onDraftChange, darkMode }: ZoneMapProps) {
+  const isDraftMode = mode === 'draw' || mode === 'edit';
+  const bounds = useMemo<LatLngBoundsExpression | undefined>(() => {
+    const sourcePoints = isDraftMode && draft.length > 0
+      ? draft
+      : zones.flatMap((item) => item.polygon);
+    const validPoints = sourcePoints.filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+    return validPoints.length > 0 ? toPositions(validPoints) : undefined;
+  }, [draft, isDraftMode, zones]);
 
-    if ((mode === 'draw' || mode === 'edit') && draft.length > 0) {
-      draftPolylineRef.current = new google.maps.Polyline({
-        path: draft,
-        map,
-        strokeColor: '#f59e0b',
-        strokeOpacity: 1,
-        strokeWeight: 2,
-      });
+  return (
+    <MapContainer
+      center={DEFAULT_MAP_CENTER}
+      zoom={12}
+      className="h-full w-full"
+      scrollWheelZoom
+      zoomControl={false}
+    >
+      <ZoomControl position="bottomright" />
+      <TileLayer
+        key={darkMode ? 'dark-map' : 'light-map'}
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        url={darkMode ? DARK_TILE_URL : LIGHT_TILE_URL}
+      />
+      <InvalidateMapSize />
+      <FitZoneBounds bounds={bounds} />
+      <DraftMapEvents enabled={isDraftMode} draft={draft} onDraftChange={onDraftChange} />
 
-      if (draft.length >= 3) {
-        draftPolygonRef.current = new google.maps.Polygon({
-          paths: draft,
-          map,
-          strokeColor: '#f59e0b',
-          strokeOpacity: 0,
-          strokeWeight: 0,
-          fillColor: '#f59e0b',
-          fillOpacity: 0.16,
-        });
-      }
+      {zones.map((item, index) => {
+        const selected = zone?.id === item.id;
+        const color = selected ? '#ff5a0a' : ZONE_COLORS[index % ZONE_COLORS.length];
+        const positions = toPositions(item.polygon);
+        if (positions.length < 3) return null;
 
-      vertexMarkersRef.current = draft.map((point, index) => {
-        const marker = new google.maps.Marker({
-          position: point,
-          map,
-          draggable: true,
-          zIndex: 10,
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            fillColor: '#f59e0b',
-            fillOpacity: 1,
-            strokeColor: '#111827',
-            strokeWeight: 1.5,
-            scale: 7,
-          },
-          title: `Vértice ${index + 1}`,
-        });
+        return (
+          <Polygon
+            key={item.id ?? `${item.name}-${index}`}
+            positions={positions}
+            pathOptions={{
+              color,
+              fillColor: color,
+              fillOpacity: selected ? 0.24 : 0.12,
+              opacity: item.active === false ? 0.45 : 0.95,
+              weight: selected ? 3 : 2,
+            }}
+          >
+            <Tooltip sticky>{item.name ?? 'Zona sin nombre'}</Tooltip>
+            <Popup>
+              <div className="text-sm">
+                <strong>{item.name ?? 'Zona sin nombre'}</strong>
+                <br />
+                {item.active === false ? 'Inactiva' : 'Activa'} · {item.polygon.length} vértices
+              </div>
+            </Popup>
+          </Polygon>
+        );
+      })}
 
-        marker.addListener('dragend', (event: any) => {
-          onDraftChange(
-            draft.map((value, itemIndex) => (
-              itemIndex === index
-                ? { lat: event.latLng.lat(), lng: event.latLng.lng() }
-                : value
-            )),
-          );
-        });
-        marker.addListener('rightclick', () => {
-          onDraftChange(draft.filter((_, itemIndex) => itemIndex !== index));
-        });
-
-        return marker;
-      });
-
-      draft.forEach((point) => { bounds.extend(point); hasBounds = true; });
-    }
-
-    if (mode === 'draw' || mode === 'edit') {
-      clickListenerRef.current = map.addListener('click', (event: any) => {
-        onDraftChange([...draft, { lat: event.latLng.lat(), lng: event.latLng.lng() }]);
-      });
-    }
-
-    if (hasBounds) map.fitBounds(bounds);
-  }, [zone, mode, draft, onDraftChange, clearOverlays]);
-
-  if (!GOOGLE_MAPS_API_KEY || mapsError) {
-    return (
-      <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
-        {mapsError ?? 'Configurá VITE_GOOGLE_MAPS_API_KEY para visualizar el mapa.'}
-      </div>
-    );
-  }
-
-  return <div ref={divRef} className="h-full w-full" />;
+      {draft.length > 0 ? (
+        <>
+          <Polyline positions={toPositions(draft)} pathOptions={{ color: '#f59e0b', weight: 3 }} />
+          {draft.length >= 3 ? (
+            <Polygon
+              positions={toPositions(draft)}
+              pathOptions={{ color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.18, weight: 2 }}
+            />
+          ) : null}
+          {draft.map((point, index) => (
+            <Marker
+              key={`${point.lat}-${point.lng}-${index}`}
+              position={[point.lat, point.lng]}
+              icon={vertexIcon}
+              draggable
+              eventHandlers={{
+                dragend(event) {
+                  const nextPoint = event.target.getLatLng();
+                  onDraftChange(draft.map((value, itemIndex) => (
+                    itemIndex === index ? { lat: nextPoint.lat, lng: nextPoint.lng } : value
+                  )));
+                },
+                contextmenu() {
+                  onDraftChange(draft.filter((_, itemIndex) => itemIndex !== index));
+                },
+              }}
+            >
+              <Tooltip>Vértice {index + 1}</Tooltip>
+            </Marker>
+          ))}
+        </>
+      ) : null}
+    </MapContainer>
+  );
 }
 
 const getZoneStatusKey = (zone: DeliveryZone) => (zone.active ? 'active' : 'inactive');
+
+function MapThemeToggle({
+  darkMap,
+  onChange,
+}: {
+  darkMap: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 rounded-xl border border-border bg-card/95 p-1 shadow-lg backdrop-blur">
+      <span className="px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Mapa</span>
+      <button
+        type="button"
+        onClick={() => onChange(false)}
+        className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+          !darkMap ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+        }`}
+      >
+        <SunMedium className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">Claro</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange(true)}
+        className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+          darkMap ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+        }`}
+      >
+        <Moon className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">Oscuro</span>
+      </button>
+    </div>
+  );
+}
 
 export function DeliveryZonesManager() {
   const [zones, setZones] = useState<DeliveryZone[]>([]);
@@ -537,6 +552,7 @@ export function DeliveryZonesManager() {
               </span>
             ) : null}
             <div className="ml-auto flex items-center gap-2">
+              <MapThemeToggle darkMap={darkMap} onChange={setDarkMap} />
               {selectedZone && !showNewForm && mode === 'view' ? (
                 <>
                   <button
@@ -568,6 +584,7 @@ export function DeliveryZonesManager() {
 
           <div className="relative min-h-0 flex-1">
             <ZoneMap
+              zones={zones}
               zone={mapZone}
               mode={activeMapMode}
               draft={draft}
@@ -575,28 +592,8 @@ export function DeliveryZonesManager() {
               darkMode={darkMap}
             />
 
-            <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-xl border border-border bg-card/95 p-1 shadow-lg backdrop-blur">
-              <span className="px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Mapa</span>
-              <button
-                type="button"
-                onClick={() => setDarkMap(false)}
-                className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                  !darkMap ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-              >
-                <SunMedium className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Claro</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setDarkMap(true)}
-                className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                  darkMap ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-              >
-                <Moon className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Oscuro</span>
-              </button>
+            <div className="absolute right-3 top-3 z-[1000] lg:hidden">
+              <MapThemeToggle darkMap={darkMap} onChange={setDarkMap} />
             </div>
 
             {!selectedZone && !showNewForm ? (

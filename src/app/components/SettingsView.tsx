@@ -10,10 +10,11 @@ import { Separator } from './ui/separator';
 import { toast } from 'sonner';
 import { Toaster } from './ui/sonner';
 import { AuthUser } from '../authStorage';
-import { clearAuthSession, getLoggedUser } from '../authStorage';
+import { clearAuthSession, getLoggedUser, updateLoggedUser } from '../authStorage';
 import { useNavigate } from 'react-router';
 import { getThemePreference, setThemePreference, type ThemePreference } from '../theme';
 import { updateStoreProfileImage } from '../api';
+import { updateUserProfileImage } from '../api/user';
 import { createCustomerSlug, fetchCustomerSlugs, updateCustomerSlug, type StoreSlug } from '../slugApi';
 
 export function SettingsView() {
@@ -36,8 +37,8 @@ export function SettingsView() {
   const [isSavingSlug, setIsSavingSlug] = useState(false);
   const [userProfileImagePreviewUrl, setUserProfileImagePreviewUrl] = useState<string | null>(null);
   const [storeImagePreviewUrl, setStoreImagePreviewUrl] = useState<string | null>(null);
+  const [isUploadingUserImage, setIsUploadingUserImage] = useState(false);
   const [isUploadingStoreImage, setIsUploadingStoreImage] = useState(false);
-  const USER_PROFILE_IMAGE_STORAGE_KEY = 'settings:user-profile-image';
 
   const readFileAsDataUrl = (file: File): Promise<string> => (
     new Promise((resolve, reject) => {
@@ -94,15 +95,16 @@ export function SettingsView() {
     const storedUser = getLoggedUser() as Partial<AuthUser> | null;
     if (storedUser) {
       setLoggedUser(storedUser as AuthUser);
-    }
-
-    try {
-      const storedProfileImage = localStorage.getItem(USER_PROFILE_IMAGE_STORAGE_KEY);
-      if (storedProfileImage) {
-        setUserProfileImagePreviewUrl(storedProfileImage);
-      }
-    } catch {
-      // no-op: localStorage can fail in restricted contexts
+      setUserProfileImagePreviewUrl(
+        storedUser.profileImageUrl
+        ?? storedUser.profile_image_url
+        ?? null,
+      );
+      setStoreImagePreviewUrl(
+        storedUser.store?.profileImageUrl
+        ?? storedUser.store?.profile_image_url
+        ?? null,
+      );
     }
 
     setTheme(getThemePreference());
@@ -137,15 +139,28 @@ export function SettingsView() {
       return;
     }
 
+    setIsUploadingUserImage(true);
+
     try {
       const base64Image = await readFileAsDataUrl(file);
-      setUserProfileImagePreviewUrl(base64Image);
-      localStorage.setItem(USER_PROFILE_IMAGE_STORAGE_KEY, base64Image);
+      const response = await updateUserProfileImage(base64Image);
+      const profileImageUrl = response.profileImageUrl ?? response.profile_image_url ?? base64Image;
+      setUserProfileImagePreviewUrl(profileImageUrl);
+      updateLoggedUser({
+        profile_image_url: profileImageUrl,
+        profileImageUrl: profileImageUrl,
+      });
+      setLoggedUser((current) => current ? {
+        ...current,
+        profile_image_url: profileImageUrl,
+        profileImageUrl: profileImageUrl,
+      } : current);
       toast.success('Foto de perfil actualizada');
-    } catch {
-      toast.error('No se pudo actualizar la foto de perfil');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo actualizar la foto de perfil');
     } finally {
       event.target.value = '';
+      setIsUploadingUserImage(false);
     }
   };
 
@@ -165,8 +180,21 @@ export function SettingsView() {
 
     try {
       const base64Image = await readFileAsDataUrl(file);
-      await updateStoreProfileImage({ image: base64Image });
-      setStoreImagePreviewUrl(base64Image);
+      const response = await updateStoreProfileImage({ image: base64Image });
+      const profileImageUrl = response.profileImageUrl ?? response.profile_image_url ?? base64Image;
+      const nextStore = {
+        ...(loggedUser?.store && typeof loggedUser.store === 'object' ? loggedUser.store : {}),
+        profile_image_url: profileImageUrl,
+        profileImageUrl: profileImageUrl,
+      };
+      setStoreImagePreviewUrl(profileImageUrl);
+      updateLoggedUser({
+        store: nextStore,
+      });
+      setLoggedUser((current) => current ? {
+        ...current,
+        store: nextStore,
+      } : current);
       toast.success('Imagen de la tienda actualizada');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo actualizar la imagen de la tienda');
@@ -288,10 +316,11 @@ export function SettingsView() {
                     variant="outline"
                     size="sm"
                     onClick={handleUserPhotoUpload}
+                    disabled={isUploadingUserImage}
                     className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
                   >
                     <Camera className="h-4 w-4 mr-2" />
-                    Cambiar foto de perfil
+                    {isUploadingUserImage ? 'Subiendo foto...' : 'Cambiar foto de perfil'}
                   </Button>
                 </div>
 
