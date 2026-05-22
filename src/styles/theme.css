@@ -387,10 +387,11 @@
     height: 42px;
     min-width: 0;
     width: 100%;
-    border: 0;
     background: transparent !important;
     color: var(--app-strong);
-    outline: 0;
+    outline: none !important;
+    border: none !important;
+    box-shadow: none !important;
   }
 
   .app-search input:focus,
