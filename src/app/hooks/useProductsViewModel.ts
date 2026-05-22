@@ -10,6 +10,14 @@ type RecipeIngredientDraft = {
   unit: string;
 };
 
+const normalizeInventoryUnit = (unit: string | null | undefined) => {
+  const normalized = String(unit ?? 'unidad').trim().toLowerCase();
+  if (normalized === 'g') return 'gr';
+  if (normalized === 'l') return 'lt';
+  if (['unidad', 'kg', 'gr', 'lt', 'ml'].includes(normalized)) return normalized;
+  return 'unidad';
+};
+
 const readFileAsDataUrl = (file: File): Promise<string> => (
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -73,13 +81,36 @@ export function useProductsViewModel() {
   const [recipeIngredients, setRecipeIngredients] = useState<RecipeIngredientDraft[]>([]);
 
   const loadCatalog = async () => {
-    const [backendProducts, backendCategoriesResult] = await Promise.all([
+    const [backendProducts, backendCategoriesResult, backendRecipes] = await Promise.all([
       productApi.listProductsLegacy(),
       listProductCategories({ page: 1, pageSize: 200 }),
+      productApi.listProductRecipes(),
     ]);
 
     setProducts(backendProducts);
     setCategories(backendCategoriesResult.rows);
+    setRecipesByProductId(() => {
+      const nextRecipesByProductId: Record<string, ProductRecipeConfig> = {};
+
+      backendProducts.forEach((product) => {
+        if (product.usesRecipe || product.type === 'recipe') {
+          nextRecipesByProductId[String(product.id)] = {
+            productId: String(product.id),
+            usesRecipe: true,
+            ingredients: [],
+          };
+        }
+      });
+
+      backendRecipes.forEach((recipe) => {
+        nextRecipesByProductId[String(recipe.productId)] = {
+          ...recipe,
+          usesRecipe: recipe.usesRecipe,
+        };
+      });
+
+      return nextRecipesByProductId;
+    });
   };
 
   useEffect(() => {
@@ -104,7 +135,7 @@ export function useProductsViewModel() {
         id: ingredient.id ?? crypto.randomUUID(),
         name: ingredient.name,
         quantity: String(ingredient.quantity),
-        unit: ingredient.unit,
+        unit: normalizeInventoryUnit(ingredient.unit),
       })) ?? [],
     );
     setIsRecipeDialogOpen(true);
@@ -126,7 +157,7 @@ export function useProductsViewModel() {
           id: ingredient.id ?? crypto.randomUUID(),
           name: ingredient.name,
           quantity: String(ingredient.quantity),
-          unit: ingredient.unit,
+          unit: normalizeInventoryUnit(ingredient.unit),
         })),
       );
     } catch (error) {
@@ -167,7 +198,7 @@ export function useProductsViewModel() {
       .map((ingredient) => ({
         name: ingredient.name.trim(),
         quantity: Number(ingredient.quantity.replace(',', '.')),
-        unit: ingredient.unit.trim(),
+        unit: normalizeInventoryUnit(ingredient.unit),
       }))
       .filter((ingredient) => ingredient.name.length > 0 || ingredient.unit.length > 0 || ingredient.quantity > 0);
 

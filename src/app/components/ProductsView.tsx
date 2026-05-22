@@ -6,6 +6,8 @@ import { Checkbox } from './ui/checkbox';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
@@ -208,36 +210,50 @@ export function ProductsView() {
           }
         }}
       >
-        <DialogContent className="bg-card border-orange-700 text-white max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-w-[min(920px,calc(100vw-2rem))] p-0 overflow-visible">
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+              <BookOpenText size={18} />
+            </div>
             <DialogTitle>Receta de {recipeProduct?.name ?? 'producto'}</DialogTitle>
+            <DialogDescription>
+              Configura si este producto descuenta stock directo o ingredientes al cobrarse.
+            </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
+          <div className="space-y-4 px-5 py-4">
+            <label className="flex items-center gap-2 text-sm text-[var(--app-strong)] cursor-pointer">
               <Checkbox
                 checked={recipeUsesIngredients}
                 onCheckedChange={(checked) => setRecipeUsesIngredients(Boolean(checked))}
               />
-              <span>Este producto usa receta (descontar ingredientes)</span>
+              <span className="font-semibold">Este producto usa receta (descontar ingredientes)</span>
             </label>
 
             {!recipeUsesIngredients ? (
-              <div className="rounded-md border border-orange-700 bg-body p-3 text-sm text-gray-300">
+              <div className="rounded-md border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3 text-sm text-[var(--app-muted)]">
                 Este producto se controla por stock directo (sin receta de ingredientes).
               </div>
             ) : (
-              <div className="space-y-3 rounded-md border border-orange-700 bg-body p-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-gray-300">Ingredientes por unidad de producto</p>
-                  <Button type="button" size="sm" variant="secondary" onClick={addRecipeIngredientRow}>
+              <div className="space-y-3 rounded-md border border-[var(--primary)] bg-[var(--app-panel-subtle)] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-[var(--app-strong)]">Ingredientes por unidad de producto</p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={addRecipeIngredientRow}
+                    className="gap-1.5 border border-[var(--app-line)] bg-[var(--app-soft)] text-[var(--app-strong)] hover:bg-[var(--app-panel)]"
+                  >
                     <Plus className="h-4 w-4 mr-1" />
                     Agregar ingrediente
                   </Button>
                 </div>
 
                 {recipeIngredients.length === 0 ? (
-                  <p className="text-xs text-gray-500">No hay ingredientes cargados.</p>
+                  <p className="rounded-md border border-dashed border-[var(--app-line)] px-3 py-5 text-center text-xs text-[var(--app-muted)]">
+                    No hay ingredientes cargados.
+                  </p>
                 ) : (
                   <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                     {recipeIngredients.map((ingredient) => (
@@ -252,11 +268,22 @@ export function ProductsView() {
                 )}
               </div>
             )}
+          </div>
 
-            <Button className="w-full" onClick={handleSaveRecipe}>
+          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsRecipeDialogOpen(false)}
+              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+            >
+              Cancelar
+            </Button>
+            <Button className="gap-2" onClick={handleSaveRecipe}>
+              <BookOpenText size={15} />
               Guardar receta
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

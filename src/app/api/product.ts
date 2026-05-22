@@ -14,6 +14,8 @@ export interface ProductItem {
   imageUrl?: string;
   categoryId: string;
   price: number;
+  type?: 'simple' | 'recipe' | string;
+  usesRecipe?: boolean;
   categoryIds?: string[];
   category_ids?: string[];
 }
@@ -140,7 +142,7 @@ export interface IngredientCatalogItem {
 export async function listProducts(params?: ListProductsRequest): Promise<ProductItem[]> {
   const data = await apiClient.get(`${API_VERSION}/product`, {
     params,
-    config: { cache: 'short' },
+    config: { cache: 'none' },
   });
 
   return Array.isArray(data) ? data : data?.products ?? data?.data ?? [];
@@ -152,7 +154,7 @@ export async function listProducts(params?: ListProductsRequest): Promise<Produc
 export async function listProductsLegacy(params?: ListProductsRequest): Promise<ProductItem[]> {
   const data = await apiClient.get(`${API_VERSION}/product`, {
     params,
-    config: { cache: 'short' },
+    config: { cache: 'none' },
   });
 
   return Array.isArray(data) ? data : data?.products ?? data?.data ?? [];
@@ -211,7 +213,7 @@ export async function getProductRecipe(productId: string): Promise<ProductRecipe
  */
 export async function listProductRecipes(): Promise<ProductRecipeConfig[]> {
   const data = await apiClient.get(`${API_VERSION}/product/recipe/list`, {
-    config: { cache: 'short' },
+    config: { cache: 'none' },
   });
 
   const rows = Array.isArray(data)
