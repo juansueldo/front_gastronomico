@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { BookOpenText, ImageIcon, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -16,6 +16,7 @@ import { useProductsViewModel } from '../hooks/useProductsViewModel';
 import type { ProductItem } from '../api/product';
 import { ProductRecipeIngredientRow } from './products/ProductRecipeIngredientRow';
 import { ProductDialog } from './products/ProductDialog';
+import { DeleteConfirmDialog } from './ui/delete-confirm-dialog';
 
 const currencyFormatter = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -28,6 +29,8 @@ const getProductImageUrl = (product: ProductItem) => (
 );
 
 export function ProductsView() {
+  const [productToDelete, setProductToDelete] = useState<ProductItem | null>(null);
+  const [isDeletingProduct, setIsDeletingProduct] = useState(false);
   const {
     products,
     categories,
@@ -143,7 +146,7 @@ export function ProductsView() {
           <Button size="sm" className="bg-transparent border-orange-600 text-white hover:bg-gray-700" onClick={() => openEditDialog(product)}>
             <Pencil className="h-4 w-4" />
           </Button>
-          <Button size="sm" className="bg-transparent border-orange-600 text-white hover:bg-gray-700" onClick={() => handleDeleteProduct(product)}>
+          <Button size="sm" className="bg-transparent border-orange-600 text-white hover:bg-gray-700" onClick={() => setProductToDelete(product)}>
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
@@ -286,6 +289,35 @@ export function ProductsView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmDialog
+        open={Boolean(productToDelete)}
+        onOpenChange={(open) => {
+          if (!open) setProductToDelete(null);
+        }}
+        itemLabel="Producto"
+        itemName={productToDelete?.name ?? ''}
+        itemIcon={productToDelete && getProductImageUrl(productToDelete) ? (
+          <img
+            src={getProductImageUrl(productToDelete) ?? ''}
+            alt={productToDelete.name}
+            className="h-8 w-8 rounded-md object-cover"
+          />
+        ) : (
+          <ImageIcon size={24} className="text-[var(--primary)]" />
+        )}
+        loading={isDeletingProduct}
+        onConfirm={async () => {
+          if (!productToDelete) return;
+          setIsDeletingProduct(true);
+          try {
+            await handleDeleteProduct(productToDelete);
+            setProductToDelete(null);
+          } finally {
+            setIsDeletingProduct(false);
+          }
+        }}
+      />
     </div>
   );
 }

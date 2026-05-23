@@ -183,6 +183,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [loggedUser, setLoggedUser] = useState<AuthUser | null>(null);
   const [themePreference, setThemePreferenceState] = useState<ThemePreference>(() => getThemePreference());
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [plans, setPlans] = useState<PlanOption[]>([]);
@@ -572,6 +573,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                       onClick={() => {
                         navigate(item.path);
                         setIsMobileMenuOpen(false);
+                        setIsMobileMoreOpen(false);
                       }}
                       className={`legacy-nav-item ${isSidebarCollapsed ? 'collapsed' : ''} ${active ? 'active' : ''}`}
                     >
@@ -708,36 +710,63 @@ export function AppLayout({ children }: AppLayoutProps) {
 
         <main className="app-main min-h-0 flex-1">{children}</main>
 
+        {isMobileMoreOpen ? (
+          <div className="mobile-more-backdrop md:hidden" onClick={() => setIsMobileMoreOpen(false)}>
+            <section className="mobile-more-sheet" onClick={(event) => event.stopPropagation()}>
+              <span className="mobile-more-handle" />
+              <h2>Accesos rápidos</h2>
+              <div className="mobile-more-list">
+                {mobileMoreItems.map((item) => {
+                  const Icon = item.icon;
+                  const active = isActive(item.path);
+                  return (
+                    <button
+                      key={item.path}
+                      type="button"
+                      className={active ? 'active' : ''}
+                      onClick={() => {
+                        navigate(item.path);
+                        setIsMobileMoreOpen(false);
+                      }}
+                    >
+                      <Icon className="h-5 w-5" />
+                      <span>{item.label}</span>
+                      <ChevronRight className="ml-auto h-4 w-4" />
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
+        ) : null}
+
         <div className="mobile-bottom-nav md:hidden">
           {mobilePrimaryItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path);
             return (
-              <button key={item.path} type="button" onClick={() => navigate(item.path)} className={active ? 'active' : ''}>
+              <button
+                key={item.path}
+                type="button"
+                onClick={() => {
+                  navigate(item.path);
+                  setIsMobileMoreOpen(false);
+                }}
+                className={active ? 'active' : ''}
+              >
                 <Icon className="h-5 w-5" />
                 <span>{item.label}</span>
               </button>
             );
           })}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button type="button" className={mobileMoreItems.some((item) => isActive(item.path)) ? 'active' : ''}>
-                <MoreHorizontal className="h-5 w-5" />
-                <span>Mas</span>
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="app-menu-surface max-h-[70vh] w-60 overflow-y-auto">
-              {mobileMoreItems.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <DropdownMenuItem key={item.path} onClick={() => navigate(item.path)}>
-                    <Icon className="mr-2 h-4 w-4" />
-                    {item.label}
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <button
+            type="button"
+            className={isMobileMoreOpen || mobileMoreItems.some((item) => isActive(item.path)) ? 'active' : ''}
+            onClick={() => setIsMobileMoreOpen((current) => !current)}
+          >
+            <MoreHorizontal className="h-5 w-5" />
+            <span>Mas</span>
+          </button>
         </div>
       </div>
 

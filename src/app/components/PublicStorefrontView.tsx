@@ -1774,20 +1774,20 @@ export function PublicStorefrontView() {
       </Dialog>
 
       <Dialog open={isDeliveryZonesDialogOpen} onOpenChange={setIsDeliveryZonesDialogOpen}>
-        <DialogContent className="max-h-[92vh] w-[96vw] max-w-6xl overflow-hidden rounded-2xl border border-[#f0e4d9] bg-white p-0 shadow-[0_28px_90px_rgba(20,29,40,0.35)]">
+        <DialogContent className="max-h-[94vh] w-[98vw] max-w-[1400px] overflow-hidden rounded-2xl border border-[#f0e4d9] !bg-[#fffaf4] p-0 shadow-[0_28px_90px_rgba(20,29,40,0.35)] [&_[data-slot=dialog-close]]:border-[#eadfd4] [&_[data-slot=dialog-close]]:!bg-[#fff4ec] [&_[data-slot=dialog-close]]:text-[#1d2530] [&_[data-slot=dialog-close]]:hover:border-[#ff5a2f] [&_[data-slot=dialog-close]]:hover:text-[#ff5a2f]">
           <div className="border-b border-[#efe2d7] bg-[#fffaf4] px-5 py-4">
             <h3 className="text-xl font-black text-[#1d2530]">Zonas de entrega activas</h3>
             <p className="mt-1 text-sm text-[#69727d]">
               Buscá una dirección y comprobá si está dentro de una zona de cobertura.
             </p>
           </div>
-          <div className="h-[72vh] min-h-[420px]">
+          <div className="h-[min(68vh,720px)] min-h-[500px] bg-[#fffaf4] p-4 pt-3">
             {isLoadingDeliveryZones ? (
-              <div className="flex h-full items-center justify-center bg-[#fffaf4] text-sm text-[#6b7280]">
+              <div className="flex h-full items-center justify-center rounded-2xl bg-white text-sm text-[#6b7280]">
                 Cargando zonas...
               </div>
             ) : deliveryZones.length === 0 ? (
-              <div className="flex h-full items-center justify-center bg-[#fffaf4] px-6 text-center text-sm text-[#6b7280]">
+              <div className="flex h-full items-center justify-center rounded-2xl bg-white px-6 text-center text-sm text-[#6b7280]">
                 No hay zonas activas disponibles para esta tienda.
               </div>
             ) : (

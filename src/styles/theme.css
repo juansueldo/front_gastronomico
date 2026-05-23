@@ -142,6 +142,7 @@
   .app-shell {
     display: flex;
     height: 100vh;
+    width: 100%;
     overflow: hidden;
     background:
       radial-gradient(circle at 88% 0%, rgb(255 90 10 / 7%), transparent 22rem),
@@ -264,12 +265,18 @@
   }
 
   .mobile-bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 45;
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 0.25rem;
     border-top: 1px solid var(--app-sidebar-border);
     background: var(--app-sidebar);
-    padding: 0.55rem;
+    padding: 0.55rem 0.55rem calc(0.55rem + env(safe-area-inset-bottom));
+    box-shadow: 0 -16px 38px rgb(0 0 0 / 18%);
   }
 
   .mobile-bottom-nav button {
@@ -288,6 +295,70 @@
   .mobile-bottom-nav button.active {
     color: var(--primary);
     background: rgb(255 90 10 / 10%);
+  }
+
+  .mobile-more-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 44;
+    display: flex;
+    align-items: flex-end;
+    background: rgb(0 0 0 / 18%);
+  }
+
+  .mobile-more-sheet {
+    width: 100%;
+    max-height: min(68vh, 620px);
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--primary) 34%, var(--app-line));
+    border-bottom: 0;
+    border-radius: 24px 24px 0 0;
+    background: color-mix(in srgb, var(--app-panel) 94%, transparent);
+    box-shadow: 0 -24px 70px rgb(0 0 0 / 22%);
+    padding: 0.75rem 1rem calc(5.75rem + env(safe-area-inset-bottom));
+    backdrop-filter: blur(18px);
+  }
+
+  .mobile-more-handle {
+    display: block;
+    height: 4px;
+    width: 44px;
+    margin: 0 auto 0.9rem;
+    border-radius: 999px;
+    background: var(--app-line);
+  }
+
+  .mobile-more-sheet h2 {
+    margin: 0 0 0.65rem;
+    color: var(--app-muted);
+    font-size: 0.88rem;
+    font-weight: 800;
+  }
+
+  .mobile-more-list {
+    max-height: calc(min(68vh, 620px) - 8.5rem);
+    overflow-y: auto;
+  }
+
+  .mobile-more-list button {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.85rem;
+    border-bottom: 1px solid var(--app-line);
+    padding: 0.85rem 0.2rem;
+    color: var(--app-strong);
+    font-size: 0.94rem;
+    font-weight: 700;
+  }
+
+  .mobile-more-list button svg {
+    color: var(--app-muted);
+  }
+
+  .mobile-more-list button.active,
+  .mobile-more-list button.active svg {
+    color: var(--primary);
   }
 
   .app-nav-item {
@@ -474,10 +545,17 @@
   .app-main > .h-full {
     height: auto !important;
     min-height: 100%;
+    max-width: 100%;
   }
 
   .app-main > .overflow-y-auto {
     overflow: visible !important;
+  }
+
+  .app-main {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: clip;
   }
 
   .onboarding-backdrop {
@@ -582,6 +660,40 @@
     border-color: var(--app-line) !important;
     background: var(--app-panel) !important;
     color: var(--app-strong) !important;
+  }
+
+  .datatable-surface {
+    display: grid;
+    gap: 0.85rem;
+    min-width: 0;
+  }
+
+  .datatable-surface table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .datatable-surface thead tr {
+    border-color: var(--app-line) !important;
+    background: var(--app-panel-subtle);
+  }
+
+  .datatable-surface th {
+    color: var(--app-strong);
+    font-size: 0.82rem;
+    font-weight: 800;
+  }
+
+  .datatable-surface tbody tr {
+    border-color: var(--app-line) !important;
+  }
+
+  .datatable-surface tbody tr:hover {
+    background: var(--app-panel-subtle) !important;
+  }
+
+  .datatable-surface td {
+    color: var(--app-strong);
   }
 
   .dashboard-page {
@@ -936,6 +1048,7 @@
     min-height: 230px;
     overflow: hidden;
     border-radius: 8px;
+    isolation: isolate;
     background:
       linear-gradient(135deg, rgb(255 255 255 / 42%), transparent),
       repeating-linear-gradient(30deg, rgb(120 130 140 / 18%) 0 1px, transparent 1px 16px),
@@ -946,6 +1059,28 @@
   .delivery-map .leaflet-container {
     min-height: 230px;
     background: var(--app-soft);
+  }
+
+  .leaflet-container {
+    z-index: 0;
+    isolation: isolate;
+  }
+
+  .leaflet-pane,
+  .leaflet-top,
+  .leaflet-bottom,
+  .leaflet-control,
+  .leaflet-control-container {
+    z-index: 1 !important;
+  }
+
+  .leaflet-popup-pane,
+  .leaflet-tooltip-pane {
+    z-index: 2 !important;
+  }
+
+  .leaflet-marker-pane {
+    z-index: 3 !important;
   }
 
   .delivery-map > svg {
@@ -1050,10 +1185,29 @@
   }
 
   @media (max-width: 900px) {
+    html,
+    body {
+      overflow-x: hidden;
+    }
+
+    .app-shell {
+      min-height: 100dvh;
+      height: auto;
+      overflow-x: hidden;
+    }
+
+    .app-shell > .flex.min-w-0.flex-1 {
+      min-width: 0;
+      width: 100%;
+      overflow-x: hidden;
+    }
+
     .app-topbar {
-      grid-template-columns: auto 1fr auto;
+      grid-template-columns: auto minmax(0, 1fr) auto auto;
       margin: 0.75rem;
       padding: 0.35rem;
+      gap: 0.25rem;
+      box-shadow: 0 10px 32px rgb(0 0 0 / 14%);
     }
 
     .app-store-switcher {
@@ -1061,20 +1215,58 @@
     }
 
     .app-icon-button {
-      height: 42px;
-      width: 42px;
+      height: 40px;
+      width: 40px;
+    }
+
+    .app-search {
+      gap: 0.55rem;
+      padding: 0 0.45rem;
+    }
+
+    .app-search input {
+      height: 40px;
+      font-size: 0.88rem;
     }
 
     .dashboard-page {
       padding: 0 0.85rem 0.85rem;
     }
 
+    .app-main {
+      padding-bottom: calc(5.75rem + env(safe-area-inset-bottom));
+    }
+
+    .app-main > .h-full,
+    .app-main > .overflow-y-auto {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .app-main .card,
+    .dashboard-card,
+    .orders-card,
+    .activity-card,
+    .sales-card,
+    .products-card,
+    .map-card {
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    .app-main .p-4,
+    .app-main .md\:p-6 {
+      min-width: 0;
+    }
+
     .dashboard-metrics {
       grid-template-columns: 1fr;
+      gap: 0.75rem;
     }
 
     .metric-card {
       min-height: 112px;
+      padding: 1rem;
     }
 
     .section-heading,
@@ -1085,6 +1277,52 @@
 
     .sales-layout {
       grid-template-columns: 1fr;
+    }
+
+    .orders-row {
+      min-width: 820px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .app-topbar {
+      margin: 0.55rem;
+      border-radius: 10px;
+    }
+
+    .dashboard-page,
+    .app-main > .h-full > .p-4,
+    .app-main > .overflow-y-auto > .p-4 {
+      padding-left: 0.8rem;
+      padding-right: 0.8rem;
+    }
+
+    .section-heading {
+      gap: 0.65rem;
+    }
+
+    .section-heading h1,
+    .section-heading h2 {
+      font-size: 1rem;
+    }
+
+    .metric-card {
+      align-items: flex-start;
+    }
+
+    .metric-icon {
+      height: 48px;
+      width: 48px;
+    }
+
+    .mobile-bottom-nav button {
+      font-size: 0.68rem;
+    }
+
+    .mobile-more-sheet {
+      border-radius: 20px 20px 0 0;
+      padding-left: 0.85rem;
+      padding-right: 0.85rem;
     }
   }
 }

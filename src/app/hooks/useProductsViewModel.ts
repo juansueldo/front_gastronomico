@@ -356,12 +356,6 @@ export function useProductsViewModel() {
   };
 
   const handleDeleteProduct = async (product: ProductItem) => {
-    const confirmed = window.confirm(`¿Eliminar el producto "${product.name}"?`);
-
-    if (!confirmed) {
-      return;
-    }
-
     try {
       await productApi.deleteProduct(product.id);
       await loadCatalog();

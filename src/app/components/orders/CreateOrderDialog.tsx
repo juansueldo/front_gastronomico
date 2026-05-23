@@ -26,6 +26,7 @@ import {
 } from '../../api';
 import { endpoints } from '../../api/endpoints';
 import { listHeadquarters, type Headquarter } from '../../api/headquarter';
+import { ArrowRight, Check, MapPin, Phone, Truck, Utensils } from 'lucide-react';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -122,6 +123,14 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
 });
 const ORDER_HEADQUARTER_STORAGE_KEY = 'cash:selected-headquarter-id';
 const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search';
+const PHONE_PREFIX_OPTIONS = [
+  { value: '+54', label: '+54', country: 'Argentina' },
+  { value: '+598', label: '+598', country: 'Uruguay' },
+  { value: '+595', label: '+595', country: 'Paraguay' },
+  { value: '+56', label: '+56', country: 'Chile' },
+  { value: '+55', label: '+55', country: 'Brasil' },
+  { value: '+591', label: '+591', country: 'Bolivia' },
+];
 
 const getStoredHeadquarterId = () => {
   try {
@@ -200,18 +209,6 @@ async function searchAddressSuggestions(query: string, signal?: AbortSignal): Pr
   }
 }
 
-async function resolveAddressCoordinates(query: string): Promise<DeliveryCoordinates | null> {
-  const suggestions = await searchAddressSuggestions(query);
-  if (suggestions.length === 0) {
-    return null;
-  }
-
-  return {
-    latitude: suggestions[0].latitude,
-    longitude: suggestions[0].longitude,
-  };
-}
-
 const DAY_OF_WEEK_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
 const DAY_OF_WEEK_SHORT_LABELS = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'] as const;
 
@@ -242,6 +239,21 @@ const formatTimeForPayload = (date: Date) => (
 const formatLocalDateTimeForPayload = (date: Date) => (
   `${formatDateForPayload(date)}T${formatTimeForPayload(date)}`
 );
+
+const onlyDigits = (value: string) => value.replace(/\D/g, '');
+
+const formatPhoneDisplay = (value: string) => {
+  const digits = onlyDigits(value).slice(0, 14);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 2)} ${digits.slice(2)}`;
+  if (digits.length <= 10) return `${digits.slice(0, 2)} ${digits.slice(2, 6)} ${digits.slice(6)}`;
+  return `${digits.slice(0, 2)} ${digits.slice(2, 6)} ${digits.slice(6, 10)} ${digits.slice(10)}`;
+};
+
+const buildFullPhone = (prefix: string, phoneValue: string) => {
+  const digits = onlyDigits(phoneValue);
+  return digits ? `${prefix}${digits}` : '';
+};
 
 const buildScheduleState = (schedules: HeadquarterSchedule[] | undefined, now: Date) => {
   if (!schedules || schedules.length === 0) {
@@ -335,12 +347,12 @@ const normalizeHeadquarterSchedules = (input: unknown): HeadquarterSchedule[] =>
 function StepIndicator({ current, steps }: { current: Step; steps: Step[] }) {
   const idx = steps.indexOf(current);
   return (
-    <div className="flex items-center gap-1 mb-4">
+    <div className="flex items-center gap-2">
       {steps.map((step, i) => (
-        <div key={step} className="flex items-center gap-1">
+        <div key={step} className="flex items-center">
           <div
-            className={`h-1.5 w-6 rounded-full transition-all duration-300 ${
-              i <= idx ? 'bg-orange-500' : 'bg-gray-700'
+            className={`h-1.5 w-10 rounded-full transition-all duration-300 ${
+              i <= idx ? 'bg-[var(--primary)]' : 'bg-[var(--app-line)]'
             }`}
           />
         </div>
@@ -350,11 +362,11 @@ function StepIndicator({ current, steps }: { current: Step; steps: Step[] }) {
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs text-gray-400 mb-1">{children}</p>;
+  return <p className="mb-1.5 text-sm font-semibold text-[var(--app-strong)]">{children}</p>;
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm font-medium text-white mb-3">{children}</p>;
+  return <p className="mb-2 text-xl font-bold leading-tight text-[var(--app-strong)]">{children}</p>;
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -364,6 +376,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
   const [step, setStep] = useState<Step>('phone');
 
   // Paso 1 — Teléfono
+  const [phonePrefix, setPhonePrefix] = useState('+54');
   const [phone, setPhone] = useState('');
   const [isSearchingCustomer, setIsSearchingCustomer] = useState(false);
   const [customerFound, setCustomerFound] = useState<CustomerData | null>(null);
@@ -381,6 +394,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
   const [showDeliveryAddressSuggestions, setShowDeliveryAddressSuggestions] = useState(false);
   const [isLoadingDeliveryAddressSuggestions, setIsLoadingDeliveryAddressSuggestions] = useState(false);
   const [deliveryCoordinates, setDeliveryCoordinates] = useState<DeliveryCoordinates | null>(null);
+  const [selectedDeliveryAddressLabel, setSelectedDeliveryAddressLabel] = useState('');
 
   // Paso 5 — Productos
   const [selectedQuantities, setSelectedQuantities] = useState<Record<string, number>>({});
@@ -407,6 +421,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
 
   const activeSteps = orderType === 'delivery' ? STEPS : STEPS_DINE_IN;
   const selectedHeadquarter = headquarters.find((headquarter) => String(headquarter.id) === selectedHeadquarterId);
+  const fullPhone = buildFullPhone(phonePrefix, phone);
   const scheduleState = useMemo(
     () => buildScheduleState(normalizeHeadquarterSchedules(selectedHeadquarter?.schedules), scheduleNow),
     [selectedHeadquarter?.schedules, scheduleNow],
@@ -524,7 +539,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
     }
 
     const query = deliveryAddress.trim();
-    if (query.length < 4) {
+    if (query.length < 4 || (deliveryCoordinates && query === selectedDeliveryAddressLabel)) {
       setDeliveryAddressSuggestions([]);
       setShowDeliveryAddressSuggestions(false);
       setIsLoadingDeliveryAddressSuggestions(false);
@@ -558,12 +573,12 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [deliveryAddress, orderType]);
+  }, [deliveryAddress, deliveryCoordinates, selectedDeliveryAddressLabel, orderType]);
 
   // ── Búsqueda de cliente por teléfono ─────────────────────────────────────────
 
   const searchCustomer = async () => {
-    const trimmed = phone.trim();
+    const trimmed = fullPhone.trim();
     if (!trimmed) return;
 
     setIsSearchingCustomer(true);
@@ -604,6 +619,11 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
   // ── Navegación ────────────────────────────────────────────────────────────────
 
   const goNext = () => {
+    if (step === 'address' && orderType === 'delivery' && !deliveryCoordinates) {
+      toast.error('Seleccioná una dirección de las sugerencias para validar latitud y longitud.');
+      return;
+    }
+
     const idx = activeSteps.indexOf(step);
     if (idx < activeSteps.length - 1) setStep(activeSteps[idx + 1]);
   };
@@ -677,6 +697,11 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
       return;
     }
 
+    if (orderType === 'delivery' && !deliveryCoordinates) {
+      toast.error('Seleccioná una dirección de las sugerencias para validar latitud y longitud.');
+      return;
+    }
+
     const isAsapSchedule = scheduleMode === 'asap';
     const scheduledSlotDate = !isAsapSchedule ? selectedScheduleSlot?.startDate : undefined;
     if (!isAsapSchedule && !scheduledSlotDate) {
@@ -687,26 +712,18 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
     const scheduledDate = scheduledSlotDate ? formatDateForPayload(scheduledSlotDate) : undefined;
     const scheduledTime = scheduledSlotDate ? formatTimeForPayload(scheduledSlotDate) : undefined;
 
-    let resolvedCoordinates = deliveryCoordinates;
-    if (orderType === 'delivery' && !resolvedCoordinates) {
-      resolvedCoordinates = await resolveAddressCoordinates(trimmedDeliveryAddress);
-      if (resolvedCoordinates) {
-        setDeliveryCoordinates(resolvedCoordinates);
-      }
-    }
-
     const payload: CreateOrderRequest = {
       storeId,
       headquarterId: resolvedHeadquarterId ?? undefined,
       customerId: customerFound?.id,
       customerName: !customerFound?.id ? newCustomerName.trim() : undefined,
-      customerPhone: !customerFound?.id ? phone.trim() : undefined,
+      customerPhone: !customerFound?.id ? fullPhone : undefined,
       userId,
       type: orderType,
       items: selectedItems.map((p) => ({ productId: p.id, quantity: p.quantity })),
       delivery_address: orderType === 'delivery' ? trimmedDeliveryAddress : undefined,
-      delivery_latitude: resolvedCoordinates?.latitude,
-      delivery_longitude: resolvedCoordinates?.longitude,
+      delivery_latitude: orderType === 'delivery' ? deliveryCoordinates.latitude : undefined,
+      delivery_longitude: orderType === 'delivery' ? deliveryCoordinates.longitude : undefined,
       scheduled_for: scheduledSlotDate ? formatLocalDateTimeForPayload(scheduledSlotDate) : undefined,
       scheduled_date: scheduledDate,
       scheduled_time: scheduledTime,
@@ -732,12 +749,14 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
 
   const handleClose = () => {
     setStep('phone');
+    setPhonePrefix('+54');
     setPhone('');
     setCustomerFound(null);
     setCustomerNotFound(false);
     setNewCustomerName('');
     setOrderType('delivery');
     setDeliveryAddress('');
+    setSelectedDeliveryAddressLabel('');
     setDeliveryAddressSuggestions([]);
     setShowDeliveryAddressSuggestions(false);
     setIsLoadingDeliveryAddressSuggestions(false);
@@ -757,26 +776,73 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
   // ── Render por paso ───────────────────────────────────────────────────────────
 
   const renderPhone = () => (
-    <div className="space-y-4">
-      <SectionTitle>¿Cuál es el teléfono del cliente?</SectionTitle>
+    <div className="space-y-5">
+      <div>
+        <SectionTitle>¿Cuál es el teléfono del cliente?</SectionTitle>
+        <p className="text-sm text-[var(--app-muted)]">Ingresá el número para buscar al cliente y continuar.</p>
+      </div>
+
       <div>
         <FieldLabel>Teléfono</FieldLabel>
-        <Input
-          placeholder="Ej: 1123456789"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && void searchCustomer()}
-          autoFocus
-          type="tel"
-        />
+        <div className="flex h-12 overflow-hidden rounded-lg border border-[var(--primary)] bg-[var(--app-panel)] text-[var(--app-strong)] shadow-[0_0_0_1px_rgb(255_90_10_/_16%)]">
+          <div className="flex items-center gap-2 border-r border-[var(--app-line)] px-3">
+            <Phone className="h-4 w-4 text-[var(--app-strong)]" />
+            <Select value={phonePrefix} onValueChange={setPhonePrefix}>
+              <SelectTrigger
+                aria-label="Código de área"
+                className="h-full min-w-[138px] border-0 bg-transparent px-0 py-0 text-sm font-semibold text-[var(--app-strong)] shadow-none ring-0 focus:border-0 focus:ring-0 focus-visible:border-0 focus-visible:ring-0 [&>svg]:text-[var(--app-muted)]"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent
+                align="start"
+                className="z-[90] w-60 rounded-xl border-[var(--app-line)] bg-[var(--app-panel)] p-1 text-[var(--app-strong)] shadow-[0_18px_46px_rgb(0_0_0_/_32%)]"
+              >
+                {PHONE_PREFIX_OPTIONS.map((option) => (
+                  <SelectItem
+                    key={option.value}
+                    value={option.value}
+                    className="rounded-lg px-3 py-2.5 text-sm text-[var(--app-strong)] focus:bg-[var(--app-soft)] focus:text-[var(--app-strong)] data-[state=checked]:bg-[var(--primary)] data-[state=checked]:text-white"
+                  >
+                    <span className="flex w-full items-center justify-between gap-4">
+                      <span className="font-semibold">{option.label}</span>
+                      <span className="text-xs opacity-75">{option.country}</span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <input
+            placeholder="11 2345 6789"
+            value={formatPhoneDisplay(phone)}
+            onChange={(e) => setPhone(onlyDigits(e.target.value))}
+            onKeyDown={(e) => e.key === 'Enter' && void searchCustomer()}
+            autoFocus
+            type="tel"
+            className="min-w-0 flex-1 border-0 bg-transparent px-4 text-base text-[var(--app-strong)] outline-none placeholder:text-[var(--app-muted)] focus:border-0 focus:shadow-none"
+          />
+        </div>
       </div>
-      <Button
-        className="w-full"
-        onClick={() => void searchCustomer()}
-        disabled={!phone.trim() || isSearchingCustomer}
-      >
-        {isSearchingCustomer ? 'Buscando...' : 'Buscar cliente →'}
-      </Button>
+
+      <div className="-mx-5 -mb-5 flex justify-end gap-3 border-t border-[var(--app-line)] bg-[var(--app-panel-subtle)] px-5 py-4 sm:-mx-7 sm:-mb-6 sm:px-7">
+        <Button
+          type="button"
+          variant="outline"
+          className="ghost-action h-11 min-w-36 rounded-lg"
+          onClick={handleClose}
+        >
+          Cancelar
+        </Button>
+        <Button
+          className="primary-action h-11 min-w-48 gap-2 rounded-lg"
+          onClick={() => void searchCustomer()}
+          disabled={!fullPhone || isSearchingCustomer}
+        >
+          {isSearchingCustomer ? 'Buscando...' : 'Buscar cliente'}
+          <ArrowRight className="h-4 w-4" />
+        </Button>
+      </div>
     </div>
   );
 
@@ -784,7 +850,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
     <div className="space-y-4">
       <SectionTitle>Cliente nuevo</SectionTitle>
       <p className="text-xs text-gray-400">
-        No encontramos a nadie con el teléfono <span className="text-white">{phone}</span>. Ingresá su nombre para registrarlo.
+        No encontramos a nadie con el teléfono <span className="text-white">{fullPhone}</span>. Ingresá su nombre para registrarlo.
       </p>
       <div>
         <FieldLabel>Nombre completo</FieldLabel>
@@ -795,10 +861,10 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
           autoFocus
         />
       </div>
-      <div className="flex gap-2">
-        <Button variant="outline" className="flex-1" onClick={goBack}>← Atrás</Button>
+      <div className="flex gap-3 pt-2">
+        <Button variant="outline" className="ghost-action h-11 flex-1 rounded-lg" onClick={goBack}>← Atrás</Button>
         <Button
-          className="flex-1"
+          className="primary-action h-11 flex-1 rounded-lg"
           onClick={goNext}
           disabled={!newCustomerName.trim()}
         >
@@ -812,7 +878,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
     const c = customerFound!;
     const displayName = (c.name ?? '').trim() || 'Cliente';
     const avatarInitial = displayName.charAt(0).toUpperCase();
-    const displayPhone = (c.phone ?? '').trim() || phone;
+    const displayPhone = (c.phone ?? '').trim() || fullPhone;
     return (
       <div className="space-y-3 rounded-lg border border-orange-700/50 bg-orange-950/20 p-3">
         <div className="flex items-center gap-2">
@@ -868,7 +934,9 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
                 : 'border-gray-700 bg-card text-gray-400 hover:border-gray-500'
             }`}
           >
-            <div className="text-2xl mb-1">{type === 'delivery' ? '🛵' : '🍽️'}</div>
+            <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--primary)]/10 text-[var(--primary)]">
+              {type === 'delivery' ? <Truck className="h-4 w-4" /> : <Utensils className="h-4 w-4" />}
+            </div>
             <p className="text-sm font-medium">{type === 'delivery' ? 'Delivery' : 'Salón'}</p>
             <p className="text-xs text-gray-500 mt-0.5">
               {type === 'delivery' ? 'Con dirección de entrega' : 'Mesa o mostrador'}
@@ -922,10 +990,10 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
         <p className="text-xs text-yellow-400">Seleccioná una sede para continuar con el pedido de salón.</p>
       )}
 
-      <div className="flex gap-2">
-        <Button variant="outline" className="flex-1" onClick={goBack}>← Atrás</Button>
+      <div className="flex gap-3 pt-2">
+        <Button variant="outline" className="ghost-action h-11 flex-1 rounded-lg" onClick={goBack}>← Atrás</Button>
         <Button
-          className="flex-1"
+          className="primary-action h-11 flex-1 rounded-lg"
           onClick={goNext}
           disabled={orderType === 'dine-in' && !selectedHeadquarterId}
         >
@@ -936,7 +1004,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
   );
 
   const renderAddress = () => {
-    const canContinue = Boolean(selectedHeadquarterId) && deliveryAddress.trim().length > 0;
+    const canContinue = Boolean(selectedHeadquarterId) && deliveryAddress.trim().length > 0 && Boolean(deliveryCoordinates);
 
     return (
       <div className="space-y-4">
@@ -969,6 +1037,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
             onChange={(event) => {
               setDeliveryAddress(event.target.value);
               setDeliveryCoordinates(null);
+              setSelectedDeliveryAddressLabel('');
             }}
             onFocus={() => {
               if (deliveryAddressSuggestions.length > 0) {
@@ -980,15 +1049,16 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
             }}
           />
           {showDeliveryAddressSuggestions && deliveryAddressSuggestions.length > 0 ? (
-            <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 max-h-56 overflow-y-auto rounded-lg border border-gray-700 bg-card p-1 shadow-lg">
+            <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-[80] max-h-56 overflow-y-auto rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] p-1 shadow-[0_18px_46px_rgb(0_0_0_/_28%)]">
               {deliveryAddressSuggestions.map((suggestion) => (
                 <button
                   key={suggestion.id}
                   type="button"
-                  className="w-full rounded-md px-2 py-2 text-left text-xs text-gray-200 transition hover:bg-gray-800"
+                  className="flex w-full items-start gap-2 rounded-md px-3 py-2 text-left text-xs text-[var(--app-strong)] transition hover:bg-[var(--app-soft)]"
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => {
                     setDeliveryAddress(suggestion.label);
+                    setSelectedDeliveryAddressLabel(suggestion.label);
                     setDeliveryCoordinates({
                       latitude: suggestion.latitude,
                       longitude: suggestion.longitude,
@@ -996,11 +1066,14 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
                     setShowDeliveryAddressSuggestions(false);
                   }}
                 >
-                  {suggestion.label}
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--primary)]" />
+                  <span>{suggestion.label}</span>
                 </button>
               ))}
             </div>
           ) : null}
+          <input type="hidden" name="delivery_latitude" value={deliveryCoordinates?.latitude ?? ''} />
+          <input type="hidden" name="delivery_longitude" value={deliveryCoordinates?.longitude ?? ''} />
         </div>
 
         <p className="text-xs text-gray-500">
@@ -1008,13 +1081,13 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
             ? 'Buscando sugerencias de dirección...'
             : deliveryCoordinates
               ? `Ubicación detectada: ${deliveryCoordinates.latitude.toFixed(5)}, ${deliveryCoordinates.longitude.toFixed(5)}`
-              : 'Podés escribir la dirección y elegir una sugerencia para precisión de ubicación.'}
+              : 'Escribí la dirección y elegí una sugerencia para validar la ubicación.'}
         </p>
 
-        <div className="flex gap-2">
-          <Button variant="outline" className="flex-1" onClick={goBack}>← Atrás</Button>
+        <div className="flex gap-3 pt-2">
+          <Button variant="outline" className="ghost-action h-11 flex-1 rounded-lg" onClick={goBack}>← Atrás</Button>
           <Button
-            className="flex-1"
+            className="primary-action h-11 flex-1 rounded-lg"
             onClick={goNext}
             disabled={!canContinue}
           >
@@ -1106,9 +1179,9 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
         )}
       </div>
 
-      <div className="flex gap-2 pt-1">
-        <Button variant="outline" className="flex-1" onClick={goBack}>← Atrás</Button>
-        <Button className="flex-1" onClick={goNext} disabled={selectedItems.length === 0}>
+      <div className="flex gap-3 pt-1">
+        <Button variant="outline" className="ghost-action h-11 flex-1 rounded-lg" onClick={goBack}>← Atrás</Button>
+        <Button className="primary-action h-11 flex-1 rounded-lg" onClick={goNext} disabled={selectedItems.length === 0}>
           Revisar →
         </Button>
       </div>
@@ -1136,7 +1209,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
           </div>
           <div className="flex justify-between px-3 py-2 text-sm">
             <span className="text-gray-400">Teléfono</span>
-            <span className="text-white">{phone}</span>
+            <span className="text-white">{customerFound?.phone ?? fullPhone}</span>
           </div>
           <div className="flex justify-between px-3 py-2 text-sm">
             <span className="text-gray-400">Tipo</span>
@@ -1248,15 +1321,20 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
         </div>
 
         <div className="flex gap-2">
-          <Button variant="outline" className="flex-1" onClick={goBack} disabled={isSubmitting}>
+          <Button variant="outline" className="ghost-action h-11 flex-1 rounded-lg" onClick={goBack} disabled={isSubmitting}>
             ← Atrás
           </Button>
           <Button
-            className="flex-1"
+            className="primary-action h-11 flex-1 rounded-lg gap-2"
             onClick={() => void handleSubmit()}
             disabled={isSubmitting || (scheduleMode === 'scheduled' && !selectedScheduleSlot?.startDate)}
           >
-            {isSubmitting ? 'Creando...' : '✓ Crear orden'}
+            {isSubmitting ? 'Creando...' : (
+              <>
+                <Check className="h-4 w-4" />
+                Crear orden
+              </>
+            )}
           </Button>
         </div>
       </div>
@@ -1285,17 +1363,20 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose(); }}>
-      <DialogContent className="bg-card card max-h-[92vh] overflow-hidden text-white sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-3">
+      <DialogContent className="max-h-[92vh] w-[calc(100vw-2rem)] max-w-[720px] gap-0 overflow-visible p-0">
+        <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 px-5 pb-4 pt-6 pr-16 text-left sm:px-7">
+          <div className="row-span-2 flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--primary)]/10 text-[var(--primary)]">
+            <Phone className="h-6 w-6" />
+          </div>
+          <DialogTitle className="flex flex-wrap items-center gap-2 text-2xl font-bold leading-tight">
             <span>Nueva orden</span>
-            <span className="text-xs font-normal text-gray-500">{stepLabel[step]}</span>
+            <span className="text-[var(--app-muted)]">·</span>
+            <span className="text-xl font-semibold text-[var(--app-muted)]">{stepLabel[step]}</span>
           </DialogTitle>
+          <StepIndicator current={step} steps={activeSteps} />
         </DialogHeader>
 
-        <StepIndicator current={step} steps={activeSteps} />
-
-        <div className="overflow-y-auto max-h-[calc(92vh-8rem)] pr-0.5">
+        <div className="max-h-[calc(92vh-7rem)] overflow-y-auto overflow-x-visible px-5 pb-5 sm:px-7 sm:pb-6">
           {renderStep()}
         </div>
       </DialogContent>

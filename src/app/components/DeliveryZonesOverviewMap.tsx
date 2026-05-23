@@ -152,8 +152,8 @@ export function DeliveryZonesOverviewMap({ zones }: { zones: PublicStoreDelivery
   };
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-[#eef3f6]">
-      <div className="absolute left-4 right-4 top-4 z-[1000] rounded-2xl border border-[#eee2d8] bg-white/95 p-3 shadow-[0_12px_35px_rgba(20,29,40,0.18)] backdrop-blur md:left-auto md:w-[520px]">
+    <div className="relative h-full w-full overflow-hidden rounded-2xl border border-[#efe2d7] bg-[#eef3f6]">
+      <div className="absolute left-4 right-4 top-4 z-10 rounded-2xl border border-[#eee2d8] bg-white/95 p-3 shadow-[0_12px_35px_rgba(20,29,40,0.18)] backdrop-blur md:left-auto md:w-[620px]">
         <div className="flex flex-col gap-2 sm:flex-row">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8b949e]" />

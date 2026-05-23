@@ -742,7 +742,7 @@ export function ActiveOrdersView() {
 
   return (
     <div className="h-full overflow-y-auto bg-body">
-      <div className="relative p-4 md:p-6">
+      <div className="relative px-3 py-4 sm:p-4 md:p-6">
         <div className="pointer-events-none absolute inset-0 opacity-70">
           <div className="absolute -top-28 left-1/4 h-80 w-80 rounded-full bg-orange-500/10 blur-3xl" />
           <div className="absolute right-0 top-1/3 h-72 w-72 rounded-full bg-blue-500/10 blur-3xl" />
@@ -750,21 +750,21 @@ export function ActiveOrdersView() {
 
         <div className="relative space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h1 className="flex items-center gap-3 text-2xl font-semibold text-white md:text-3xl">
-                <ClipboardList className="h-8 w-8 text-orange-400" />
+            <h1 className="flex items-center gap-2 text-xl font-semibold text-white sm:gap-3 sm:text-2xl md:text-3xl">
+                <ClipboardList className="h-7 w-7 text-orange-400 sm:h-8 sm:w-8" />
                 Pedidos
 
             </h1>
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               <Button
                 type="button"
                 size="icon"
                 variant="outline"
-                className="size-11 rounded-2xl border-border bg-card/70 text-foreground hover:bg-card"
+                className="size-10 rounded-2xl border-border bg-card/70 text-foreground hover:bg-card sm:size-11"
               >
                 <SlidersHorizontal className="h-5 w-5" />
               </Button>
-              <Button size="sm" className="h-11 rounded-2xl px-5" onClick={() => setIsCreateOrderDialogOpen(true)}>
+              <Button size="sm" className="h-10 rounded-2xl px-4 sm:h-11 sm:px-5" onClick={() => setIsCreateOrderDialogOpen(true)}>
                 Nueva orden
               </Button>
             </div>
@@ -836,11 +836,11 @@ export function ActiveOrdersView() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border py-3">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Ordenar por:</span>
+          <div className="flex flex-col gap-3 border-y border-border py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+              <span className="w-16 shrink-0 text-sm text-muted-foreground sm:w-auto">Ordenar por:</span>
               <Select value={sortBy} onValueChange={(value) => setSortBy(value as typeof sortBy)}>
-                <SelectTrigger className="h-10 min-w-[190px] rounded-xl border-border bg-background text-foreground">
+                <SelectTrigger className="h-10 min-w-0 flex-1 rounded-xl border-border bg-background text-foreground sm:min-w-[190px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="border-border bg-popover text-popover-foreground">
@@ -850,17 +850,17 @@ export function ActiveOrdersView() {
                   <SelectItem value="total-low">Menor importe</SelectItem>
                 </SelectContent>
               </Select>
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card/70 text-muted-foreground">
+              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-card/70 text-muted-foreground">
                 <ArrowUpDown className="h-4 w-4" />
               </span>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-2xl text-foreground">Total: {filteredOrders.length} pedidos</span>
+            <div className="flex items-center justify-between gap-3 sm:justify-end">
+              <span className="text-lg text-foreground sm:text-2xl">Total: {filteredOrders.length} pedidos</span>
               <Button
                 type="button"
                 size="icon"
                 variant="outline"
-                className="size-10 rounded-xl border-border bg-card/70 text-foreground"
+                className="size-9 shrink-0 rounded-xl border-border bg-card/70 text-foreground sm:size-10"
                 onClick={() => void loadOrders()}
                 disabled={isLoadingOrders}
               >
@@ -889,31 +889,31 @@ export function ActiveOrdersView() {
                     onMouseDown={() => handleLongPressStart(order)}
                     onMouseUp={handleLongPressEnd}
                     onMouseLeave={handleLongPressEnd}
-                    className={`cursor-pointer rounded-2xl border bg-card/60 p-4 backdrop-blur-sm transition hover:bg-card ${priorityStyle}`}
+                    className={`cursor-pointer rounded-2xl border bg-card/60 p-3 backdrop-blur-sm transition hover:bg-card sm:p-4 ${priorityStyle}`}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-2">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xl font-semibold text-foreground md:text-2xl">{order.id}</span>
+                          <span className="text-lg font-semibold text-foreground md:text-2xl">{order.id}</span>
                           <Badge variant="secondary" className={`${getStatusBadgeClass(getPriorityLabel(order))} text-xs`}>
                             {getPriorityLabel(order)}
                           </Badge>
                         </div>
-                        <p className="text-lg text-foreground">{order.customerName}</p>
-                        <p className="text-sm text-muted-foreground">{order.detail}</p>
+                        <p className="break-words text-base text-foreground sm:text-lg">{order.customerName}</p>
+                        <p className="break-words text-sm text-muted-foreground">{order.detail}</p>
                         <p className="text-sm text-muted-foreground">{order.status}</p>
                       </div>
 
-                      <div className="flex flex-col items-end gap-2">
+                      <div className="flex flex-row flex-wrap items-center justify-between gap-2 sm:flex-col sm:items-end">
                         <Badge
                           variant="secondary"
                           className={order.type === 'delivery' ? 'bg-blue-500/20 text-blue-700 dark:text-blue-100' : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-100'}
                         >
                           {order.type === 'delivery' ? 'Delivery' : 'Salón'}
                         </Badge>
-                        <p className="text-lg text-foreground">{orderDateInfo.time}</p>
+                        <p className="text-base text-foreground sm:text-lg">{orderDateInfo.time}</p>
                         <p className="text-sm text-muted-foreground">{orderDateInfo.dayLabel}</p>
-                        <p className="mt-4 text-xl font-medium text-foreground">{order.total}</p>
+                        <p className="text-lg font-medium text-foreground sm:mt-4 sm:text-xl">{order.total}</p>
                       </div>
                     </div>
                   </article>
@@ -922,7 +922,7 @@ export function ActiveOrdersView() {
             )}
           </div>
 
-          <div className="flex items-center justify-center gap-2 pt-2">
+          <div className="flex items-center justify-center gap-2 pb-2 pt-2">
             <button
               type="button"
               className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card/70 text-foreground disabled:opacity-40"

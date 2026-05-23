@@ -596,7 +596,7 @@ export function InventoryView() {
           <div className="flex items-center gap-2">
             <Button
               size="sm"
-              className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
+              className="primary-action h-10 rounded-lg px-4"
               onClick={() => setIsCreateIngredientDialogOpen(true)}
             >
               <Plus className="h-4 w-4 mr-1" />
@@ -604,7 +604,7 @@ export function InventoryView() {
             </Button>
             <Button
               size="sm"
-              className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
+              className="ghost-action h-10 rounded-lg px-4"
               onClick={() => setIsConsumeOrderDialogOpen(true)}
             >
               <ShoppingCart className="h-4 w-4 mr-1" />
@@ -621,8 +621,7 @@ export function InventoryView() {
           </div>
         </div>
 
-        <div className="space-y-2">
-          <h2 className="text-sm md:text-base font-medium text-white">Inventario</h2>
+        <div className="card bg-card p-4">
           <DataTable
             data={unifiedInventoryRows}
             columns={unifiedColumns}

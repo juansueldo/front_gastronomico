@@ -29,6 +29,7 @@ import {
   updateProductCategory,
 } from '../catalogApi';
 import { type DataTableColumn, RemoteDataTable, createRowActionsColumn } from './ui/data-table';
+import { DeleteConfirmDialog } from './ui/delete-confirm-dialog';
 
 // Mapa nombre → componente Lucide
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -113,6 +114,8 @@ export function CategoriesView() {
   const [iconQuery, setIconQuery] = useState('');
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [categoryToDelete, setCategoryToDelete] = useState<ProductCategory | null>(null);
+  const [isDeletingCategory, setIsDeletingCategory] = useState(false);
 
   const filteredIconEntries = Object.entries(ICON_MAP).filter(([iconName]) => {
     const q = iconQuery.trim().toLowerCase();
@@ -212,16 +215,18 @@ export function CategoriesView() {
     }
   };
 
-  const handleDeleteCategory = async (category: ProductCategory) => {
-    const confirmed = window.confirm(`¿Eliminar la categoría "${category.name}"?`);
-    if (!confirmed) return;
-
+  const confirmDeleteCategory = async () => {
+    if (!categoryToDelete) return;
+    setIsDeletingCategory(true);
     try {
-      await deleteProductCategory(category.id);
+      await deleteProductCategory(categoryToDelete.id);
       setReloadKey((current) => current + 1);
       toast.success('Categoría eliminada');
+      setCategoryToDelete(null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo eliminar la categoría');
+    } finally {
+      setIsDeletingCategory(false);
     }
   };
 
@@ -287,7 +292,7 @@ export function CategoriesView() {
       },
       deleteAction: {
         label: 'Eliminar',
-        onClick: handleDeleteCategory,
+        onClick: setCategoryToDelete,
       },
       extraActions: [
         {
@@ -479,6 +484,20 @@ export function CategoriesView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmDialog
+        open={Boolean(categoryToDelete)}
+        onOpenChange={(open) => {
+          if (!open) setCategoryToDelete(null);
+        }}
+        itemLabel="Categoría"
+        itemName={categoryToDelete?.name ?? ''}
+        itemIcon={categoryToDelete?.icon
+          ? renderCategoryIcon(categoryToDelete.icon, { size: 24, className: 'text-[var(--primary)]' })
+          : <ChefHat size={24} className="text-[var(--primary)]" />}
+        loading={isDeletingCategory}
+        onConfirm={confirmDeleteCategory}
+      />
     </div>
   );
 }

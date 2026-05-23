@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Mail, Shield } from 'lucide-react';
+import { Mail, Shield, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { createUser, deleteUser, listUsers, updateUser, type AppUser, type CreateUserRequest, type UpdateUserRequest } from '../api/user';
 import { Badge } from './ui/badge';
@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { type DataTableColumn, RemoteDataTable, createRowActionsColumn } from './ui/data-table';
 import { listHeadquarters, type Headquarter } from '../api/headquarter';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { DeleteConfirmDialog } from './ui/delete-confirm-dialog';
 
 const roleOptions = ['admin', 'manager', 'supervisor', 'user', 'agent'];
 
@@ -68,6 +69,8 @@ export function UsersView() {
   const [roleIdByName, setRoleIdByName] = useState<Record<string, number>>({});
   const [headquarters, setHeadquarters] = useState<Headquarter[]>([]);
   const [isLoadingHeadquarters, setIsLoadingHeadquarters] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<AppUser | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
 
   const loadUsers = useCallback(({ page, pageSize, search, sort }: {
     page: number;
@@ -145,6 +148,22 @@ export function UsersView() {
     return Array.from(new Set(candidateRoles));
   }, [form.role, roleIdByName]);
 
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    setIsDeletingUser(true);
+    try {
+      await deleteUser(userToDelete.id);
+      toast.success('Usuario eliminado');
+      setReloadKey((current) => current + 1);
+      setUserToDelete(null);
+    } catch (nextError) {
+      const message = nextError instanceof Error ? nextError.message : 'No se pudo eliminar el usuario';
+      toast.error(message);
+    } finally {
+      setIsDeletingUser(false);
+    }
+  };
+
   const columns = useMemo<DataTableColumn<AppUser>[]>(() => [
     {
       key: 'username',
@@ -212,21 +231,7 @@ export function UsersView() {
       },
       deleteAction: {
         label: 'Eliminar',
-        onClick: async (user) => {
-          const confirmed = window.confirm(`¿Eliminar el usuario "${user.username}"?`);
-          if (!confirmed) {
-            return;
-          }
-
-          try {
-            await deleteUser(user.id);
-            toast.success('Usuario eliminado');
-            setReloadKey((current) => current + 1);
-          } catch (nextError) {
-            const message = nextError instanceof Error ? nextError.message : 'No se pudo eliminar el usuario';
-            toast.error(message);
-          }
-        },
+        onClick: setUserToDelete,
       },
       extraActions: [
         {
@@ -454,6 +459,26 @@ export function UsersView() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmDialog
+        open={Boolean(userToDelete)}
+        onOpenChange={(open) => {
+          if (!open) setUserToDelete(null);
+        }}
+        itemLabel="Usuario"
+        itemName={userToDelete ? getUserDisplayName(userToDelete) : ''}
+        itemIcon={userToDelete && getUserAvatarUrl(userToDelete) ? (
+          <img
+            src={getUserAvatarUrl(userToDelete) ?? ''}
+            alt={getUserDisplayName(userToDelete)}
+            className="h-8 w-8 rounded-full object-cover"
+          />
+        ) : (
+          <UserRound size={24} className="text-[var(--primary)]" />
+        )}
+        loading={isDeletingUser}
+        onConfirm={confirmDeleteUser}
+      />
     </div>
   );
 }

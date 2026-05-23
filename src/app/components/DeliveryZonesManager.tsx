@@ -1,4 +1,4 @@
-import { Moon, Search, SunMedium } from 'lucide-react';
+import { MapPin, Moon, Search, SunMedium } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MapContainer, Marker, Polygon, Polyline, Popup, TileLayer, Tooltip, ZoomControl, useMap, useMapEvents } from 'react-leaflet';
 import { DivIcon, type LatLngBoundsExpression, type LatLngExpression } from 'leaflet';
@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from './ui/select';
+import { DeleteConfirmDialog } from './ui/delete-confirm-dialog';
 
 const DEFAULT_MAP_CENTER: LatLngExpression = [-34.603722, -58.381592];
 const ZONE_COLORS = ['#22c55e', '#ff5a0a', '#3b82f6', '#f59e0b', '#a855f7', '#ef4444'];
@@ -250,6 +251,7 @@ export function DeliveryZonesManager() {
   const [darkMap, setDarkMap] = useState(true);
   const [searchValue, setSearchValue] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [zoneToDelete, setZoneToDelete] = useState<DeliveryZone | null>(null);
 
   const loadZones = useCallback(async () => {
     setLoading(true);
@@ -432,7 +434,6 @@ export function DeliveryZonesManager() {
   };
 
   const handleDelete = async (zone: DeliveryZone) => {
-    if (!confirm(`¿Eliminar la zona "${zone.name}"?`)) return;
     setSaving(true);
     try {
       await deleteDeliveryZoneById(zone.id!);
@@ -444,6 +445,7 @@ export function DeliveryZonesManager() {
         setDraft([]);
       }
       toast.success('Zona eliminada');
+      setZoneToDelete(null);
     } catch {
       toast.error('No se pudo eliminar la zona');
     } finally {
@@ -456,9 +458,9 @@ export function DeliveryZonesManager() {
   const draftCount = draft.length;
 
   return (
-    <div className="h-full overflow-hidden bg-body p-4 md:p-6">
-      <div className="grid h-full gap-4 lg:grid-cols-[300px_1fr]">
-        <aside className="flex h-full flex-col rounded-2xl border border-border bg-card/70 p-3">
+    <div className="h-full overflow-y-auto bg-body p-3 sm:p-4 md:p-6 lg:overflow-hidden">
+      <div className="grid min-h-full gap-4 lg:h-full lg:grid-cols-[300px_1fr]">
+        <aside className="flex min-h-0 flex-col rounded-2xl border border-border bg-card/70 p-3 lg:h-full">
           <div className="mb-3 flex items-center gap-2">
             <Input
               value={searchValue}
@@ -539,7 +541,7 @@ export function DeliveryZonesManager() {
           </div>
         </aside>
 
-        <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card/70">
+        <section className="flex min-h-[520px] flex-col overflow-hidden rounded-2xl border border-border bg-card/70 lg:h-full lg:min-h-0">
           <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
             <p className="text-base font-semibold text-foreground">
               {showNewForm ? 'Nueva zona' : selectedZone?.name ?? 'Detalle de zona'}
@@ -571,7 +573,7 @@ export function DeliveryZonesManager() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleDelete(selectedZone)}
+                    onClick={() => setZoneToDelete(selectedZone)}
                     disabled={saving}
                     className="rounded-lg border border-red-500/60 bg-red-500/10 px-3 py-1.5 text-xs text-red-700 transition hover:bg-red-500/20 disabled:opacity-40 dark:text-red-200"
                   >
@@ -591,10 +593,6 @@ export function DeliveryZonesManager() {
               onDraftChange={setDraft}
               darkMode={darkMap}
             />
-
-            <div className="absolute right-3 top-3 z-[1000] lg:hidden">
-              <MapThemeToggle darkMap={darkMap} onChange={setDarkMap} />
-            </div>
 
             {!selectedZone && !showNewForm ? (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -717,6 +715,21 @@ export function DeliveryZonesManager() {
           </div>
         </section>
       </div>
+
+      <DeleteConfirmDialog
+        open={Boolean(zoneToDelete)}
+        onOpenChange={(open) => {
+          if (!open) setZoneToDelete(null);
+        }}
+        itemLabel="Zona"
+        itemName={zoneToDelete?.name ?? 'Zona sin nombre'}
+        itemIcon={<MapPin size={24} className="text-[var(--primary)]" />}
+        loading={saving}
+        onConfirm={async () => {
+          if (!zoneToDelete) return;
+          await handleDelete(zoneToDelete);
+        }}
+      />
     </div>
   );
 }

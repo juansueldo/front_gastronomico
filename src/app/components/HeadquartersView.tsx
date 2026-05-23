@@ -15,6 +15,7 @@ import { Button } from './ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
@@ -90,7 +91,7 @@ const normalizeHeadquarterSchedules = (headquarter: Headquarter): ScheduleDraft[
 };
 
 export function HeadquartersView() {
-  const [form, setForm] = useState<CreateHeadquarterRequest>({ name: '', phone: '', location: '' });
+  const [form, setForm] = useState<CreateHeadquarterRequest>({ name: '', phone: '', location: '', latitude: null, longitude: null });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -114,7 +115,7 @@ export function HeadquartersView() {
   const resetForm = () => {
     setError(null);
     setEditingHeadquarterId(null);
-    setForm({ name: '', phone: '', location: '' });
+    setForm({ name: '', phone: '', location: '', latitude: null, longitude: null });
   };
 
   const openCreateDialog = () => {
@@ -129,6 +130,8 @@ export function HeadquartersView() {
       name: headquarter.name,
       phone: headquarter.phone ?? '',
       location: headquarter.location ?? '',
+      latitude: Number.isFinite(Number(headquarter.latitude)) ? Number(headquarter.latitude) : null,
+      longitude: Number.isFinite(Number(headquarter.longitude)) ? Number(headquarter.longitude) : null,
     });
     setIsDialogOpen(true);
   };
@@ -202,7 +205,7 @@ export function HeadquartersView() {
     }),
   ], []);
 
-  const handleFieldChange = (field: keyof CreateHeadquarterRequest, value: string) => {
+  const handleFieldChange = (field: keyof CreateHeadquarterRequest, value: string | number | null) => {
     setForm((current) => ({
       ...current,
       [field]: value,
@@ -222,10 +225,20 @@ export function HeadquartersView() {
     setError(null);
 
     try {
+      const normalizedLatitude = Number(form.latitude);
+      const normalizedLongitude = Number(form.longitude);
+      const hasValidatedAddress = Number.isFinite(normalizedLatitude) && Number.isFinite(normalizedLongitude);
+
+      if (form.location?.trim() && !hasValidatedAddress) {
+        throw new Error('Selecciona una dirección válida desde las sugerencias.');
+      }
+
       const payload = {
         name: form.name.trim(),
         phone: form.phone?.trim() || undefined,
         location: form.location?.trim() || undefined,
+        latitude: hasValidatedAddress ? normalizedLatitude : null,
+        longitude: hasValidatedAddress ? normalizedLongitude : null,
       };
 
       if (editingHeadquarterId) {
@@ -344,24 +357,28 @@ export function HeadquartersView() {
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
-        <DialogContent className="card bg-card text-white">
-          <DialogHeader>
+        <DialogContent className="max-w-[620px] gap-0 overflow-visible p-0">
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+              <Building2 size={18} />
+            </div>
             <DialogTitle>{editingHeadquarterId ? 'Editar sede' : 'Nueva sede'}</DialogTitle>
-          </DialogHeader>
-          <HeadquartersForm
-            form={form}
-            loading={saving}
-            error={error}
-            title={editingHeadquarterId ? 'Editar sede' : 'Nueva sede'}
-            submitLabel={editingHeadquarterId ? 'Guardar cambios' : 'Crear sede'}
-            description={
-              editingHeadquarterId
+            <DialogDescription>
+              {editingHeadquarterId
                 ? 'Actualiza los datos de la sede seleccionada.'
-                : 'Crea una sede y refresca la tabla automaticamente.'
-            }
-            onChange={handleFieldChange}
-            onSubmit={handleSaveHeadquarter}
-          />
+                : 'Crea una sede y selecciona una dirección válida.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-5 py-4">
+            <HeadquartersForm
+              form={form}
+              loading={saving}
+              error={error}
+              submitLabel={editingHeadquarterId ? 'Guardar cambios' : 'Crear sede'}
+              onChange={handleFieldChange}
+              onSubmit={handleSaveHeadquarter}
+            />
+          </div>
         </DialogContent>
       </Dialog>
 

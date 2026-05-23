@@ -6,6 +6,8 @@ export interface Headquarter {
   name: string;
   phone?: string;
   location?: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   storeId?: string;
   statusId?: number;
   schedules?: HeadquarterScheduleInput[];
@@ -15,12 +17,16 @@ export interface CreateHeadquarterRequest {
   name: string;
   phone?: string;
   location?: string;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface UpdateHeadquarterRequest {
   name?: string;
   phone?: string;
   location?: string;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface HeadquarterScheduleInput {

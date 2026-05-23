@@ -37,6 +37,16 @@ interface DataTableProps<T> extends BaseDataTableProps<T> {
 
 type SortDirection = 'asc' | 'desc';
 type DataTableViewMode = 'list' | 'cards';
+const LIST_PAGE_SIZE = 10;
+const CARD_PAGE_SIZE = 12;
+
+const getInitialViewMode = (): DataTableViewMode => {
+  if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+    return 'cards';
+  }
+
+  return 'list';
+};
 
 export interface DataTableSortState {
   key: string;
@@ -270,7 +280,7 @@ function DataTableCards<T>({
   const actionsColumn = columns.find((column) => column.key === 'actions');
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       {rows.map((row, index) => {
         const titleColumn = visibleColumns[0];
         const subtitleColumn = visibleColumns[1];
@@ -279,15 +289,15 @@ function DataTableCards<T>({
         return (
           <article
             key={getRowId ? getRowId(row, index) : String(index)}
-            className="rounded-lg border border-orange-700 bg-card p-4 text-sm shadow-sm transition hover:bg-card-hover"
+            className="min-w-0 rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] p-4 text-sm shadow-sm transition hover:border-[var(--primary)]/50 hover:bg-[var(--app-panel-subtle)]"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="truncate text-base font-semibold text-foreground">
+                <div className="min-w-0 text-base font-semibold text-foreground [&_*]:min-w-0">
                   {titleColumn ? titleColumn.cell?.(row) ?? normalizeValue(titleColumn.accessor(row)) : `Registro ${index + 1}`}
                 </div>
                 {subtitleColumn ? (
-                  <div className="mt-1 truncate text-xs text-muted-foreground">
+                  <div className="mt-1 min-w-0 break-words text-xs text-muted-foreground">
                     {subtitleColumn.cell?.(row) ?? normalizeValue(subtitleColumn.accessor(row))}
                   </div>
                 ) : null}
@@ -302,9 +312,9 @@ function DataTableCards<T>({
             {detailColumns.length > 0 ? (
               <dl className="mt-4 grid gap-3">
                 {detailColumns.map((column) => (
-                  <div key={column.key} className="grid grid-cols-[minmax(92px,0.45fr)_1fr] gap-3">
+                  <div key={column.key} className="grid gap-1 sm:grid-cols-[minmax(92px,0.45fr)_1fr] sm:gap-3">
                     <dt className="text-xs font-medium text-muted-foreground">{column.header}</dt>
-                    <dd className="min-w-0 text-sm text-foreground">
+                    <dd className="min-w-0 break-words text-sm text-foreground [&_*]:min-w-0">
                       {column.cell ? column.cell(row) : normalizeValue(column.accessor(row))}
                     </dd>
                   </div>
@@ -337,27 +347,33 @@ function DataTableToolbar({
   viewMode: DataTableViewMode;
   onViewModeChange: (mode: DataTableViewMode) => void;
 }) {
+  const listPageSizeOptions = Array.from(new Set([LIST_PAGE_SIZE, 20, 50, 100, ...pageSizeOptions]))
+    .filter((option) => Number.isFinite(option) && option > 0)
+    .sort((left, right) => left - right);
+
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="relative w-full sm:max-w-xs">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
-        <Input
-          value={search}
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder={searchPlaceholder}
-          className="border border-orange-700/70 bg-card pl-9 focus:border-orange-500 focus:ring-1 focus:ring-orange-500/30"
-        />
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex w-full flex-col gap-2 sm:flex-row lg:max-w-3xl">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-muted)]" />
+          <Input
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder={searchPlaceholder}
+            className="h-11 rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] pl-9 text-[var(--app-strong)] placeholder:text-[var(--app-muted)] focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]/20"
+          />
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
-        <div className="inline-flex h-8 overflow-hidden rounded-md border border-orange-600 bg-body">
+      <div className="flex w-full flex-wrap items-center justify-between gap-3 text-xs text-[var(--app-muted)] lg:w-auto lg:justify-end">
+        <div className="inline-flex h-11 overflow-hidden rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] p-1">
           <button
             type="button"
             aria-label="Modo lista"
             title="Modo lista"
             onClick={() => onViewModeChange('list')}
-            className={`inline-flex w-9 items-center justify-center transition ${
-              viewMode === 'list' ? 'bg-orange-600 text-white' : 'text-muted-foreground hover:bg-card-hover hover:text-foreground'
+            className={`inline-flex w-10 items-center justify-center rounded-md transition ${
+              viewMode === 'list' ? 'bg-[var(--primary)] text-white shadow-sm' : 'text-[var(--app-muted)] hover:bg-[var(--app-soft)] hover:text-[var(--app-strong)]'
             }`}
           >
             <List className="h-4 w-4" />
@@ -367,25 +383,33 @@ function DataTableToolbar({
             aria-label="Modo tarjetas"
             title="Modo tarjetas"
             onClick={() => onViewModeChange('cards')}
-            className={`inline-flex w-9 items-center justify-center transition ${
-              viewMode === 'cards' ? 'bg-orange-600 text-white' : 'text-muted-foreground hover:bg-card-hover hover:text-foreground'
+            className={`inline-flex w-10 items-center justify-center rounded-md transition ${
+              viewMode === 'cards' ? 'bg-[var(--primary)] text-white shadow-sm' : 'text-[var(--app-muted)] hover:bg-[var(--app-soft)] hover:text-[var(--app-strong)]'
             }`}
           >
             <LayoutGrid className="h-4 w-4" />
           </button>
         </div>
-        <span>Filas</span>
-        <select
-          value={pageSize}
-          onChange={(event) => onPageSizeChange(Number(event.target.value))}
-          className="h-8 rounded-md border border-orange-600 bg-body px-2 text-xs text-white outline-none"
-        >
-          {pageSizeOptions.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+        {viewMode === 'list' ? (
+          <label className="ml-auto inline-flex h-11 items-center gap-2 rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] px-3 text-sm text-[var(--app-muted)] lg:ml-0">
+            <span>Filas</span>
+            <select
+              value={pageSize}
+              onChange={(event) => onPageSizeChange(Number(event.target.value))}
+              className="h-9 rounded-md border-0 bg-[var(--app-panel)] px-2 text-sm text-[var(--app-strong)] outline-none"
+            >
+              {listPageSizeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <span className="ml-auto inline-flex h-11 items-center rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] px-3 text-sm font-semibold text-[var(--app-strong)] lg:ml-0">
+            12 por página
+          </span>
+        )}
       </div>
     </div>
   );
@@ -409,21 +433,21 @@ function DataTablePagination({
   const pageEnd = total === 0 ? 0 : Math.min(page * pageSize, total);
 
   return (
-    <div className="flex flex-col gap-2 text-xs text-gray-400 sm:flex-row sm:items-center sm:justify-between">
-      <span>
+    <div className="flex flex-col gap-3 text-xs text-[var(--app-muted)] sm:flex-row sm:items-center sm:justify-between">
+      <span className="text-center sm:text-left">
         Mostrando {pageStart}-{pageEnd} de {total}
       </span>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-center gap-2">
         <Button
           size="sm"
           variant="outline"
           onClick={() => onPageChange(Math.max(1, page - 1))}
           disabled={loading || page <= 1}
-          className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
+          className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
         >
           Anterior
         </Button>
-        <span>
+        <span className="min-w-[86px] text-center">
           Pagina {page} de {totalPages}
         </span>
         <Button
@@ -431,7 +455,7 @@ function DataTablePagination({
           variant="outline"
           onClick={() => onPageChange(Math.min(totalPages, page + 1))}
           disabled={loading || page >= totalPages}
-          className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
+          className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
         >
           Siguiente
         </Button>
@@ -449,11 +473,12 @@ export function DataTable<T>({
   pageSizeOptions = [10, 25, 50],
   defaultPageSize = 10,
 }: DataTableProps<T>) {
+  const initialViewMode = useMemo(getInitialViewMode, []);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(defaultPageSize);
+  const [pageSize, setPageSize] = useState(initialViewMode === 'cards' ? CARD_PAGE_SIZE : (defaultPageSize || LIST_PAGE_SIZE));
   const [sort, setSort] = useState<DataTableSortState | null>(null);
-  const [viewMode, setViewMode] = useState<DataTableViewMode>('list');
+  const [viewMode, setViewMode] = useState<DataTableViewMode>(initialViewMode);
 
   const searchableColumns = useMemo(
     () => columns.filter((column) => typeof column.accessor === 'function'),
@@ -528,7 +553,7 @@ export function DataTable<T>({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="datatable-surface">
       <DataTableToolbar
         search={search}
         onSearchChange={(value) => {
@@ -543,20 +568,26 @@ export function DataTable<T>({
         }}
         pageSizeOptions={pageSizeOptions}
         viewMode={viewMode}
-        onViewModeChange={setViewMode}
+        onViewModeChange={(mode) => {
+          setViewMode(mode);
+          setPageSize(mode === 'cards' ? CARD_PAGE_SIZE : LIST_PAGE_SIZE);
+          setPage(1);
+        }}
       />
 
       {sortedData.length === 0 ? (
-        <div className="rounded-lg border border-orange-700 bg-card p-4 text-sm text-gray-400">
+        <div className="rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] p-4 text-sm text-[var(--app-muted)]">
           {emptyMessage}
         </div>
       ) : (
         <>
           {viewMode === 'list' ? (
-            <Table>
-              <DataTableHeader columns={columns} sort={sort} onSort={handleSort} />
-              <DataTableRows rows={paginatedData} columns={columns} getRowId={getRowId} />
-            </Table>
+            <div className="w-full overflow-x-auto rounded-lg">
+              <Table className="min-w-[760px]">
+                <DataTableHeader columns={columns} sort={sort} onSort={handleSort} />
+                <DataTableRows rows={paginatedData} columns={columns} getRowId={getRowId} />
+              </Table>
+            </div>
           ) : (
             <DataTableCards rows={paginatedData} columns={columns} getRowId={getRowId} />
           )}
@@ -584,15 +615,16 @@ export function RemoteDataTable<T, TFilters = Record<string, unknown>>({
   filters,
   reloadKey,
 }: RemoteDataTableProps<T, TFilters>) {
+  const initialViewMode = useMemo(getInitialViewMode, []);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(defaultPageSize);
+  const [pageSize, setPageSize] = useState(initialViewMode === 'cards' ? CARD_PAGE_SIZE : (defaultPageSize || LIST_PAGE_SIZE));
   const [sort, setSort] = useState<DataTableSortState | null>(null);
   const [rows, setRows] = useState<T[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<DataTableViewMode>('list');
+  const [viewMode, setViewMode] = useState<DataTableViewMode>(initialViewMode);
   const debouncedSearch = useDebouncedValue(search, 400);
 
   useEffect(() => {
@@ -662,7 +694,7 @@ export function RemoteDataTable<T, TFilters = Record<string, unknown>>({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="datatable-surface">
       <DataTableToolbar
         search={search}
         onSearchChange={setSearch}
@@ -671,7 +703,11 @@ export function RemoteDataTable<T, TFilters = Record<string, unknown>>({
         onPageSizeChange={setPageSize}
         pageSizeOptions={pageSizeOptions}
         viewMode={viewMode}
-        onViewModeChange={setViewMode}
+        onViewModeChange={(mode) => {
+          setViewMode(mode);
+          setPageSize(mode === 'cards' ? CARD_PAGE_SIZE : LIST_PAGE_SIZE);
+          setPage(1);
+        }}
       />
 
       {errorMessage ? (
@@ -684,23 +720,25 @@ export function RemoteDataTable<T, TFilters = Record<string, unknown>>({
       ) : null}
 
       {loading && rows.length === 0 ? (
-        <div className="rounded-lg border border-orange-700 bg-card p-6 text-sm text-gray-400">
+        <div className="rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] p-6 text-sm text-[var(--app-muted)]">
           <div className="flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />
             <span>Cargando datos...</span>
           </div>
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-lg border border-orange-700 bg-card p-4 text-sm text-gray-400">
+        <div className="rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] p-4 text-sm text-[var(--app-muted)]">
           {emptyMessage}
         </div>
       ) : (
         <>
           {viewMode === 'list' ? (
-            <Table>
-              <DataTableHeader columns={columns} sort={sort} onSort={handleSort} />
-              <DataTableRows rows={rows} columns={columns} getRowId={getRowId} />
-            </Table>
+            <div className="w-full overflow-x-auto rounded-lg">
+              <Table className="min-w-[760px]">
+                <DataTableHeader columns={columns} sort={sort} onSort={handleSort} />
+                <DataTableRows rows={rows} columns={columns} getRowId={getRowId} />
+              </Table>
+            </div>
           ) : (
             <DataTableCards rows={rows} columns={columns} getRowId={getRowId} />
           )}
