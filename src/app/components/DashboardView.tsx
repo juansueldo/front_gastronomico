@@ -18,13 +18,14 @@ import {
   Utensils,
 } from 'lucide-react';
 import { AppLayout } from './AppLayout';
-import { fetchProducts } from '../api/catalog';
-import { fetchActiveOrders } from '../api/orders';
-import { fetchTables } from '../api/tables';
-import { listHeadquarters } from '../api/headquarter';
-import { fetchCashMovements, type CashMovement } from '../api/cash';
-import { fetchDeliveryZones, type DeliveryZone } from '../api/delivery-zone';
-import { getLoggedUser } from '../authStorage';
+import { fetchProducts } from '../features/products';
+import { fetchActiveOrders } from '../features/orders/services/orders.service';
+import { fetchTables } from '../features/tables';
+import { listHeadquarters } from '../features/headquarters';
+import { fetchCashMovements, type CashMovement } from '../features/cash-register';
+import { fetchDeliveryZones, type DeliveryZone } from '../features/delivery-zones';
+import { getLoggedUser } from '../core/storage/authStorage';
+import { getStorageItem } from '../shared/storage';
 
 interface DashboardMetrics {
   activeOrders: number;
@@ -116,12 +117,8 @@ const getLoggedUserHeadquarterId = (): number | null => {
 };
 
 const getStoredHeadquarterId = (): number | null => {
-  try {
-    const parsedHeadquarterId = Number(localStorage.getItem(DASHBOARD_HEADQUARTER_STORAGE_KEY));
-    return Number.isInteger(parsedHeadquarterId) && parsedHeadquarterId > 0 ? parsedHeadquarterId : null;
-  } catch {
-    return null;
-  }
+  const parsedHeadquarterId = Number(getStorageItem(DASHBOARD_HEADQUARTER_STORAGE_KEY));
+  return Number.isInteger(parsedHeadquarterId) && parsedHeadquarterId > 0 ? parsedHeadquarterId : null;
 };
 
 const resolveDashboardHeadquarterId = (): number | null => getLoggedUserHeadquarterId() ?? getStoredHeadquarterId();

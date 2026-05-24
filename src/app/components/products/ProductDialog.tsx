@@ -1,22 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Badge } from '../ui/badge';
-import { Button } from '../ui/button';
-import { Checkbox } from '../ui/checkbox';
+import { Badge } from '../../shared/ui/components/badge';
+import { Button } from '../../shared/ui/components/button';
+import { Checkbox } from '../../shared/ui/components/checkbox';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from '../ui/dialog';
+} from '../../shared/ui/components/dialog';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuTrigger,
-} from '../ui/dropdown-menu';
-import { Input } from '../ui/input';
-import type { ProductCategory } from '../../catalogApi';
+} from '../../shared/ui/components/dropdown-menu';
+import { Input } from '../../shared/ui/components/input';
+import type { ProductCategory } from '../../features/products';
 
 type CreateStep = 'basic' | 'image' | 'categories';
 

@@ -1,10 +1,10 @@
 import { CalendarDays, CreditCard, ExternalLink, Store } from 'lucide-react';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Toaster } from './ui/sonner';
-import { useIntegrationsViewModel } from '../hooks/useIntegrationsViewModel';
-import type { OAuthProviderId } from '../api';
+import { Badge } from '../shared/ui/components/badge';
+import { Button } from '../shared/ui/components/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../shared/ui/components/card';
+import { Toaster } from '../shared/ui/components/sonner';
+import { useIntegrationsViewModel } from '../features/integrations/hooks/useIntegrationsViewModel';
+import type { OAuthProviderId } from '../features/integrations/services/integrations.service';
 
 const providerIconMap: Record<OAuthProviderId, typeof CreditCard> = {
   mercadopago: CreditCard,

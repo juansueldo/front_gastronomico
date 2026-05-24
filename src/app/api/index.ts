@@ -4,11 +4,11 @@
  */
 
 // Cliente base
-export { apiClient, ApiClient } from './client';
+export { apiClient, ApiClient } from '../core/http/client';
 
 // Errores y tipos
-export { ApiError, assertOk, isApiError } from './errors';
-export type { ApiResponse, PaginatedResponse, RequestConfig } from './types';
+export { ApiError, assertOk, isApiError } from '../core/http/errors';
+export type { ApiResponse, PaginatedResponse, RequestConfig } from '../core/http/types';
 
 // Auth API
 export * from './auth';
@@ -48,6 +48,9 @@ export * from './storefront';
 
 // Contacts API
 export * from './contacts';
+
+// Customers API
+export * from './customer';
 
 // Notifications API
 export * from './notifications';

@@ -12,17 +12,17 @@ import {
   type DeliveryZonePoint,
   updateDeliveryZone,
   updateDeliveryZoneStatus,
-} from '../api';
-import { listHeadquarters, type Headquarter } from '../api/headquarter';
-import { Input } from './ui/input';
+} from '../features/delivery-zones';
+import { listHeadquarters, type Headquarter } from '../features/headquarters';
+import { Input } from '../shared/ui/components/input';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from './ui/select';
-import { DeleteConfirmDialog } from './ui/delete-confirm-dialog';
+} from '../shared/ui/components/select';
+import { DeleteConfirmDialog } from '../shared/ui/components/delete-confirm-dialog';
 
 const DEFAULT_MAP_CENTER: LatLngExpression = [-34.603722, -58.381592];
 const ZONE_COLORS = ['#22c55e', '#ff5a0a', '#3b82f6', '#f59e0b', '#a855f7', '#ef4444'];

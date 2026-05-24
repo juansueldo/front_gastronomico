@@ -1,9 +1,13 @@
-/**
- * API de Slugs - Store slugs endpoints
- */
+import { getAuthSession, getLoggedUser } from '../core/storage/authStorage';
 
-import { apiClient } from './client';
-import { API_VERSION } from './types';
+type SlugImportMeta = ImportMeta & {
+  env: {
+    VITE_API_URL?: string;
+    VITE_SLUG_LIST_PATH?: string;
+    VITE_SLUG_CREATE_PATH?: string;
+    VITE_SLUG_UPDATE_PATH?: string;
+  };
+};
 
 export interface StoreSlug {
   id: string;
@@ -13,45 +17,171 @@ export interface StoreSlug {
   createdAt?: string;
 }
 
-export interface CreateSlugRequest {
+interface BackendSlug {
+  id?: string | number;
+  customer_id?: string | number;
+  customerId?: string | number;
+  slug_url?: string;
+  slugUrl?: string;
+  status_id?: string | number;
+  statusId?: string | number;
+  created_at?: string;
+  createdAt?: string;
+}
+
+const API_URL = (import.meta as SlugImportMeta).env?.VITE_API_URL;
+const SLUG_LIST_PATH = (import.meta as SlugImportMeta).env?.VITE_SLUG_LIST_PATH ?? '/v1/slug';
+const SLUG_CREATE_PATH = (import.meta as SlugImportMeta).env?.VITE_SLUG_CREATE_PATH ?? '/v1/slug/create';
+const SLUG_UPDATE_PATH = (import.meta as SlugImportMeta).env?.VITE_SLUG_UPDATE_PATH ?? '/v1/slug/update/:id';
+
+const ensureApiUrl = () => {
+  if (!API_URL) {
+    throw new Error('VITE_API_URL no esta configurada');
+  }
+
+  return API_URL;
+};
+
+const getAuthToken = () => getAuthSession()?.user.token;
+
+const buildAuthHeaders = () => {
+  const authToken = getAuthToken();
+
+  if (!authToken) {
+    throw new Error('Tu sesion expiro. Inicia sesion nuevamente');
+  }
+
+  return {
+    Authorization: `Bearer ${authToken}`,
+  };
+};
+
+const getSessionCustomerId = () => {
+  const loggedUser = getLoggedUser() as {
+    customerId?: number;
+    customer_id?: number;
+    id?: number;
+  } | null;
+
+  return loggedUser?.customerId ?? loggedUser?.customer_id ?? loggedUser?.id;
+};
+
+const normalizeSlug = (item: BackendSlug): StoreSlug => {
+  const customerId = Number(item.customer_id ?? item.customerId ?? 0);
+  const statusId = Number(item.status_id ?? item.statusId ?? 1);
+
+  return {
+    id: String(item.id ?? `slug-${Date.now()}-${Math.random()}`),
+    customerId: Number.isFinite(customerId) ? customerId : 0,
+    slugUrl: item.slug_url ?? item.slugUrl ?? '',
+    statusId: Number.isFinite(statusId) ? statusId : 1,
+    createdAt: item.created_at ?? item.createdAt,
+  };
+};
+
+export const fetchCustomerSlugs = async (customerId?: number): Promise<StoreSlug[]> => {
+  const baseUrl = ensureApiUrl();
+  const response = await fetch(`${baseUrl}${SLUG_LIST_PATH}`, {
+    method: 'GET',
+    headers: buildAuthHeaders(),
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(data?.error || data?.detail || 'No se pudieron obtener los slugs');
+  }
+
+  const rows = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.rows)
+      ? data.rows
+      : Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.slugs)
+          ? data.slugs
+          : [];
+
+  return rows.map((item) => normalizeSlug(item as BackendSlug));
+};
+
+interface CreateSlugInput {
   slugUrl: string;
   statusId?: number;
   customerId?: number;
-  customer_id?: number;
 }
 
-/**
- * Obtiene los slugs de un cliente
- */
-export async function fetchCustomerSlugs(customerId?: number): Promise<StoreSlug[]> {
-  const params = customerId ? { customerId: String(customerId) } : undefined;
-  const data = await apiClient.get(`${API_VERSION}/slug`, {
-    params,
-    config: { cache: 'long' },
+export const createCustomerSlug = async (input: CreateSlugInput) => {
+  const resolvedCustomerId = input.customerId ?? getSessionCustomerId();
+
+  if (!resolvedCustomerId || resolvedCustomerId <= 0) {
+    throw new Error('No se encontro customer_id del usuario logueado');
+  }
+
+  const baseUrl = ensureApiUrl();
+  const response = await fetch(`${baseUrl}${SLUG_CREATE_PATH}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildAuthHeaders(),
+    },
+    body: JSON.stringify({
+      customer_id: resolvedCustomerId,
+      slug_url: input.slugUrl,
+      status_id: input.statusId ?? 1,
+    }),
   });
-  return Array.isArray(data) ? data : [];
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(data?.error || data?.detail || 'No se pudo crear el slug');
+  }
+
+  return normalizeSlug(data as BackendSlug);
+};
+
+interface UpdateSlugInput {
+  slugId: string;
+  slugUrl: string;
+  statusId?: number;
+  customerId?: number;
 }
 
-/**
- * Crea un nuevo slug
- */
-export async function createCustomerSlug(slugData: CreateSlugRequest): Promise<StoreSlug> {
-  return apiClient.post(`${API_VERSION}/slug/create`, slugData);
-}
+const resolveSlugUpdatePath = (slugId: string) => (
+  SLUG_UPDATE_PATH.includes(':id')
+    ? SLUG_UPDATE_PATH.replace(':id', encodeURIComponent(slugId))
+    : `${SLUG_UPDATE_PATH.replace(/\/$/, '')}/${encodeURIComponent(slugId)}`
+);
 
-/**
- * Obtiene un slug específico
- */
-export async function getSlug(slugId: string): Promise<StoreSlug> {
-  return apiClient.get(`${API_VERSION}/slug/${slugId}`);
-}
+export const updateCustomerSlug = async (input: UpdateSlugInput) => {
+  const resolvedCustomerId = input.customerId ?? getSessionCustomerId();
 
-/**
- * Actualiza un slug
- */
-export async function updateSlug(slugId: string, data: CreateSlugRequest): Promise<any> {
-  return apiClient.post(`${API_VERSION}/slug/update/${slugId}`, {
-    id: slugId,
-    ...data,
+  if (!resolvedCustomerId || resolvedCustomerId <= 0) {
+    throw new Error('No se encontro customer_id del usuario logueado');
+  }
+
+  const baseUrl = ensureApiUrl();
+  const path = resolveSlugUpdatePath(input.slugId);
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildAuthHeaders(),
+    },
+    body: JSON.stringify({
+      id: input.slugId,
+      customer_id: resolvedCustomerId,
+      slug_url: input.slugUrl,
+      status_id: input.statusId ?? 1,
+    }),
   });
-}
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(data?.error || data?.detail || 'No se pudo actualizar el slug');
+  }
+
+  return normalizeSlug(data as BackendSlug);
+};

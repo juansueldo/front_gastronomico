@@ -1,20 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
+import { Badge } from '../shared/ui/components/badge';
+import { Button } from '../shared/ui/components/button';
+import { Input } from '../shared/ui/components/input';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from './ui/dialog';
+} from '../shared/ui/components/dialog';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from './ui/select';
+} from '../shared/ui/components/select';
 import { toast } from 'sonner';
 import {
   Armchair,
@@ -29,21 +29,26 @@ import {
   Users,
   UserRoundPlus,
 } from 'lucide-react';
+import { ApiError } from '../core/http/errors';
 import {
-  ApiError,
-  createCashMovement,
   createTable,
   deleteTable as deleteBackendTable,
-  fetchProducts,
   fetchTables,
-  type PaymentMethod,
-  type ProductItem,
-  type TableItem as ApiTableItem,
   updateTable as updateBackendTable,
   updateTableStatus as updateBackendTableStatus,
-} from '../api';
-import { listHeadquarters, type Headquarter } from '../api/headquarter';
-import { getLoggedUser } from '../authStorage';
+  type TableItem as ApiTableItem,
+} from '../features/tables';
+import {
+  fetchProducts,
+  type ProductItem,
+} from '../features/products';
+import {
+  createCashMovement,
+  type PaymentMethod,
+} from '../features/cash-register';
+import { listHeadquarters, type Headquarter } from '../features/headquarters';
+import { getLoggedUser } from '../core/storage/authStorage';
+import { getStorageItem, removeStorageItem, setStorageItem } from '../shared/storage';
 
 interface TableItem {
   id: string;
@@ -118,13 +123,7 @@ const ACTIVE_TABLE_STATUS_ID = 1;
 const INACTIVE_TABLE_STATUS_ID = 2;
 const TABLES_HEADQUARTER_STORAGE_KEY = 'cash:selected-headquarter-id';
 
-const getStoredHeadquarterId = () => {
-  try {
-    return localStorage.getItem(TABLES_HEADQUARTER_STORAGE_KEY) ?? '';
-  } catch {
-    return '';
-  }
-};
+const getStoredHeadquarterId = () => getStorageItem(TABLES_HEADQUARTER_STORAGE_KEY);
 
 const getLoggedUserHeadquarterId = () => {
   const parsedHeadquarterId = Number(getLoggedUser()?.headquarterId);
@@ -328,14 +327,10 @@ export function TablesView() {
   }, []);
 
   useEffect(() => {
-    try {
-      if (selectedHeadquarterId) {
-        localStorage.setItem(TABLES_HEADQUARTER_STORAGE_KEY, selectedHeadquarterId);
-      } else {
-        localStorage.removeItem(TABLES_HEADQUARTER_STORAGE_KEY);
-      }
-    } catch {
-      // noop
+    if (selectedHeadquarterId) {
+      setStorageItem(TABLES_HEADQUARTER_STORAGE_KEY, selectedHeadquarterId);
+    } else {
+      removeStorageItem(TABLES_HEADQUARTER_STORAGE_KEY);
     }
   }, [selectedHeadquarterId]);
 

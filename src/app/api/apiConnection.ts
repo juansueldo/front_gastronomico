@@ -2,7 +2,7 @@
  * apiConnection.ts - Cliente centralizado para peticiones HTTP a la API
  */
 
-import { API_VERSION } from './types';
+import { API_VERSION } from '../core/http/types';
 
 const BASE_URL = import.meta.env.VITE_API_URL || '';
 

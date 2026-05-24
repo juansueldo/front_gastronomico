@@ -3,8 +3,8 @@
  */
 
 import { endpoints } from './endpoints';
-import type { ApiResponse } from './types';
-import type { AuthUser } from '../authStorage';
+import type { ApiResponse } from '../core/http/types';
+import type { AuthUser } from '../core/storage/authStorage';
 
 export interface LoginRequest {
   username: string;

@@ -1,13 +1,14 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Megaphone, Plus, Send } from 'lucide-react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Textarea } from './ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Badge } from './ui/badge';
+import { Button } from '../shared/ui/components/button';
+import { Input } from '../shared/ui/components/input';
+import { Label } from '../shared/ui/components/label';
+import { Textarea } from '../shared/ui/components/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../shared/ui/components/select';
+import { Badge } from '../shared/ui/components/badge';
 import { toast } from 'sonner';
-import { Toaster } from './ui/sonner';
+import { Toaster } from '../shared/ui/components/sonner';
+import { getJsonStorageItem, setJsonStorageItem } from '../shared/storage';
 
 interface Campaign {
   id: string;
@@ -26,21 +27,12 @@ export function CampaignsView() {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    const stored = localStorage.getItem(CAMPAIGNS_STORAGE_KEY);
-    if (!stored) {
-      return;
-    }
-
-    try {
-      setCampaigns(JSON.parse(stored));
-    } catch {
-      toast.error('No se pudieron cargar las campañas');
-    }
+    setCampaigns(getJsonStorageItem(CAMPAIGNS_STORAGE_KEY, []));
   }, []);
 
   const persistCampaigns = (updatedCampaigns: Campaign[]) => {
     setCampaigns(updatedCampaigns);
-    localStorage.setItem(CAMPAIGNS_STORAGE_KEY, JSON.stringify(updatedCampaigns));
+    setJsonStorageItem(CAMPAIGNS_STORAGE_KEY, updatedCampaigns);
   };
 
   const handleCreateCampaign = (event: FormEvent<HTMLFormElement>) => {

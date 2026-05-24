@@ -1,9 +1,11 @@
-// Centraliza los endpoints de la API
-// Puedes importar y usar estas funciones en tus hooks o vistas
+/**
+ * @deprecated Capa legacy temporal.
+ * Usar servicios por dominio en `src/app/features/<feature>/services`.
+ */
 
-import { apiClient } from './client';
-import { isApiError } from './errors';
-import { API_VERSION } from './types';
+import { apiClient } from '../core/http/client';
+import { isApiError } from '../core/http/errors';
+import { API_VERSION } from '../core/http/types';
 
 type Payload = Record<string, unknown>;
 type QueryParams = Record<string, string | number | boolean>;

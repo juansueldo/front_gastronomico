@@ -1,20 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
+import { Badge } from '../shared/ui/components/badge';
+import { Button } from '../shared/ui/components/button';
+import { Input } from '../shared/ui/components/input';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from './ui/dialog';
+} from '../shared/ui/components/dialog';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from './ui/select';
+} from '../shared/ui/components/select';
 import { toast } from 'sonner';
 import {
   ArrowUpDown,
@@ -26,21 +26,30 @@ import {
 } from 'lucide-react';
 import {
   ApiError,
+} from '../core/http/errors';
+import {
   createCashMovement,
+  type PaymentMethod,
+} from '../features/cash-register';
+import {
   deleteDeliveryZone,
+  getDeliveryZone,
+  type DeliveryZonePoint,
+  upsertDeliveryZone,
+} from '../features/delivery-zones';
+import {
   fetchActiveOrders as fetchBackendActiveOrders,
   finalizeOrder,
   getAvailableOrderStatusTargets,
-  getDeliveryZone,
   getOrderStatusLabel,
-  type DeliveryZonePoint,
-  type PaymentMethod,
+  transitionOrderStatus,
+} from '../features/orders/services/orders.service';
+import {
+  fetchProductCategories,
+  fetchProducts,
   type ProductCategory,
   type ProductItem,
-  transitionOrderStatus,
-  upsertDeliveryZone,
-} from '../api';
-import { endpoints } from '../api/endpoints';
+} from '../features/products';
 
 // ← NUEVO: importar el dialog de creación
 import { CreateOrderDialog } from './orders/CreateOrderDialog';
@@ -246,8 +255,8 @@ export function ActiveOrdersView() {
       await loadOrders();
 
       const [productsResult, categoriesResult] = await Promise.allSettled([
-        endpoints.fetchProducts(),
-        endpoints.fetchCategories(),
+        fetchProducts(),
+        fetchProductCategories(),
       ]);
 
       if (productsResult.status === 'fulfilled') {

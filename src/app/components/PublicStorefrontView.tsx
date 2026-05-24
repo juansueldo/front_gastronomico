@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import { Beer, Bike, CheckCircle2, ChevronLeft, Clock3, Cloud, Coffee, Instagram, Mail, MapPin, MessageCircle, Phone, Pizza, Search, ShoppingBag, Store, Tag, Trash2 } from 'lucide-react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Dialog, DialogContent } from './ui/dialog';
+import { Button } from '../shared/ui/components/button';
+import { Input } from '../shared/ui/components/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../shared/ui/components/select';
+import { Dialog, DialogContent } from '../shared/ui/components/dialog';
 import { DeliveryZonesOverviewMap } from './DeliveryZonesOverviewMap';
 import { toast } from 'sonner';
 import {
@@ -17,8 +17,13 @@ import {
   type PublicStoreHeadquarter,
   type PublicStoreProduct,
   type PublicStoreSchedule,
-} from '../storefrontApi';
-import { isApiError } from '../api/errors';
+} from '../features/storefront/services/storefront.service';
+import { isApiError } from '../core/http/errors';
+import {
+  geocodeAddressWithNominatim,
+  searchAddressSuggestions,
+  type AddressSuggestion,
+} from '../shared/services/geocoding.service';
 
 type StoreLoadState = 'idle' | 'loading' | 'ready' | 'not-found' | 'error';
 type CheckoutStep = 'menu' | 'checkout' | 'success';
@@ -43,13 +48,6 @@ type OrderSuccessSummary = {
   address?: string;
   pickupHeadquarterName?: string;
 };
-type AddressSuggestion = {
-  id: string;
-  label: string;
-  latitude: number;
-  longitude: number;
-};
-
 const currencyFormatter = new Intl.NumberFormat('es-AR', {
   style: 'currency',
   currency: 'ARS',
@@ -59,7 +57,6 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
 const PRODUCT_BATCH_SIZE = 12;
 const DAY_OF_WEEK_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
 const DAY_OF_WEEK_SHORT_LABELS = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'] as const;
-const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search';
 const CHECKOUT_INPUT_CLASS_NAME = 'h-11 rounded-lg border border-[#e3d7cc] px-3 !bg-white !text-[#1f2937] placeholder:!text-[#8a8f98] focus:!bg-white focus-visible:border-[#ff5a2f] focus-visible:ring-2 focus-visible:ring-[#ff5a2f]/20';
 
 const isImageIconValue = (value: string) => (
@@ -110,53 +107,15 @@ const formatWindowLabel = (open: Date, close: Date) => {
   return `${openLabel} a ${closeLabel}`;
 };
 
-const searchAddressSuggestions = async (query: string, signal?: AbortSignal): Promise<AddressSuggestion[]> => {
-  const trimmedQuery = query.trim();
-  if (!trimmedQuery || trimmedQuery.length < 4) {
-    return [];
-  }
-
-  const response = await fetch(
-    `${NOMINATIM_SEARCH_URL}?format=json&addressdetails=1&limit=5&countrycodes=ar&q=${encodeURIComponent(trimmedQuery)}`,
-    { method: 'GET', signal },
-  );
-  if (!response.ok) {
-    return [];
-  }
-
-  const payload = await response.json().catch(() => []);
-  if (!Array.isArray(payload)) {
-    return [];
-  }
-
-  return payload
-    .map((item: any, index: number) => {
-      const latitude = Number(item?.lat);
-      const longitude = Number(item?.lon);
-      const label = String(item?.display_name ?? '').trim();
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !label) {
-        return null;
-      }
-      return {
-        id: String(item?.place_id ?? `${label}-${index}`),
-        label,
-        latitude,
-        longitude,
-      };
-    })
-    .filter((item: AddressSuggestion | null): item is AddressSuggestion => item !== null);
-};
-
 const resolveAddressCoordinates = async (query: string): Promise<{ latitude: number; longitude: number } | null> => {
-  const suggestions = await searchAddressSuggestions(query);
-  if (suggestions.length === 0) {
+  const geocodedAddress = await geocodeAddressWithNominatim(query);
+  if (!geocodedAddress) {
     return null;
   }
 
-  const firstSuggestion = suggestions[0];
   return {
-    latitude: firstSuggestion.latitude,
-    longitude: firstSuggestion.longitude,
+    latitude: geocodedAddress.latitude,
+    longitude: geocodedAddress.longitude,
   };
 };
 

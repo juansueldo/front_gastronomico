@@ -1,6 +1,6 @@
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Button } from '../../shared/ui/components/button';
+import { Input } from '../../shared/ui/components/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../shared/ui/components/select';
 
 export interface RecipeIngredientRowValue {
   id: string;

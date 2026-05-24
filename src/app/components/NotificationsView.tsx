@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bell, CheckCheck } from 'lucide-react';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
+import { Button } from '../shared/ui/components/button';
+import { Badge } from '../shared/ui/components/badge';
 import { toast } from 'sonner';
-import { Toaster } from './ui/sonner';
+import { Toaster } from '../shared/ui/components/sonner';
 import { APP_NOTIFICATION_EVENT, type AppNotificationDetail } from '../pushNotifications';
-import { listNotifications, markAllNotificationsAsRead, markNotificationAsRead } from '../api';
+import { listNotifications, markAllNotificationsAsRead, markNotificationAsRead } from '../features/notifications';
 
 const NOTIFICATIONS_CHANGED_EVENT = 'app:notifications-changed';
 

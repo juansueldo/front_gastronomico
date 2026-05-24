@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
+import { Badge } from '../shared/ui/components/badge';
+import { Button } from '../shared/ui/components/button';
+import { Input } from '../shared/ui/components/input';
 import {
   Dialog,
   DialogContent,
@@ -9,7 +9,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from './ui/dialog';
+} from '../shared/ui/components/dialog';
 import { toast } from 'sonner';
 import {
   // Food & Drink
@@ -27,9 +27,9 @@ import {
   listProductCategories,
   type ProductCategory,
   updateProductCategory,
-} from '../catalogApi';
-import { type DataTableColumn, RemoteDataTable, createRowActionsColumn } from './ui/data-table';
-import { DeleteConfirmDialog } from './ui/delete-confirm-dialog';
+} from '../features/categories/services/categories.service';
+import { type DataTableColumn, RemoteDataTable, createRowActionsColumn } from '../shared/ui/components/data-table';
+import { DeleteConfirmDialog } from '../shared/ui/components/delete-confirm-dialog';
 
 // Mapa nombre → componente Lucide
 const ICON_MAP: Record<string, LucideIcon> = {

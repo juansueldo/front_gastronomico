@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import {Dialog, DialogContent, DialogHeader, DialogTitle} from './ui/dialog';
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from './ui/select';
+import { Badge } from '../shared/ui/components/badge';
+import { Button } from '../shared/ui/components/button';
+import { Input } from '../shared/ui/components/input';
+import {Dialog, DialogContent, DialogHeader, DialogTitle} from '../shared/ui/components/dialog';
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '../shared/ui/components/select';
 import { toast } from 'sonner';
-import { ApiError, closeDailyCashMovements, createCashMovement, fetchCashMovements, getCashMovementsByDate, listCashMovements, type CashMovement, type PaymentMethod } from '../api';
-import { listHeadquarters, type Headquarter } from '../api/headquarter';
-import { getLoggedUser } from '../authStorage';
+import { ApiError } from '../core/http/errors';
+import { closeDailyCashMovements, createCashMovement, fetchCashMovements, getCashMovementsByDate, listCashMovements, type CashMovement, type PaymentMethod } from '../features/cash-register';
+import { listHeadquarters, type Headquarter } from '../features/headquarters';
+import { getLoggedUser } from '../core/storage/authStorage';
+import { getStorageItem, removeStorageItem, setStorageItem } from '../shared/storage';
 
 const currencyFormatter = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -16,13 +18,7 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
 });
 const CASH_HEADQUARTER_STORAGE_KEY = 'cash:selected-headquarter-id';
 
-const getStoredHeadquarterId = () => {
-  try {
-    return localStorage.getItem(CASH_HEADQUARTER_STORAGE_KEY) ?? '';
-  } catch {
-    return '';
-  }
-};
+const getStoredHeadquarterId = () => getStorageItem(CASH_HEADQUARTER_STORAGE_KEY);
 
 const getLoggedUserHeadquarterId = () => {
   const parsedHeadquarterId = Number(getLoggedUser()?.headquarterId);
@@ -229,14 +225,10 @@ export function CashRegisterView() {
   }, []);
 
   useEffect(() => {
-    try {
-      if (selectedHeadquarterId) {
-        localStorage.setItem(CASH_HEADQUARTER_STORAGE_KEY, selectedHeadquarterId);
-      } else {
-        localStorage.removeItem(CASH_HEADQUARTER_STORAGE_KEY);
-      }
-    } catch {
-      // noop
+    if (selectedHeadquarterId) {
+      setStorageItem(CASH_HEADQUARTER_STORAGE_KEY, selectedHeadquarterId);
+    } else {
+      removeStorageItem(CASH_HEADQUARTER_STORAGE_KEY);
     }
   }, [selectedHeadquarterId]);
 

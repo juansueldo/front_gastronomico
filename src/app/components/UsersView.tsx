@@ -1,21 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Mail, Shield, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
-import { createUser, deleteUser, listUsers, updateUser, type AppUser, type CreateUserRequest, type UpdateUserRequest } from '../api/user';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
+import { createUser, deleteUser, listUsers, updateUser, type AppUser, type CreateUserRequest, type UpdateUserRequest } from '../features/users';
+import { Badge } from '../shared/ui/components/badge';
+import { Button } from '../shared/ui/components/button';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from './ui/dialog';
-import { Input } from './ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { type DataTableColumn, RemoteDataTable, createRowActionsColumn } from './ui/data-table';
-import { listHeadquarters, type Headquarter } from '../api/headquarter';
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
-import { DeleteConfirmDialog } from './ui/delete-confirm-dialog';
+} from '../shared/ui/components/dialog';
+import { Input } from '../shared/ui/components/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../shared/ui/components/select';
+import { type DataTableColumn, RemoteDataTable, createRowActionsColumn } from '../shared/ui/components/data-table';
+import { listHeadquarters, type Headquarter } from '../features/headquarters';
+import { Avatar, AvatarFallback, AvatarImage } from '../shared/ui/components/avatar';
+import { DeleteConfirmDialog } from '../shared/ui/components/delete-confirm-dialog';
 
 const roleOptions = ['admin', 'manager', 'supervisor', 'user', 'agent'];
 

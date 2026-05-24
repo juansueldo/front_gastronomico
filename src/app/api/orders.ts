@@ -2,14 +2,14 @@
  * API de Ordenes/Pedidos - Orders endpoints
  */
 
-import { getLoggedUser } from '../authStorage';
+import { getLoggedUser } from '../core/storage/authStorage';
 import {
   getActiveOrders as getStoredActiveOrders,
   removeActiveOrder as removeStoredActiveOrder,
   updateActiveOrder as updateStoredActiveOrder,
-} from '../activeOrdersStorage';
+} from '../core/storage/activeOrdersStorage';
 import { endpoints } from './endpoints';
-import { ApiError } from './errors';
+import { ApiError } from '../core/http/errors';
 import { listHeadquarters } from './headquarter';
 
 export type BackendOrderStatus = 'pending' | 'processing' | 'ready' | 'completed' | 'cancelled';

@@ -16,6 +16,7 @@ import {
   LayoutGrid,
   LogOut,
   Menu,
+  MessageSquareText,
   Moon,
   MoreHorizontal,
   Search,
@@ -30,8 +31,8 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Toaster } from './ui/sonner';
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { Toaster } from '../shared/ui/components/sonner';
+import { Avatar, AvatarFallback, AvatarImage } from '../shared/ui/components/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,20 +42,23 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from './ui/dropdown-menu';
-import { clearAuthSession, getLoggedUser, updateLoggedUser, AUTH_CHANGED_EVENT, type AuthUser } from '../authStorage';
+} from '../shared/ui/components/dropdown-menu';
+import { clearAuthSession, getLoggedUser, updateLoggedUser, AUTH_CHANGED_EVENT, type AuthUser } from '../core/storage/authStorage';
 import { getThemePreference, setThemePreference, THEME_CHANGED_EVENT, type ThemePreference } from '../theme';
 import {
   createSubscription,
   listStoreSubscriptions,
-  listNotifications,
   listPlans,
-  markNotificationAsRead,
   updateStoreProfile,
   updateStoreProfileImage,
-  type NotificationItem,
   type PlanOption,
-} from '../api';
+} from '../features/settings/services/settings.service';
+import {
+  listNotifications,
+  markNotificationAsRead,
+  type NotificationItem,
+} from '../features/notifications';
+import { getJsonStorageItem, setJsonStorageItem } from '../shared/storage';
 
 const NOTIFICATIONS_CHANGED_EVENT = 'app:notifications-changed';
 
@@ -75,6 +79,7 @@ const navCategories: Array<{ category: string; items: NavItem[] }> = [
     items: [
       { path: '/', icon: Home, label: 'Dashboard', allowedRoles: ['admin', 'manager', 'user', 'supervisor', 'agent'] },
       { path: '/orders', icon: ClipboardList, label: 'Pedidos', allowedRoles: ['admin', 'manager', 'user', 'supervisor', 'agent'] },
+      { path: '/customers', icon: CircleUserRound, label: 'Clientes', allowedRoles: ['admin', 'manager', 'user', 'supervisor', 'agent'] },
       { path: '/kitchen', icon: ChefHat, label: 'Cocina', allowedRoles: ['admin', 'manager', 'supervisor'] },
       { path: '/tables', icon: LayoutGrid, label: 'Mesas', allowedRoles: ['admin', 'manager', 'supervisor'] },
       { path: '/cash-register', icon: Wallet, label: 'Caja', allowedRoles: ['admin'] },
@@ -93,6 +98,8 @@ const navCategories: Array<{ category: string; items: NavItem[] }> = [
   {
     category: 'Herramientas',
     items: [
+      { path: '/chats', icon: MessageSquareText, label: 'Mensajes', allowedRoles: ['admin', 'manager', 'user', 'supervisor', 'agent'] },
+      { path: '/connections', icon: MonitorCog, label: 'Conexiones', allowedRoles: ['admin', 'manager'] },
       { path: '/notifications', icon: Bell, label: 'Notificaciones', allowedRoles: ['admin', 'manager', 'user', 'supervisor', 'agent'] },
     ],
   },
@@ -195,20 +202,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [storeSlugInput, setStoreSlugInput] = useState('');
   const [storeImageBase64, setStoreImageBase64] = useState<string | null>(null);
   const [isSavingStoreProfile, setIsSavingStoreProfile] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('isSidebarCollapsed') ?? 'false') as boolean;
-    } catch {
-      return false;
-    }
-  });
-  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('collapsedCategories') ?? '{}') as Record<string, boolean>;
-    } catch {
-      return {};
-    }
-  });
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => getJsonStorageItem('isSidebarCollapsed', false));
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>(() => getJsonStorageItem('collapsedCategories', {}));
 
   useEffect(() => {
     const syncUser = () => setLoggedUser(getLoggedUser() as AuthUser | null);
@@ -248,7 +243,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const toggleSidebar = () => {
     setIsSidebarCollapsed((previous) => {
       const next = !previous;
-      localStorage.setItem('isSidebarCollapsed', JSON.stringify(next));
+      setJsonStorageItem('isSidebarCollapsed', next);
       return next;
     });
   };
@@ -256,7 +251,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const toggleCategory = (category: string) => {
     setCollapsedCategories((previous) => {
       const next = { ...previous, [category]: !previous[category] };
-      localStorage.setItem('collapsedCategories', JSON.stringify(next));
+      setJsonStorageItem('collapsedCategories', next);
       return next;
     });
   };

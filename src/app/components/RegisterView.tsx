@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
-import { ApiError, register as registerUser } from '../api';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Toaster } from './ui/sonner';
+import { ApiError } from '../core/http/errors';
+import { register as registerUser } from '../features/auth/services/auth.service';
+import { Button } from '../shared/ui/components/button';
+import { Input } from '../shared/ui/components/input';
+import { Label } from '../shared/ui/components/label';
+import { Toaster } from '../shared/ui/components/sonner';
 
 const getDefaultTimezone = () => {
   try {

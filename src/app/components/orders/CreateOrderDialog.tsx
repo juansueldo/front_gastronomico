@@ -1,31 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Badge } from '../ui/badge';
+import { Button } from '../../shared/ui/components/button';
+import { Input } from '../../shared/ui/components/input';
+import { Badge } from '../../shared/ui/components/badge';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from '../ui/dialog';
+} from '../../shared/ui/components/dialog';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../ui/select';
+} from '../../shared/ui/components/select';
 import { toast } from 'sonner';
-import { getLoggedUser } from '../../authStorage';
+import { getLoggedUser } from '../../core/storage/authStorage';
 import {
-  ApiError,
   createOrder as createBackendOrder,
   type CreateOrderRequest,
+} from '../../features/orders/services/orders.service';
+import { ApiError } from '../../core/http/errors';
+import {
   type ProductCategory,
   type ProductItem,
-} from '../../api';
-import { endpoints } from '../../api/endpoints';
-import { listHeadquarters, type Headquarter } from '../../api/headquarter';
+} from '../../features/products';
+import { listHeadquarters, type Headquarter } from '../../features/headquarters';
+import { findCustomerByPhone } from '../../features/customers';
+import { getStorageItem, setStorageItem } from '../../shared/storage';
+import { searchAddressSuggestions, type AddressSuggestion } from '../../shared/services/geocoding.service';
 import { ArrowRight, Check, MapPin, Phone, Truck, Utensils } from 'lucide-react';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -69,20 +73,6 @@ interface OrderHistoryItem {
   items: string[];
 }
 
-interface NominatimResult {
-  place_id?: string | number;
-  display_name: string;
-  lat: string;
-  lon: string;
-}
-
-interface AddressSuggestion {
-  id: string;
-  label: string;
-  latitude: number;
-  longitude: number;
-}
-
 interface DeliveryCoordinates {
   latitude: number;
   longitude: number;
@@ -122,7 +112,6 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
   maximumFractionDigits: 0,
 });
 const ORDER_HEADQUARTER_STORAGE_KEY = 'cash:selected-headquarter-id';
-const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search';
 const PHONE_PREFIX_OPTIONS = [
   { value: '+54', label: '+54', country: 'Argentina' },
   { value: '+598', label: '+598', country: 'Uruguay' },
@@ -132,13 +121,7 @@ const PHONE_PREFIX_OPTIONS = [
   { value: '+591', label: '+591', country: 'Bolivia' },
 ];
 
-const getStoredHeadquarterId = () => {
-  try {
-    return localStorage.getItem(ORDER_HEADQUARTER_STORAGE_KEY) ?? '';
-  } catch {
-    return '';
-  }
-};
+const getStoredHeadquarterId = () => getStorageItem(ORDER_HEADQUARTER_STORAGE_KEY);
 
 function getNormalizedProductCategoryIds(product: ProductItem): string[] {
   const row = product as ProductItem & {
@@ -165,48 +148,6 @@ function getNormalizedProductCategoryIds(product: ProductItem): string[] {
   }
 
   return [...new Set(collected.map((value) => String(value).trim()).filter(Boolean))];
-}
-
-async function searchAddressSuggestions(query: string, signal?: AbortSignal): Promise<AddressSuggestion[]> {
-  const trimmedQuery = query.trim();
-  if (!trimmedQuery || trimmedQuery.length < 4) {
-    return [];
-  }
-
-  try {
-    const response = await fetch(
-      `${NOMINATIM_SEARCH_URL}?format=json&addressdetails=1&limit=5&countrycodes=ar&q=${encodeURIComponent(trimmedQuery)}`,
-      { method: 'GET', signal, headers: { 'Accept-Language': 'es' } },
-    );
-    if (!response.ok) {
-      return [];
-    }
-
-    const payload = await response.json().catch(() => []);
-    if (!Array.isArray(payload)) {
-      return [];
-    }
-
-    return payload
-      .map((item: NominatimResult, index: number) => {
-        const latitude = Number(item?.lat);
-        const longitude = Number(item?.lon);
-        const label = String(item?.display_name ?? '').trim();
-        if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !label) {
-          return null;
-        }
-
-        return {
-          id: String(item?.place_id ?? `${label}-${index}`),
-          label,
-          latitude,
-          longitude,
-        };
-      })
-      .filter((item: AddressSuggestion | null): item is AddressSuggestion => item !== null);
-  } catch {
-    return [];
-  }
 }
 
 const DAY_OF_WEEK_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
@@ -488,12 +429,8 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
   }, [open]);
 
   useEffect(() => {
-    try {
-      if (selectedHeadquarterId) {
-        localStorage.setItem(ORDER_HEADQUARTER_STORAGE_KEY, selectedHeadquarterId);
-      }
-    } catch {
-      // noop
+    if (selectedHeadquarterId) {
+      setStorageItem(ORDER_HEADQUARTER_STORAGE_KEY, selectedHeadquarterId);
     }
   }, [selectedHeadquarterId]);
 
@@ -586,7 +523,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
     setCustomerNotFound(false);
 
     try {
-      const result = await endpoints.fetchCustomerByPhone?.(trimmed);
+      const result = await findCustomerByPhone(trimmed);
 
       if (result) {
         setCustomerFound(result);

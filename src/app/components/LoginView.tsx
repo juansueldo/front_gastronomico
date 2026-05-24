@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Lock, User, Eye, EyeOff } from 'lucide-react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
+import { Button } from '../shared/ui/components/button';
+import { Input } from '../shared/ui/components/input';
+import { Label } from '../shared/ui/components/label';
 import { toast } from 'sonner';
-import { Toaster } from './ui/sonner';
-import { isUserAuthenticated, saveAuthSession } from '../authStorage';
-import { login } from '../api';
-import { ApiError } from '../api/errors';
+import { Toaster } from '../shared/ui/components/sonner';
+import { isUserAuthenticated, saveAuthSession } from '../core/storage/authStorage';
+import { login } from '../features/auth/services/auth.service';
+import { ApiError } from '../core/http/errors';
 
 export function LoginView() {
   const navigate = useNavigate();

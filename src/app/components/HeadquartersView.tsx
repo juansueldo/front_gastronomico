@@ -9,19 +9,19 @@ import {
   type CreateHeadquarterRequest,
   type Headquarter,
   type HeadquarterScheduleInput,
-} from '../api/headquarter';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
+} from '../features/headquarters';
+import { Badge } from '../shared/ui/components/badge';
+import { Button } from '../shared/ui/components/button';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from './ui/dialog';
-import { Input } from './ui/input';
-import { Switch } from './ui/switch';
-import { type DataTableColumn, RemoteDataTable, createRowActionsColumn } from './ui/data-table';
+} from '../shared/ui/components/dialog';
+import { Input } from '../shared/ui/components/input';
+import { Switch } from '../shared/ui/components/switch';
+import { type DataTableColumn, RemoteDataTable, createRowActionsColumn } from '../shared/ui/components/data-table';
 import { HeadquartersForm } from './headquarters/HeadquartersForm';
 
 const DAY_OPTIONS: Array<{ key: string; label: string }> = [

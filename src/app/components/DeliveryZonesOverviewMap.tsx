@@ -2,60 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { CircleMarker, MapContainer, Polygon, Popup, TileLayer, ZoomControl, useMap } from 'react-leaflet';
 import type { LatLngBoundsExpression, LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import type { PublicStoreDeliveryZone } from '../storefrontApi';
-import { Input } from './ui/input';
-import { Button } from './ui/button';
+import type { PublicStoreDeliveryZone } from '../features/storefront/services/storefront.service';
+import { Input } from '../shared/ui/components/input';
+import { Button } from '../shared/ui/components/button';
 import { Search } from 'lucide-react';
+import { searchAddressSuggestions, type AddressSuggestion } from '../shared/services/geocoding.service';
 
-type AddressSuggestion = {
-  id: string;
-  label: string;
-  latitude: number;
-  longitude: number;
-};
-
-const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search';
 const DEFAULT_CENTER: LatLngExpression = [-34.603722, -58.381592];
 const ZONE_COLORS = ['#ff5a2f', '#22c55e', '#3b82f6', '#f59e0b', '#e11d48', '#6366f1'];
-
-const searchAddressSuggestions = async (query: string): Promise<AddressSuggestion[]> => {
-  const trimmedQuery = query.trim();
-  if (trimmedQuery.length < 4) {
-    return [];
-  }
-
-  const response = await fetch(
-    `${NOMINATIM_SEARCH_URL}?format=json&addressdetails=1&limit=5&countrycodes=ar&q=${encodeURIComponent(trimmedQuery)}`,
-    { method: 'GET' },
-  );
-
-  if (!response.ok) {
-    return [];
-  }
-
-  const payload = await response.json().catch(() => []);
-  if (!Array.isArray(payload)) {
-    return [];
-  }
-
-  return payload
-    .map((item: any, index: number) => {
-      const latitude = Number(item?.lat);
-      const longitude = Number(item?.lon);
-      const label = String(item?.display_name ?? '').trim();
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !label) {
-        return null;
-      }
-
-      return {
-        id: String(item?.place_id ?? `${label}-${index}`),
-        label,
-        latitude,
-        longitude,
-      };
-    })
-    .filter((item: AddressSuggestion | null): item is AddressSuggestion => item !== null);
-};
 
 const pointInPolygon = (
   point: { latitude: number; longitude: number },

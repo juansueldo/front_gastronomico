@@ -11,10 +11,10 @@ import {
   Soup,
   Wifi,
 } from 'lucide-react';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
+import { Badge } from '../shared/ui/components/badge';
+import { Button } from '../shared/ui/components/button';
 import { toast } from 'sonner';
-import { fetchActiveOrders, transitionOrderStatus } from '../api';
+import { fetchActiveOrders, transitionOrderStatus } from '../features/orders/services/orders.service';
 
 type KitchenOrderStatus = 'Nuevo' | 'En preparación' | 'Listo para servir' | 'Entregado';
 

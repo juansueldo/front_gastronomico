@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { BookOpenText, ImageIcon, Pencil, Plus, Trash2 } from 'lucide-react';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
-import { Checkbox } from './ui/checkbox';
+import { Badge } from '../shared/ui/components/badge';
+import { Button } from '../shared/ui/components/button';
+import { Checkbox } from '../shared/ui/components/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -10,13 +10,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from './ui/dialog';
-import { type DataTableColumn, DataTable } from './ui/data-table';
-import { useProductsViewModel } from '../hooks/useProductsViewModel';
-import type { ProductItem } from '../api/product';
+} from '../shared/ui/components/dialog';
+import { type DataTableColumn, DataTable } from '../shared/ui/components/data-table';
+import { useProductsViewModel } from '../features/products/hooks/useProductsViewModel';
+import type { ProductItem } from '../features/products';
 import { ProductRecipeIngredientRow } from './products/ProductRecipeIngredientRow';
 import { ProductDialog } from './products/ProductDialog';
-import { DeleteConfirmDialog } from './ui/delete-confirm-dialog';
+import { DeleteConfirmDialog } from '../shared/ui/components/delete-confirm-dialog';
 
 const currencyFormatter = new Intl.NumberFormat('es-AR', {
   style: 'currency',

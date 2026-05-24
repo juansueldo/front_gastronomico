@@ -1,5 +1,5 @@
-import { apiClient } from './client';
-import { API_VERSION, type ApiResponse } from './types';
+import { apiClient } from '../core/http/client';
+import { API_VERSION, type ApiResponse } from '../core/http/types';
 
 export interface AgentConfig {
   userId: number;

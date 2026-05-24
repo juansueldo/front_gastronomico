@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
-import { getAgentConfig, upsertAgentConfig } from '../api';
+import { getAgentConfig, upsertAgentConfig } from '../features/agent/services/agent.service';
 import { Bot, Save } from 'lucide-react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Slider } from './ui/slider';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Button } from '../shared/ui/components/button';
+import { Input } from '../shared/ui/components/input';
+import { Label } from '../shared/ui/components/label';
+import { Slider } from '../shared/ui/components/slider';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../shared/ui/components/select';
 import { toast } from 'sonner';
-import { Toaster } from './ui/sonner';
+import { Toaster } from '../shared/ui/components/sonner';
 
 
 // Solo para UI, la config real se guarda en backend

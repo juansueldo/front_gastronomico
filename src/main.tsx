@@ -1,7 +1,7 @@
 
-  import { createRoot } from "react-dom/client";
+import { createRoot } from "react-dom/client";
 import App from "./app/App.tsx";
-import { initializeAuthStorage } from "./app/authStorage";
+import { initializeAuthStorage } from "./app/core/storage/authStorage";
 import { initializePushNotifications } from "./app/pushNotifications";
 import { initializeTheme } from "./app/theme";
 import { initializeLanguage } from "./app/language";

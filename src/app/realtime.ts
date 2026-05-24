@@ -1,6 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { useEffect, useState } from 'react';
-import { expireAuthSession, getAuthSession, getStoreIdFromToken } from './authStorage';
+import { expireAuthSession, getAuthSession, getStoreIdFromToken } from './core/storage/authStorage';
 import {
   dispatchAppNewMessage,
   dispatchAppNotification,
@@ -16,6 +16,7 @@ export const APP_WHATSAPP_INSTANCE_EVENT = 'app:whatsapp-instance';
 
 export interface AppWhatsappInstanceDetail {
   instanceId: string;
+  accountId?: string;
   status: string;
   connected: boolean;
   eventType: string;
@@ -25,7 +26,7 @@ export interface AppWhatsappInstanceDetail {
 type SenderType = 'contact' | 'agent';
 type ChannelType = 'whatsapp' | 'facebook' | 'instagram' | 'email';
 
-const ALL_CHANNELS = ['products', 'orders', 'tables', 'waiters', 'segments', 'subscriptions'] as const;
+const ALL_CHANNELS = ['products', 'orders', 'tables', 'waiters', 'segments', 'subscriptions', 'messaging'] as const;
 type Channel = (typeof ALL_CHANNELS)[number];
 
 // ─── Singleton global ────────────────────────────────────────────────────────
@@ -109,6 +110,41 @@ function getInstanceId(payload: Record<string, unknown>) {
   return String(raw).trim() || null;
 }
 
+function getMessagingAccount(payload: Record<string, unknown>) {
+  const account = payload.account ?? payload.Account;
+  return account && typeof account === 'object' ? account as Record<string, unknown> : null;
+}
+
+function handleMessagingAccountEvent(eventType: string, payload: Record<string, unknown>) {
+  if (!eventType.startsWith('messaging_')) return false;
+
+  const account = getMessagingAccount(payload) ?? payload;
+  const instance = account.Instance && typeof account.Instance === 'object'
+    ? account.Instance as Record<string, unknown>
+    : null;
+  const instanceId = String(account.instanceId ?? account.instance_id ?? instance?.id ?? account.id ?? '').trim();
+  const accountId = String(account.id ?? '').trim() || undefined;
+  const status = getStringValue(account.status, eventType.replace('messaging_', ''));
+  const connected = status === 'ready' || status === 'authenticated' || status === 'connected';
+
+  if (instanceId || accountId) {
+    window.dispatchEvent(
+      new CustomEvent<AppWhatsappInstanceDetail>(APP_WHATSAPP_INSTANCE_EVENT, {
+        detail: {
+          instanceId: instanceId || accountId || 'messaging-account',
+          accountId,
+          status,
+          connected,
+          eventType,
+          payload: account,
+        },
+      })
+    );
+  }
+
+  return true;
+}
+
 function buildMessageDetail(payload: Record<string, unknown>): AppNewMessageDetail | null {
   const conversationId = String(
     payload.conversationId ?? payload.chatId ?? payload.contact_id ?? payload.contactId ?? ''
@@ -127,6 +163,68 @@ function buildMessageDetail(payload: Record<string, unknown>): AppNewMessageDeta
     contactName: typeof payload.contactName === 'string' ? payload.contactName : undefined,
     channel: normalizeChannel(payload.channel),
     timestamp: typeof payload.timestamp === 'string' ? payload.timestamp : new Date().toISOString(),
+  };
+}
+
+function buildMessagingMessageDetail(payload: Record<string, unknown>): AppNewMessageDetail | null {
+  const message = payload.message && typeof payload.message === 'object'
+    ? payload.message as Record<string, unknown>
+    : payload;
+  const conversation = payload.conversation && typeof payload.conversation === 'object'
+    ? payload.conversation as Record<string, unknown>
+    : {};
+  const customer = conversation.Customer && typeof conversation.Customer === 'object'
+    ? conversation.Customer as Record<string, unknown>
+    : {};
+  const conversationId = String(message.conversationId ?? conversation.id ?? '');
+
+  if (!conversationId) return null;
+
+  const direction = String(message.direction ?? 'inbound').toLowerCase();
+  const createdAt = typeof message.createdAt === 'string'
+    ? message.createdAt
+    : typeof message.sentAt === 'string'
+      ? message.sentAt
+      : new Date().toISOString();
+
+  return {
+    conversationId,
+    messageId: String(message.id ?? `msg-${Date.now()}`),
+    msgId: String(message.providerMessageId ?? message.id ?? `msg-${Date.now()}`),
+    content: typeof message.body === 'string' ? message.body : '',
+    mediaUrl:
+      typeof message.mediaUrl === 'string'
+        ? message.mediaUrl
+        : typeof message.media_url === 'string'
+        ? message.media_url
+        : typeof message.rawPayload?.['mediaUrl'] === 'string'
+        ? message.rawPayload['mediaUrl']
+        : undefined,
+    mediaMime:
+      typeof message.mediaMime === 'string'
+        ? message.mediaMime
+        : typeof message.media_mime === 'string'
+        ? message.media_mime
+        : typeof message.rawPayload?.['mediaMime'] === 'string'
+        ? message.rawPayload['mediaMime']
+        : typeof message.rawPayload?.['mimetype'] === 'string'
+        ? message.rawPayload['mimetype']
+        : undefined,
+    mediaFilename:
+      typeof message.mediaFilename === 'string'
+        ? message.mediaFilename
+        : typeof message.media_filename === 'string'
+        ? message.media_filename
+        : typeof message.rawPayload?.['mediaFilename'] === 'string'
+        ? message.rawPayload['mediaFilename']
+        : typeof message.rawPayload?.['filename'] === 'string'
+        ? message.rawPayload['filename']
+        : undefined,
+    messageType: typeof message.type === 'string' ? message.type : undefined,
+    sender: direction === 'outbound' ? 'agent' : 'contact',
+    contactName: typeof customer.name === 'string' ? customer.name : undefined,
+    channel: normalizeChannel(conversation.channel),
+    timestamp: createdAt,
   };
 }
 
@@ -245,6 +343,41 @@ function registerEventHandlers(socket: Socket) {
         body: message.content,
         data: payload,
       });
+    }
+  });
+
+  socket.on('messaging_qr_generated', (data) => {
+    const payload = data?.data ?? data ?? {};
+    handleMessagingAccountEvent('messaging_qr_generated', payload);
+  });
+
+  socket.on('messaging_account_status_changed', (data) => {
+    const payload = data?.data ?? data ?? {};
+    handleMessagingAccountEvent('messaging_account_status_changed', payload);
+  });
+
+  socket.on('messaging_message_received', (data) => {
+    const payload = data?.data ?? data ?? {};
+    const message = buildMessagingMessageDetail(payload);
+    if (message) {
+      dispatchAppNewMessage(message);
+      dispatchAppNotification({
+        title: `Nuevo mensaje de ${message.contactName ?? 'WhatsApp'}`,
+        body: message.content || (message.mediaFilename ? `Adjunto: ${message.mediaFilename}` : 'Adjunto recibido'),
+        data: payload,
+      });
+    }
+  });
+
+  socket.on('notification_created', () => {
+    window.dispatchEvent(new CustomEvent('app:notifications-changed'));
+  });
+
+  socket.on('messaging_message_sent', (data) => {
+    const payload = data?.data ?? data ?? {};
+    const message = buildMessagingMessageDetail(payload);
+    if (message) {
+      dispatchAppNewMessage(message);
     }
   });
 

@@ -2,8 +2,8 @@
  * API de Contactos - Contact endpoints
  */
 
-import { apiClient } from './client';
-import { API_VERSION } from './types';
+import { apiClient } from '../core/http/client';
+import { API_VERSION } from '../core/http/types';
 
 export interface ContactItem {
   id: number;

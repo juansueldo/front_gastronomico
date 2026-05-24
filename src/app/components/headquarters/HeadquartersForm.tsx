@@ -1,15 +1,9 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { MapPin, Search } from 'lucide-react';
-import type { CreateHeadquarterRequest } from '../../api/headquarter';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-
-type AddressSuggestion = {
-  id: string;
-  label: string;
-  latitude: number;
-  longitude: number;
-};
+import type { CreateHeadquarterRequest } from '../../features/headquarters';
+import { Button } from '../../shared/ui/components/button';
+import { Input } from '../../shared/ui/components/input';
+import { searchAddressSuggestions, type AddressSuggestion } from '../../shared/services/geocoding.service';
 
 interface HeadquartersFormProps {
   form: CreateHeadquarterRequest;
@@ -18,40 +12,6 @@ interface HeadquartersFormProps {
   submitLabel?: string;
   onChange: (field: keyof CreateHeadquarterRequest, value: string | number | null) => void;
   onSubmit: () => Promise<void>;
-}
-
-const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search';
-
-async function searchAddressSuggestions(query: string, signal?: AbortSignal): Promise<AddressSuggestion[]> {
-  const trimmedQuery = query.trim();
-  if (trimmedQuery.length < 4) return [];
-
-  try {
-    const response = await fetch(
-      `${NOMINATIM_SEARCH_URL}?format=json&addressdetails=1&limit=5&countrycodes=ar&q=${encodeURIComponent(trimmedQuery)}`,
-      { method: 'GET', signal, headers: { 'Accept-Language': 'es' } },
-    );
-    if (!response.ok) return [];
-    const payload = await response.json().catch(() => []);
-    if (!Array.isArray(payload)) return [];
-
-    return payload
-      .map((item: any, index: number) => {
-        const latitude = Number(item?.lat);
-        const longitude = Number(item?.lon);
-        const label = String(item?.display_name ?? '').trim();
-        if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !label) return null;
-        return {
-          id: String(item?.place_id ?? `${label}-${index}`),
-          label,
-          latitude,
-          longitude,
-        };
-      })
-      .filter((item: AddressSuggestion | null): item is AddressSuggestion => item !== null);
-  } catch {
-    return [];
-  }
 }
 
 export function HeadquartersForm({

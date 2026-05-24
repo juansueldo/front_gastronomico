@@ -19,40 +19,46 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { conversations, messages as mockMessages, agents, type Message } from '../data/mockData';
-import { Avatar, AvatarFallback } from './ui/avatar';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Badge } from './ui/badge';
+import { Avatar, AvatarFallback } from '../shared/ui/components/avatar';
+import { Button } from '../shared/ui/components/button';
+import { Input } from '../shared/ui/components/input';
+import { Badge } from '../shared/ui/components/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from './ui/dropdown-menu';
+} from '../shared/ui/components/dropdown-menu';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from './ui/select';
-import { Checkbox } from './ui/checkbox';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
+} from '../shared/ui/components/select';
+import { Checkbox } from '../shared/ui/components/checkbox';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../shared/ui/components/dialog';
 import { APP_NEW_MESSAGE_EVENT, type AppNewMessageDetail } from '../pushNotifications';
-import { getLoggedUser } from '../authStorage';
+import { getLoggedUser } from '../core/storage/authStorage';
 import { toast } from 'sonner';
 import {
-  ApiError,
-  createOrder,
   fetchMessages,
-  fetchProductCategories,
-  fetchProducts,
   sendMessage,
   updateContact,
+} from '../features/chat/services/chat.service';
+import { ApiError } from '../core/http/errors';
+import { createOrder } from '../features/orders/services/orders.service';
+import {
+  fetchProductCategories,
+  fetchProducts,
   type ProductCategory,
   type ProductItem,
-} from '../api';
-import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from './ui/carousel';
+} from '../features/products';
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from '../shared/ui/components/carousel';
+import {
+  geocodeAddress,
+  type GeocodedAddressResult,
+} from '../shared/services/geocoding.service';
 
 
 type ChatImportMeta = ImportMeta & {
@@ -82,12 +88,6 @@ interface ChatConversation {
 const API_URL = (import.meta as ChatImportMeta).env?.VITE_API_URL;
 const REALTIME_URL = (import.meta as ChatImportMeta).env?.VITE_REALTIME_URL;
 const GOOGLE_MAPS_API_KEY = (import.meta as ChatImportMeta).env?.VITE_GOOGLE_MAPS_API_KEY;
-
-interface GeocodedAddressResult {
-  formattedAddress: string;
-  latitude: number;
-  longitude: number;
-}
 
 interface ApiMessageItem {
   id?: number | string;
@@ -150,90 +150,6 @@ interface ChatMessage extends Message {
   reactionEmoji?: string;
   reactionTargetMessageId?: string;
 }
-
-const geocodeAddressWithGoogle = async (address: string): Promise<GeocodedAddressResult | null> => {
-  if (!GOOGLE_MAPS_API_KEY) {
-    return null;
-  }
-
-  const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}`;
-  const response = await fetch(geocodeUrl);
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const data = await response.json() as {
-    status: string;
-    results?: Array<{
-      formatted_address: string;
-      geometry: {
-        location: {
-          lat: number;
-          lng: number;
-        };
-      };
-    }>;
-  };
-
-  if (data.status !== 'OK' || !data.results || data.results.length === 0) {
-    return null;
-  }
-
-  const firstResult = data.results[0];
-  return {
-    formattedAddress: firstResult.formatted_address,
-    latitude: firstResult.geometry.location.lat,
-    longitude: firstResult.geometry.location.lng,
-  };
-};
-
-const geocodeAddressWithNominatim = async (address: string): Promise<GeocodedAddressResult | null> => {
-  const geocodeUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`;
-  const response = await fetch(geocodeUrl, {
-    headers: {
-      'Accept-Language': 'es',
-    },
-  });
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const data = await response.json() as Array<{
-    display_name: string;
-    lat: string;
-    lon: string;
-  }>;
-
-  if (!Array.isArray(data) || data.length === 0) {
-    return null;
-  }
-
-  const firstResult = data[0];
-  const latitude = Number(firstResult.lat);
-  const longitude = Number(firstResult.lon);
-
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return null;
-  }
-
-  return {
-    formattedAddress: firstResult.display_name,
-    latitude,
-    longitude,
-  };
-};
-
-const geocodeAddress = async (address: string) => {
-  const googleResult = await geocodeAddressWithGoogle(address);
-
-  if (googleResult) {
-    return googleResult;
-  }
-
-  return geocodeAddressWithNominatim(address);
-};
 
 export function ChatView() {
   const { id } = useParams<{ id: string }>();
@@ -928,7 +844,7 @@ export function ChatView() {
 
     if (scheduledOrderType === 'delivery') {
       setIsValidatingScheduledAddress(true);
-      geocodedAddress = await geocodeAddress(orderAddress);
+      geocodedAddress = await geocodeAddress(orderAddress, { googleMapsApiKey: GOOGLE_MAPS_API_KEY });
       setIsValidatingScheduledAddress(false);
 
       if (!geocodedAddress) {

@@ -1,21 +1,26 @@
 import { type ChangeEvent, useEffect, useRef, useState } from 'react';
 import { Camera, Bell, Shield, Globe, Moon, LogOut, Save } from 'lucide-react';
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Switch } from './ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Separator } from './ui/separator';
+import { Avatar, AvatarFallback, AvatarImage } from '../shared/ui/components/avatar';
+import { Button } from '../shared/ui/components/button';
+import { Input } from '../shared/ui/components/input';
+import { Label } from '../shared/ui/components/label';
+import { Switch } from '../shared/ui/components/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../shared/ui/components/select';
+import { Separator } from '../shared/ui/components/separator';
 import { toast } from 'sonner';
-import { Toaster } from './ui/sonner';
-import { AuthUser } from '../authStorage';
-import { clearAuthSession, getLoggedUser, updateLoggedUser } from '../authStorage';
+import { Toaster } from '../shared/ui/components/sonner';
+import { AuthUser } from '../core/storage/authStorage';
+import { clearAuthSession, getLoggedUser, updateLoggedUser } from '../core/storage/authStorage';
 import { useNavigate } from 'react-router';
 import { getThemePreference, setThemePreference, type ThemePreference } from '../theme';
-import { updateStoreProfileImage } from '../api';
-import { updateUserProfileImage } from '../api/user';
-import { createCustomerSlug, fetchCustomerSlugs, updateCustomerSlug, type StoreSlug } from '../slugApi';
+import {
+  createCustomerSlug,
+  fetchCustomerSlugs,
+  updateCustomerSlug,
+  updateStoreProfileImage,
+  updateUserProfileImage,
+  type StoreSlug,
+} from '../features/settings/services/settings.service';
 
 export function SettingsView() {
   const userImageInputRef = useRef<HTMLInputElement | null>(null);

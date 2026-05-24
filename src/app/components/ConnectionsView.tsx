@@ -1,22 +1,24 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Link2, LogIn, Pencil, Plus, Trash2 } from 'lucide-react';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
+import { Link2, LogIn, MessageCircle, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Badge } from '../shared/ui/components/badge';
+import { Button } from '../shared/ui/components/button';
+import { Input } from '../shared/ui/components/input';
+import { Label } from '../shared/ui/components/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../shared/ui/components/select';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../shared/ui/components/dialog';
 import { toast } from 'sonner';
-import { Toaster } from './ui/sonner';
-import { getLoggedUser } from '../authStorage';
-import { ApiError, createInstance, listInstances, listNetworks, loginInstance } from '../api';
+import { Toaster } from '../shared/ui/components/sonner';
+import { getLoggedUser } from '../core/storage/authStorage';
+import { ApiError } from '../core/http/errors';
+import { createInstance, listInstances, listNetworks, loginInstance } from '../features/integrations/services/connections.service';
+import { connectWhatsappAccount, getCurrentMessagingAccount } from '../features/chat';
 import { APP_WHATSAPP_INSTANCE_EVENT, type AppWhatsappInstanceDetail } from '../realtime';
-import { type DataTableColumn, DataTable } from './ui/data-table';
+import { type DataTableColumn, DataTable } from '../shared/ui/components/data-table';
 import type {
   ConnectionItem as ApiConnectionItem,
   LoginInstanceResponse,
   NetworkOption as ApiNetworkOption,
-} from '../api';
+} from '../features/integrations/services/connections.service';
 
 interface ConnectionItem {
   id: string;
@@ -62,6 +64,7 @@ export function ConnectionsView() {
   const [qrStatus, setQrStatus] = useState<string>('unknown');
   const [qrConnectionName, setQrConnectionName] = useState<string>('');
   const [instanceStatuses, setInstanceStatuses] = useState<Record<string, InstanceStatusItem>>({});
+  const [isConnectingWhatsapp, setIsConnectingWhatsapp] = useState(false);
 
   useEffect(() => {
     const loadInstances = async () => {
@@ -144,6 +147,31 @@ export function ConnectionsView() {
   }, []);
 
   useEffect(() => {
+    const loadMessagingAccount = async () => {
+      try {
+        const account = await getCurrentMessagingAccount();
+        if (!account) return;
+
+        const id = account.instanceId ?? account.id;
+        if (!id) return;
+
+        setInstanceStatuses((prev) => ({
+          ...prev,
+          [id]: {
+            status: String(account.status ?? 'unknown').toLowerCase(),
+            connected: account.status === 'ready' || account.status === 'authenticated' || account.status === 'connected',
+            updatedAt: new Date().toISOString(),
+          },
+        }));
+      } catch {
+        // El endpoint nuevo puede no estar disponible en instalaciones legacy.
+      }
+    };
+
+    void loadMessagingAccount();
+  }, []);
+
+  useEffect(() => {
     if (networkOptions.length === 0) {
       return;
     }
@@ -164,6 +192,11 @@ export function ConnectionsView() {
 
       const normalizedId = String(detail.instanceId);
       const normalizedStatus = String(detail.status ?? 'unknown').toLowerCase();
+      const eventQr = typeof detail.payload.qrCode === 'string'
+        ? detail.payload.qrCode
+        : typeof detail.payload.qr === 'string'
+          ? detail.payload.qr
+          : null;
 
       setInstanceStatuses((prev) => ({
         ...prev,
@@ -179,6 +212,12 @@ export function ConnectionsView() {
       }
 
       const isSuccess = Boolean(detail.connected) || normalizedStatus === 'ready' || normalizedStatus === 'authenticated';
+      if (eventQr) {
+        setQrValue(eventQr);
+        setQrStatus(normalizedStatus);
+        setIsQrDialogOpen(true);
+      }
+
       if (isSuccess) {
         setIsQrDialogOpen(false);
         setQrValue(null);
@@ -297,6 +336,9 @@ export function ConnectionsView() {
         setIsModalOpen(false);
         resetForm();
         toast.success('Conexión registrada');
+        if (isWhatsappConnection(newConnection)) {
+          void handleLoginInstance(newConnection);
+        }
         return;
       } catch (error) {
         if (error instanceof ApiError) {
@@ -407,6 +449,41 @@ export function ConnectionsView() {
     }
   };
 
+  const handleConnectWhatsappAccount = async () => {
+    setIsConnectingWhatsapp(true);
+    try {
+      const account = await connectWhatsappAccount();
+      const id = account?.instanceId ?? account?.id ?? 'messaging-account';
+      const status = account?.status ?? 'connecting';
+      const qr = account?.qrCode ?? null;
+
+      setQrInstanceId(id);
+      setQrStatus(status);
+      setQrConnectionName(account?.displayName ?? account?.instance?.name ?? 'WhatsApp');
+      setQrValue(qr);
+      setIsQrDialogOpen(true);
+
+      setInstanceStatuses((prev) => ({
+        ...prev,
+        [id]: {
+          status: String(status).toLowerCase(),
+          connected: status === 'ready' || status === 'authenticated' || status === 'connected',
+          updatedAt: new Date().toISOString(),
+        },
+      }));
+
+      toast.success(qr ? 'QR de WhatsApp disponible' : 'Conexión iniciada. Esperando QR de WhatsApp.');
+    } catch (error) {
+      if (error instanceof ApiError) {
+        toast.error(error.message);
+      } else {
+        toast.error('No se pudo iniciar la conexión de WhatsApp');
+      }
+    } finally {
+      setIsConnectingWhatsapp(false);
+    }
+  };
+
   const connectionColumns: DataTableColumn<ConnectionItem>[] = [
     {
       key: 'description',
@@ -487,10 +564,22 @@ export function ConnectionsView() {
               <Link2 className="h-5 w-5" />
               Lista de conexiones
             </h2>
-            <Button onClick={openCreateModal}>
-              <Plus className="h-4 w-4 mr-2" />
-              Agregar conexión
-            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleConnectWhatsappAccount}
+                disabled={isConnectingWhatsapp}
+                className="border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+              >
+                <MessageCircle className="h-4 w-4 mr-2" />
+                {isConnectingWhatsapp ? 'Conectando...' : 'Conectar WhatsApp'}
+              </Button>
+              <Button onClick={openCreateModal}>
+                <Plus className="h-4 w-4 mr-2" />
+                Agregar conexión
+              </Button>
+            </div>
           </div>
 
           <DataTable
@@ -611,7 +700,9 @@ export function ConnectionsView() {
                   </div>
                 )
               ) : (
-                <p className="text-sm text-gray-300">No se recibió QR para esta instancia.</p>
+                <p className="text-sm text-gray-300">
+                  La conexión está iniciada. El QR aparecerá acá cuando el backend lo emita.
+                </p>
               )}
             </div>
 

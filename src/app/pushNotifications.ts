@@ -5,7 +5,7 @@ import {
   PushNotificationSchema,
   ActionPerformed,
 } from '@capacitor/push-notifications';
-import { getAuthSession } from './authStorage';
+import { getAuthSession } from './core/storage/authStorage';
 
 export const APP_NOTIFICATION_EVENT = 'app:notification';
 export const APP_NEW_MESSAGE_EVENT = 'app:new-message';
@@ -18,6 +18,10 @@ export interface AppNewMessageDetail {
   messageId: string;
   msgId?: string;
   content: string;
+  mediaUrl?: string;
+  mediaMime?: string;
+  mediaFilename?: string;
+  messageType?: string;
   sender: SenderType;
   contactName?: string;
   groupAuthorName?: string;
@@ -93,6 +97,29 @@ function buildMessageDetail(notification: PushNotificationSchema): AppNewMessage
     messageId: String(data.messageId ?? data.id ?? `push-${Date.now()}`),
     msgId: String(data.msg_id ?? data.msgId ?? data.messageId ?? data.id ?? `push-${Date.now()}`),
     content,
+    mediaUrl:
+      typeof data.mediaUrl === 'string'
+        ? data.mediaUrl
+        : typeof data.media_url === 'string'
+        ? data.media_url
+        : undefined,
+    mediaMime:
+      typeof data.mediaMime === 'string'
+        ? data.mediaMime
+        : typeof data.media_mime === 'string'
+        ? data.media_mime
+        : typeof data.mimetype === 'string'
+        ? data.mimetype
+        : undefined,
+    mediaFilename:
+      typeof data.mediaFilename === 'string'
+        ? data.mediaFilename
+        : typeof data.media_filename === 'string'
+        ? data.media_filename
+        : typeof data.filename === 'string'
+        ? data.filename
+        : undefined,
+    messageType: typeof data.messageType === 'string' ? data.messageType : typeof data.type === 'string' ? data.type : undefined,
     sender: normalizeSender(data.sender),
     contactName: typeof data.contactName === 'string' ? data.contactName : undefined,
     groupAuthorName:

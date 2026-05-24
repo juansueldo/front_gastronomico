@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { RouterProvider } from 'react-router';
-import { router } from './routes.tsx';
+import { router } from './core/router/routes';
 import { toast } from 'sonner';
-import { Toaster } from './components/ui/sonner';
+import { Toaster } from './shared/ui/components/sonner';
 import { APP_NOTIFICATION_EVENT, type AppNotificationDetail } from './pushNotifications';
-import { AUTH_CHANGED_EVENT, AUTH_EXPIRED_EVENT, isUserAuthenticated } from './authStorage';
+import { AUTH_CHANGED_EVENT, AUTH_EXPIRED_EVENT, isUserAuthenticated } from './core/storage/authStorage';
 import { createNotification } from './api';
 import { startRealtimeChannel, stopRealtimeChannel } from './realtime';
 

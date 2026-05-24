@@ -1,19 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, PackageCheck, Plus, ShoppingCart, Wrench } from 'lucide-react';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
+import { Badge } from '../shared/ui/components/badge';
+import { Button } from '../shared/ui/components/button';
+import { Input } from '../shared/ui/components/input';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from './ui/dialog';
+} from '../shared/ui/components/dialog';
 import { toast } from 'sonner';
-import { fetchProductCategories, type ProductCategory } from '../catalogApi';
-import { productApi } from '../api';
-import { DataTable, type DataTableColumn } from './ui/data-table';
-import type { ProductItem, ProductRecipeConfig, ProductStockBalance } from '../api/product';
+import { fetchProductCategories, productApi, type ProductCategory } from '../features/products';
+import { DataTable, type DataTableColumn } from '../shared/ui/components/data-table';
+import type { ProductItem, ProductRecipeConfig, ProductStockBalance } from '../features/products';
 
 type AdjustTarget =
   | { type: 'ingredient'; key: string; name: string; unit: string }

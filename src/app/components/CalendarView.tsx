@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Clock, Calendar as CalendarIcon } from 'lucide-react';
 import { calendarEvents, type CalendarEvent } from '../data/mockData';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Textarea } from './ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
+import { Button } from '../shared/ui/components/button';
+import { Badge } from '../shared/ui/components/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../shared/ui/components/dialog';
+import { Input } from '../shared/ui/components/input';
+import { Label } from '../shared/ui/components/label';
+import { Textarea } from '../shared/ui/components/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../shared/ui/components/select';
+import { Tabs, TabsList, TabsTrigger } from '../shared/ui/components/tabs';
 
 type ViewMode = 'month' | 'week' | 'day';
 
