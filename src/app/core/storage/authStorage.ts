@@ -9,6 +9,10 @@ export interface AuthUser {
     slug?: string;
     profile_image_url?: string | null;
     profileImageUrl?: string | null;
+    offers_delivery?: boolean;
+    offersDelivery?: boolean;
+    offers_pickup?: boolean;
+    offersPickup?: boolean;
     [key: string]: unknown;
   } | null;
   subscription?: {

@@ -1,5 +1,5 @@
 import { type ChangeEvent, useEffect, useRef, useState } from 'react';
-import { Camera, Bell, Shield, Globe, Moon, LogOut, Save } from 'lucide-react';
+import { Camera, Bell, Shield, Globe, Moon, LogOut, Save, Store } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '../shared/ui/components/avatar';
 import { Button } from '../shared/ui/components/button';
 import { Input } from '../shared/ui/components/input';
@@ -17,6 +17,7 @@ import {
   createCustomerSlug,
   fetchCustomerSlugs,
   updateCustomerSlug,
+  updateStoreProfile,
   updateStoreProfileImage,
   updateUserProfileImage,
   type StoreSlug,
@@ -44,6 +45,9 @@ export function SettingsView() {
   const [storeImagePreviewUrl, setStoreImagePreviewUrl] = useState<string | null>(null);
   const [isUploadingUserImage, setIsUploadingUserImage] = useState(false);
   const [isUploadingStoreImage, setIsUploadingStoreImage] = useState(false);
+  const [offersDelivery, setOffersDelivery] = useState(true);
+  const [offersPickup, setOffersPickup] = useState(true);
+  const [isSavingStoreChannels, setIsSavingStoreChannels] = useState(false);
 
   const readFileAsDataUrl = (file: File): Promise<string> => (
     new Promise((resolve, reject) => {
@@ -109,6 +113,16 @@ export function SettingsView() {
         storedUser.store?.profileImageUrl
         ?? storedUser.store?.profile_image_url
         ?? null,
+      );
+      setOffersDelivery(
+        typeof storedUser.store?.offersDelivery === 'boolean'
+          ? storedUser.store.offersDelivery
+          : storedUser.store?.offers_delivery !== false,
+      );
+      setOffersPickup(
+        typeof storedUser.store?.offersPickup === 'boolean'
+          ? storedUser.store.offersPickup
+          : storedUser.store?.offers_pickup !== false,
       );
     }
 
@@ -206,6 +220,34 @@ export function SettingsView() {
     } finally {
       event.target.value = '';
       setIsUploadingStoreImage(false);
+    }
+  };
+
+  const handleSaveStoreChannels = async () => {
+    setIsSavingStoreChannels(true);
+
+    try {
+      const updatedStore = await updateStoreProfile({
+        offersDelivery,
+        offers_delivery: offersDelivery,
+        offersPickup,
+        offers_pickup: offersPickup,
+      });
+      const nextStore = {
+        ...(loggedUser?.store && typeof loggedUser.store === 'object' ? loggedUser.store : {}),
+        offersDelivery: updatedStore.offersDelivery ?? offersDelivery,
+        offers_delivery: updatedStore.offers_delivery ?? offersDelivery,
+        offersPickup: updatedStore.offersPickup ?? offersPickup,
+        offers_pickup: updatedStore.offers_pickup ?? offersPickup,
+      };
+
+      updateLoggedUser({ store: nextStore });
+      setLoggedUser((current) => current ? { ...current, store: nextStore } : current);
+      toast.success('Canales de venta actualizados');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudieron guardar los canales de venta');
+    } finally {
+      setIsSavingStoreChannels(false);
     }
   };
 
@@ -425,6 +467,48 @@ export function SettingsView() {
                   Recomendado: imagen cuadrada con buena resolución para que se vea bien en catálogo y portada.
                 </p>
               </div>
+            </div>
+          </div>
+
+          {/* Public Store Channels Section */}
+          <div className="bg-card rounded-lg p-6">
+            <h2 className="text-white font-medium mb-4 flex items-center gap-2">
+              <Store className="h-5 w-5" />
+              Canales de venta pública
+            </h2>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-body p-4">
+                <div>
+                  <p className="text-white">Ofrecer delivery</p>
+                  <p className="text-sm text-gray-400">Permite que los clientes pidan envío desde la URL pública.</p>
+                </div>
+                <Switch checked={offersDelivery} onCheckedChange={setOffersDelivery} />
+              </div>
+
+              <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-body p-4">
+                <div>
+                  <p className="text-white">Ofrecer retiro</p>
+                  <p className="text-sm text-gray-400">Permite que los clientes compren para retirar en una sede.</p>
+                </div>
+                <Switch checked={offersPickup} onCheckedChange={setOffersPickup} />
+              </div>
+
+              {!offersDelivery && !offersPickup ? (
+                <p className="rounded-lg border border-orange-600/40 bg-orange-950/25 px-3 py-2 text-sm text-orange-200">
+                  Si desactivas ambos canales, la tienda pública seguirá visible pero no permitirá crear compras.
+                </p>
+              ) : null}
+
+              <Button
+                type="button"
+                onClick={() => void handleSaveStoreChannels()}
+                disabled={isSavingStoreChannels}
+                className="w-full md:w-auto"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {isSavingStoreChannels ? 'Guardando...' : 'Guardar canales'}
+              </Button>
             </div>
           </div>
 

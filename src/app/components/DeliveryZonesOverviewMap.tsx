@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CircleMarker, MapContainer, Polygon, Popup, TileLayer, ZoomControl, useMap } from 'react-leaflet';
-import type { LatLngBoundsExpression, LatLngExpression } from 'leaflet';
+import { CircleMarker, MapContainer, Marker, Polygon, Popup, TileLayer, ZoomControl, useMap } from 'react-leaflet';
+import L, { type LatLngBoundsExpression, type LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { PublicStoreDeliveryZone } from '../features/storefront/services/storefront.service';
 import { Input } from '../shared/ui/components/input';
@@ -10,6 +10,43 @@ import { searchAddressSuggestions, type AddressSuggestion } from '../shared/serv
 
 const DEFAULT_CENTER: LatLngExpression = [-34.603722, -58.381592];
 const ZONE_COLORS = ['#ff5a2f', '#22c55e', '#3b82f6', '#f59e0b', '#e11d48', '#6366f1'];
+const HEADQUARTER_ICON = L.divIcon({
+  className: 'public-store-headquarter-marker',
+  html: `
+    <div style="
+      width: 38px;
+      height: 38px;
+      border-radius: 14px;
+      background: #ff5a2f;
+      border: 3px solid #ffffff;
+      box-shadow: 0 12px 28px rgba(20, 29, 40, 0.28);
+      display: grid;
+      place-items: center;
+      color: #ffffff;
+    ">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="m2 7 2-4h16l2 4"/>
+        <path d="M4 7v14h16V7"/>
+        <path d="M9 21v-7h6v7"/>
+        <path d="M3 7h18"/>
+        <path d="M7 7v3"/>
+        <path d="M12 7v3"/>
+        <path d="M17 7v3"/>
+      </svg>
+    </div>
+  `,
+  iconSize: [38, 38],
+  iconAnchor: [19, 38],
+  popupAnchor: [0, -38],
+});
+
+export type DeliveryZonesHeadquarterMarker = {
+  id: string;
+  name: string;
+  location?: string;
+  latitude: number;
+  longitude: number;
+};
 
 const pointInPolygon = (
   point: { latitude: number; longitude: number },
@@ -52,7 +89,13 @@ function FitMapBounds({ bounds, selectedPoint }: { bounds?: LatLngBoundsExpressi
   return null;
 }
 
-export function DeliveryZonesOverviewMap({ zones }: { zones: PublicStoreDeliveryZone[] }) {
+export function DeliveryZonesOverviewMap({
+  zones,
+  headquarters = [],
+}: {
+  zones: PublicStoreDeliveryZone[];
+  headquarters?: DeliveryZonesHeadquarterMarker[];
+}) {
   const [addressQuery, setAddressQuery] = useState('');
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const [selectedPoint, setSelectedPoint] = useState<AddressSuggestion | null>(null);
@@ -60,9 +103,11 @@ export function DeliveryZonesOverviewMap({ zones }: { zones: PublicStoreDelivery
   const [searchMessage, setSearchMessage] = useState('');
 
   const bounds = useMemo<LatLngBoundsExpression | undefined>(() => {
-    const points = zones.flatMap((zone) => zone.polygon.map((point) => [point.lat, point.lng] as [number, number]));
+    const zonePoints = zones.flatMap((zone) => zone.polygon.map((point) => [point.lat, point.lng] as [number, number]));
+    const headquarterPoints = headquarters.map((headquarter) => [headquarter.latitude, headquarter.longitude] as [number, number]);
+    const points = [...zonePoints, ...headquarterPoints];
     return points.length > 0 ? points : undefined;
-  }, [zones]);
+  }, [headquarters, zones]);
 
   const matchingZones = useMemo(() => {
     if (!selectedPoint) {
@@ -191,6 +236,20 @@ export function DeliveryZonesOverviewMap({ zones }: { zones: PublicStoreDelivery
             </Polygon>
           );
         })}
+        {headquarters.map((headquarter) => (
+          <Marker
+            key={headquarter.id}
+            position={[headquarter.latitude, headquarter.longitude]}
+            icon={HEADQUARTER_ICON}
+          >
+            <Popup>
+              <div className="space-y-1">
+                <p className="font-semibold">{headquarter.name}</p>
+                {headquarter.location ? <p>{headquarter.location}</p> : null}
+              </div>
+            </Popup>
+          </Marker>
+        ))}
         {selectedPoint ? (
           <CircleMarker
             center={[selectedPoint.latitude, selectedPoint.longitude]}

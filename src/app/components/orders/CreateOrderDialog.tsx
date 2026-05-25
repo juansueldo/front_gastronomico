@@ -30,7 +30,7 @@ import { listHeadquarters, type Headquarter } from '../../features/headquarters'
 import { findCustomerByPhone } from '../../features/customers';
 import { getStorageItem, setStorageItem } from '../../shared/storage';
 import { searchAddressSuggestions, type AddressSuggestion } from '../../shared/services/geocoding.service';
-import { ArrowRight, Check, MapPin, Phone, Truck, Utensils } from 'lucide-react';
+import { ArrowRight, Check, MapPin, Minus, Phone, Truck, Utensils } from 'lucide-react';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -103,6 +103,7 @@ interface Props {
   availableProducts: ProductItem[];
   availableCategories: ProductCategory[];
   initialCustomer?: CustomerData | null;
+  onMinimize?: () => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -313,7 +314,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export function CreateOrderDialog({ open, onClose, onCreated, availableProducts, availableCategories, initialCustomer = null }: Props) {
+export function CreateOrderDialog({ open, onClose, onCreated, availableProducts, availableCategories, initialCustomer = null, onMinimize }: Props) {
   // Paso actual
   const [step, setStep] = useState<Step>('phone');
 
@@ -1325,6 +1326,18 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose(); }}>
       <DialogContent className="max-h-[92vh] w-[calc(100vw-2rem)] max-w-[720px] gap-0 overflow-visible p-0">
+        {onMinimize ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-14 top-4 z-10 h-9 w-9 rounded-lg border border-[var(--app-line)] bg-[var(--app-soft)] text-[var(--app-strong)] hover:bg-[var(--app-panel)]"
+            onClick={onMinimize}
+            title="Minimizar orden"
+          >
+            <Minus className="h-4 w-4" />
+          </Button>
+        ) : null}
         <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 px-5 pb-4 pt-6 pr-16 text-left sm:px-7">
           <div className="row-span-2 flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--primary)]/10 text-[var(--primary)]">
             <Phone className="h-6 w-6" />

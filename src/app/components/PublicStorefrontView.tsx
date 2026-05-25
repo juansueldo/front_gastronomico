@@ -318,18 +318,37 @@ export function PublicStorefrontView() {
     [activeScheduleHeadquarter?.schedules, scheduleNow],
   );
   const storeImageUrl = store?.profileImageUrl ?? store?.logoUrl;
+  const offersDelivery = store?.offersDelivery !== false;
+  const offersPickup = store?.offersPickup !== false;
+  const hasPublicOrderingMethod = offersDelivery || offersPickup;
   const availableScheduleDays = scheduleState.dayOptions;
   const selectedScheduleDay = availableScheduleDays.find((day) => day.id === selectedScheduleDayId) ?? availableScheduleDays[0];
   const selectedScheduleSlot = selectedScheduleDay?.slots.find((slot) => slot.id === selectedScheduleSlotId) ?? selectedScheduleDay?.slots[0];
   const productDialogTotal = (activeProduct?.price ?? 0) * productDialogQuantity;
+  const isAsapScheduleUnavailable = !isPickupZonePending && scheduleState.hasSchedules && !scheduleState.isOpenNow;
   const canConfirmCheckout = (
     customerName.trim().length > 0
     && customerPhone.trim().length > 0
     && paymentMethod !== ''
+    && hasPublicOrderingMethod
+    && (orderType !== 'delivery' || offersDelivery)
+    && (orderType !== 'pickup' || offersPickup)
     && (orderType !== 'delivery' || deliveryAddress.trim().length > 0)
+    && !(scheduleMode === 'asap' && isAsapScheduleUnavailable)
   );
   const visibleProducts = filteredProducts.slice(0, visibleProductsCount);
   const hasMoreProducts = visibleProductsCount < filteredProducts.length;
+  const deliveryZoneHeadquarterMarkers = useMemo(() => (
+    headquarters
+      .filter((headquarter) => Number.isFinite(headquarter.latitude) && Number.isFinite(headquarter.longitude))
+      .map((headquarter) => ({
+        id: headquarter.id,
+        name: headquarter.name,
+        location: headquarter.location,
+        latitude: Number(headquarter.latitude),
+        longitude: Number(headquarter.longitude),
+      }))
+  ), [headquarters]);
   const groupedVisibleProducts = useMemo(() => {
     const categoryOrder = new Map(categoryEntries.map((entry, index) => [entry.categoryId, index]));
     const groups = new Map<string, { categoryId: string; categoryName: string; products: PublicStoreProduct[] }>();
@@ -384,6 +403,11 @@ export function PublicStorefrontView() {
       ]);
 
       setStore(storeData);
+      if (storeData.offersDelivery === false && storeData.offersPickup !== false) {
+        setOrderType('pickup');
+      } else if (storeData.offersPickup === false && storeData.offersDelivery !== false) {
+        setOrderType('delivery');
+      }
       const nextProducts = productsData.products.filter((product) => product.available);
       setProducts(nextProducts);
 
@@ -404,6 +428,8 @@ export function PublicStorefrontView() {
           name: currentHeadquarter.name || headquarter.name,
           location: currentHeadquarter.location ?? headquarter.location,
           phone: currentHeadquarter.phone ?? headquarter.phone,
+          latitude: currentHeadquarter.latitude ?? headquarter.latitude,
+          longitude: currentHeadquarter.longitude ?? headquarter.longitude,
         });
       });
 
@@ -469,6 +495,21 @@ export function PublicStorefrontView() {
   }, [slug]);
 
   useEffect(() => {
+    if (!store) {
+      return;
+    }
+
+    if (orderType === 'delivery' && !offersDelivery && offersPickup) {
+      setOrderType('pickup');
+      return;
+    }
+
+    if (orderType === 'pickup' && !offersPickup && offersDelivery) {
+      setOrderType('delivery');
+    }
+  }, [store, orderType, offersDelivery, offersPickup]);
+
+  useEffect(() => {
     if (typeof document === 'undefined') {
       return;
     }
@@ -532,10 +573,15 @@ export function PublicStorefrontView() {
       return;
     }
 
+    if (scheduleMode === 'asap' && isAsapScheduleUnavailable && availableScheduleDays.length > 0) {
+      setScheduleMode('scheduled');
+      return;
+    }
+
     if (!selectedScheduleDay || selectedScheduleDay.id !== selectedScheduleDayId) {
       setSelectedScheduleDayId(selectedScheduleDay?.id ?? '');
     }
-  }, [scheduleMode, availableScheduleDays, selectedScheduleDay, selectedScheduleDayId]);
+  }, [scheduleMode, availableScheduleDays, selectedScheduleDay, selectedScheduleDayId, isAsapScheduleUnavailable]);
 
   useEffect(() => {
     if (!selectedScheduleDay) {
@@ -716,10 +762,41 @@ export function PublicStorefrontView() {
 
   if (storeLoadState === 'error') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#e6e6e6] px-4 text-center">
-        <p className="rounded-xl border border-[#dddddd] bg-white px-5 py-3 text-sm text-[#666666]">
-          No se pudo cargar la tienda. Intenta de nuevo en unos segundos.
-        </p>
+      <div
+        className="relative flex min-h-screen overflow-hidden bg-[#fffaf6] px-4 py-10 text-center text-[#2f2f2f]"
+        style={{
+          backgroundImage: [
+            'radial-gradient(circle at 0% 0%, rgba(255, 120, 48, 0.28), transparent 28%)',
+            'radial-gradient(circle at 100% 100%, rgba(255, 120, 48, 0.22), transparent 30%)',
+            'radial-gradient(circle at 50% 50%, rgba(255, 239, 228, 0.88), transparent 34%)',
+          ].join(', '),
+        }}
+      >
+        <div className="absolute right-8 top-6 h-32 w-48 opacity-40 [background-image:radial-gradient(#ffb884_1px,transparent_1px)] [background-size:16px_16px]" />
+        <div className="absolute bottom-4 left-0 h-40 w-52 opacity-35 [background-image:radial-gradient(#ffb884_1px,transparent_1px)] [background-size:16px_16px]" />
+        <Cloud className="absolute left-[7%] top-[34%] h-12 w-12 text-[#ffd8c2] opacity-70 md:h-16 md:w-16" strokeWidth={1.5} />
+        <Cloud className="absolute right-[8%] top-[34%] h-14 w-14 text-[#ffd8c2] opacity-70 md:h-20 md:w-20" strokeWidth={1.5} />
+
+        <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center justify-center">
+          <div className="relative mb-8 h-52 w-52 sm:h-64 sm:w-64">
+            <div className="absolute inset-6 rounded-full border border-[#ffe4d4]" />
+            <div className="absolute inset-6 rounded-full border-[5px] border-transparent border-r-[#ff5a2f] border-t-[#ff9a5c] shadow-[0_0_18px_rgba(255,90,47,0.22)]" />
+            <div className="absolute inset-[23%] rounded-full bg-[#fff1e8]" />
+            <div className="absolute inset-[34%] rounded-full bg-white shadow-[0_16px_45px_rgba(255,90,47,0.18)]" />
+            <Store className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 text-[#ff8a4c] sm:h-14 sm:w-14" strokeWidth={1.8} />
+            <Search className="absolute bottom-[22%] left-[10%] h-7 w-7 text-[#ffc6a5] sm:h-8 sm:w-8" strokeWidth={1.8} />
+            <span className="absolute right-[18%] top-[18%] h-2 w-2 rounded-full bg-[#ff7a24]" />
+            <span className="absolute bottom-[26%] right-[21%] h-4 w-4 rounded-full bg-[#ff5a2f] shadow-[0_0_16px_rgba(255,90,47,0.55)]" />
+            <span className="absolute left-[15%] top-[36%] text-lg font-black text-[#ffb47e]">+</span>
+            <span className="absolute right-[12%] top-[42%] text-lg font-black text-[#ffb47e]">+</span>
+            <span className="absolute bottom-[18%] right-[2%] text-lg font-black text-[#ffb47e]">+</span>
+          </div>
+
+          <h1 className="text-3xl font-black text-[#2f3137] sm:text-4xl">No pudimos cargar la tienda</h1>
+          <p className="mt-3 max-w-xl text-base text-[#6b7280] sm:text-lg">
+            Intenta de nuevo en unos segundos. Si el problema continúa, revisa la configuración de la tienda.
+          </p>
+        </div>
       </div>
     );
   }
@@ -769,7 +846,7 @@ export function PublicStorefrontView() {
   };
 
   const loadActiveDeliveryZones = async () => {
-    if (!store?.id) {
+    if (!store?.id || !offersDelivery) {
       setDeliveryZones([]);
       return;
     }
@@ -790,6 +867,21 @@ export function PublicStorefrontView() {
   };
 
   const handleContinueCheckout = () => {
+    if (!hasPublicOrderingMethod) {
+      toast.error('La tienda no tiene métodos de compra disponibles por el momento');
+      return;
+    }
+
+    if (orderType === 'delivery' && !offersDelivery) {
+      toast.error('La tienda no ofrece delivery actualmente');
+      return;
+    }
+
+    if (orderType === 'pickup' && !offersPickup) {
+      toast.error('La tienda no ofrece retiro actualmente');
+      return;
+    }
+
     setCheckoutStep('checkout');
   };
 
@@ -798,6 +890,11 @@ export function PublicStorefrontView() {
   };
 
   const openDeliveryZonesDialog = () => {
+    if (!offersDelivery) {
+      toast.error('La tienda no ofrece delivery actualmente');
+      return;
+    }
+
     setIsDeliveryZonesDialogOpen(true);
     void loadActiveDeliveryZones();
   };
@@ -826,6 +923,21 @@ export function PublicStorefrontView() {
       return;
     }
 
+    if (!hasPublicOrderingMethod) {
+      toast.error('La tienda no tiene métodos de compra disponibles por el momento');
+      return;
+    }
+
+    if (orderType === 'delivery' && !offersDelivery) {
+      toast.error('La tienda no ofrece delivery actualmente');
+      return;
+    }
+
+    if (orderType === 'pickup' && !offersPickup) {
+      toast.error('La tienda no ofrece retiro actualmente');
+      return;
+    }
+
     if (!trimmedName) {
       toast.error('Ingresa tu nombre');
       return;
@@ -848,6 +960,11 @@ export function PublicStorefrontView() {
 
     if (cartItemsCount === 0) {
       toast.error('Agrega al menos un producto al carrito');
+      return;
+    }
+
+    if (isAsapSchedule && isAsapScheduleUnavailable) {
+      toast.error('La tienda esta cerrada. Programa el pedido para un horario disponible.');
       return;
     }
 
@@ -1048,14 +1165,16 @@ export function PublicStorefrontView() {
                 <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-[#ff5a2f] shadow">
                   <Store className="h-5 w-5" />
                 </div>
-                <button
-                  type="button"
-                  onClick={openDeliveryZonesDialog}
-                  className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-[#ff5a2f] shadow transition hover:bg-[#fff3ef]"
-                  aria-label="Ver zonas de entrega"
-                >
-                  <MapPin className="h-5 w-5" />
-                </button>
+                {offersDelivery ? (
+                  <button
+                    type="button"
+                    onClick={openDeliveryZonesDialog}
+                    className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-[#ff5a2f] shadow transition hover:bg-[#fff3ef]"
+                    aria-label="Ver zonas de entrega"
+                  >
+                    <MapPin className="h-5 w-5" />
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>
@@ -1064,34 +1183,45 @@ export function PublicStorefrontView() {
 
       <div className="relative mx-auto -mt-16 max-w-7xl px-4 pb-10 md:px-6">
         <section className="mx-auto mb-6 max-w-4xl rounded-2xl border border-[#efe2d7] bg-white/95 p-4 shadow-[0_18px_55px_rgba(22,29,39,0.18)] backdrop-blur md:p-5">
-          <div className="grid grid-cols-2 gap-3">
-            <Button
-              type="button"
-              onClick={() => setOrderType('delivery')}
-              className={`h-12 rounded-full border text-base font-bold transition ${
-                orderType === 'delivery'
-                  ? 'border-[#141d28] bg-[#141d28] !text-[#ffffff]'
-                  : 'border-[#f1e5da] bg-[#f8f4ef] text-[#9aa0a8] hover:bg-[#fff7f0]'
-              }`}
-            >
-              <Bike className="mr-2 h-5 w-5" />
-              Delivery
-            </Button>
-            <Button
-              type="button"
-              onClick={() => setOrderType('pickup')}
-              className={`h-12 rounded-full border text-base font-bold transition ${
-                orderType === 'pickup'
-                  ? 'border-[#141d28] bg-[#141d28] !text-[#ffffff]'
-                  : 'border-[#f1e5da] bg-[#f8f4ef] text-[#9aa0a8] hover:bg-[#fff7f0]'
-              }`}
-            >
-              <ShoppingBag className="mr-2 h-5 w-5" />
-              Para retirar
-            </Button>
-          </div>
+          {hasPublicOrderingMethod ? (
+            <div className={`grid gap-3 ${offersDelivery && offersPickup ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              {offersDelivery ? (
+                <Button
+                  type="button"
+                  onClick={() => setOrderType('delivery')}
+                  className={`h-12 rounded-full border text-base font-bold transition ${
+                    orderType === 'delivery'
+                      ? 'border-[#141d28] bg-[#141d28] !text-[#ffffff]'
+                      : 'border-[#f1e5da] bg-[#f8f4ef] text-[#9aa0a8] hover:bg-[#fff7f0]'
+                  }`}
+                >
+                  <Bike className="mr-2 h-5 w-5" />
+                  Delivery
+                </Button>
+              ) : null}
+              {offersPickup ? (
+                <Button
+                  type="button"
+                  onClick={() => setOrderType('pickup')}
+                  className={`h-12 rounded-full border text-base font-bold transition ${
+                    orderType === 'pickup'
+                      ? 'border-[#141d28] bg-[#141d28] !text-[#ffffff]'
+                      : 'border-[#f1e5da] bg-[#f8f4ef] text-[#9aa0a8] hover:bg-[#fff7f0]'
+                  }`}
+                >
+                  <ShoppingBag className="mr-2 h-5 w-5" />
+                  Para retirar
+                </Button>
+              ) : null}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-[#ffb28f] bg-[#fff3ef] px-4 py-4 text-center">
+              <p className="text-base font-black text-[#1d2530]">Compras no disponibles</p>
+              <p className="mt-1 text-sm text-[#69727d]">La tienda no tiene habilitado delivery ni retiro por el momento.</p>
+            </div>
+          )}
 
-          {orderType === 'pickup' ? (
+          {orderType === 'pickup' && offersPickup ? (
             <div className="mt-4 grid items-center gap-3 md:grid-cols-[1fr_1.4fr]">
               <p className="text-sm font-bold text-[#1d2530] md:pl-10">Sede para retirar</p>
               <Select
@@ -1112,7 +1242,12 @@ export function PublicStorefrontView() {
                       value={headquarter.id}
                       className="!text-[#1f2937] focus:!bg-[#f3f4f6] focus:!text-[#1f2937] data-[state=checked]:!bg-[#f3f4f6] data-[state=checked]:!text-[#1f2937]"
                     >
-                      {headquarter.name}
+                      <span className="flex flex-col gap-0.5">
+                        <span className="font-semibold">{headquarter.name}</span>
+                        {headquarter.location ? (
+                          <span className="text-xs text-[#6b7280]">{headquarter.location}</span>
+                        ) : null}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1120,11 +1255,18 @@ export function PublicStorefrontView() {
             </div>
           ) : null}
 
+          {hasPublicOrderingMethod ? (
           <div className="mt-3 grid items-center gap-3 md:grid-cols-[1fr_1.4fr]">
             <p className="text-sm font-bold text-[#1d2530] md:pl-10">Horario de entrega</p>
             <Select
               value={scheduleMode}
-              onValueChange={(value) => setScheduleMode(value as ScheduleMode)}
+              onValueChange={(value) => {
+                if (value === 'asap' && isAsapScheduleUnavailable) {
+                  toast.error('La tienda esta cerrada. Programa el pedido para un horario disponible.');
+                  return;
+                }
+                setScheduleMode(value as ScheduleMode);
+              }}
               disabled={isPickupZonePending}
             >
               <SelectTrigger className="h-12 rounded-full border border-[#eee2d8] !bg-white !text-[#1d2530] shadow-inner [&_svg]:!text-[#6b7280]">
@@ -1133,9 +1275,10 @@ export function PublicStorefrontView() {
               <SelectContent className="!bg-white !text-[#1f2937]">
                 <SelectItem
                   value="asap"
+                  disabled={isAsapScheduleUnavailable}
                   className="!text-[#1f2937] focus:!bg-[#f3f4f6] focus:!text-[#1f2937] data-[state=checked]:!bg-[#f3f4f6] data-[state=checked]:!text-[#1f2937]"
                 >
-                  Lo antes posible
+                  {isAsapScheduleUnavailable ? 'Lo antes posible (cerrado)' : 'Lo antes posible'}
                 </SelectItem>
                 <SelectItem
                   value="scheduled"
@@ -1147,8 +1290,9 @@ export function PublicStorefrontView() {
               </SelectContent>
             </Select>
           </div>
+          ) : null}
 
-          {scheduleMode === 'scheduled' ? (
+          {hasPublicOrderingMethod && scheduleMode === 'scheduled' ? (
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <Select
                 value={selectedScheduleDayId}
@@ -1203,6 +1347,10 @@ export function PublicStorefrontView() {
           {isPickupZonePending ? (
             <p className="mt-2 text-xs text-[#6b7280]">
               Selecciona la sede para habilitar los horarios disponibles.
+            </p>
+          ) : isAsapScheduleUnavailable ? (
+            <p className="mt-2 rounded-xl border border-[#ffd3c4] bg-[#fff3ef] px-3 py-2 text-xs font-semibold text-[#d54528]">
+              La tienda esta cerrada ahora. Para comprar, programa el pedido en un horario disponible.
             </p>
           ) : !scheduleState.hasSchedules ? (
             <p className="mt-2 text-xs text-[#6b7280]">
@@ -1644,7 +1792,7 @@ export function PublicStorefrontView() {
         </section>
       </div>
 
-      {cartItemsCount > 0 && checkoutStep === 'menu' ? (
+      {cartItemsCount > 0 && checkoutStep === 'menu' && hasPublicOrderingMethod ? (
         <div className="fixed inset-x-0 bottom-0 z-40 px-4 pb-4">
           <div className="mx-auto flex w-full max-w-4xl items-center justify-between rounded-2xl bg-[#ff5a2f] px-5 py-3 shadow-2xl">
             <button
@@ -1660,7 +1808,7 @@ export function PublicStorefrontView() {
       ) : null}
 
       <Dialog open={isProductDialogOpen} onOpenChange={(open) => (!open ? closeProductDialog() : setIsProductDialogOpen(true))}>
-        <DialogContent className="max-h-[94vh] max-w-4xl overflow-hidden rounded-2xl border border-[#f0e4d9] p-0 !bg-[#fffaf4] shadow-[0_28px_90px_rgba(20,29,40,0.35)]">
+        <DialogContent className="max-h-[94vh] w-[96vw] !max-w-[1180px] sm:!max-w-[1180px] overflow-hidden rounded-2xl border border-[#f0e4d9] p-0 !bg-[#fffaf4] shadow-[0_28px_90px_rgba(20,29,40,0.35)]">
           {activeProduct ? (
             <div className="grid max-h-[94vh] overflow-y-auto md:grid-cols-[1.2fr_0.8fr]">
               <div className="relative min-h-[320px] overflow-hidden bg-[#141d28] md:min-h-[620px]">
@@ -1733,7 +1881,7 @@ export function PublicStorefrontView() {
       </Dialog>
 
       <Dialog open={isDeliveryZonesDialogOpen} onOpenChange={setIsDeliveryZonesDialogOpen}>
-        <DialogContent className="max-h-[94vh] w-[98vw] max-w-[1400px] overflow-hidden rounded-2xl border border-[#f0e4d9] !bg-[#fffaf4] p-0 shadow-[0_28px_90px_rgba(20,29,40,0.35)] [&_[data-slot=dialog-close]]:border-[#eadfd4] [&_[data-slot=dialog-close]]:!bg-[#fff4ec] [&_[data-slot=dialog-close]]:text-[#1d2530] [&_[data-slot=dialog-close]]:hover:border-[#ff5a2f] [&_[data-slot=dialog-close]]:hover:text-[#ff5a2f]">
+        <DialogContent className="max-h-[94vh] w-[98vw] !max-w-[1500px] sm:!max-w-[1500px] overflow-hidden rounded-2xl border border-[#f0e4d9] !bg-[#fffaf4] p-0 shadow-[0_28px_90px_rgba(20,29,40,0.35)] [&_[data-slot=dialog-close]]:border-[#eadfd4] [&_[data-slot=dialog-close]]:!bg-[#fff4ec] [&_[data-slot=dialog-close]]:text-[#1d2530] [&_[data-slot=dialog-close]]:hover:border-[#ff5a2f] [&_[data-slot=dialog-close]]:hover:text-[#ff5a2f]">
           <div className="border-b border-[#efe2d7] bg-[#fffaf4] px-5 py-4">
             <h3 className="text-xl font-black text-[#1d2530]">Zonas de entrega activas</h3>
             <p className="mt-1 text-sm text-[#69727d]">
@@ -1750,7 +1898,7 @@ export function PublicStorefrontView() {
                 No hay zonas activas disponibles para esta tienda.
               </div>
             ) : (
-              <DeliveryZonesOverviewMap zones={deliveryZones} />
+              <DeliveryZonesOverviewMap zones={deliveryZones} headquarters={deliveryZoneHeadquarterMarkers} />
             )}
           </div>
         </DialogContent>

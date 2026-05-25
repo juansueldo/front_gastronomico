@@ -16,6 +16,10 @@ export interface StoreProfile {
   slug?: string;
   profile_image_url?: string | null;
   profileImageUrl?: string | null;
+  offers_delivery?: boolean;
+  offersDelivery?: boolean;
+  offers_pickup?: boolean;
+  offersPickup?: boolean;
 }
 
 export interface UpdateStoreProfileRequest {
@@ -23,6 +27,14 @@ export interface UpdateStoreProfileRequest {
   slug?: string;
   profile_image_url?: string;
   profileImageUrl?: string;
+  offers_delivery?: boolean;
+  offersDelivery?: boolean;
+  offers_pickup?: boolean;
+  offersPickup?: boolean;
+  delivery_enabled?: boolean;
+  deliveryEnabled?: boolean;
+  pickup_enabled?: boolean;
+  pickupEnabled?: boolean;
 }
 
 export function updateStoreProfile(payload: UpdateStoreProfileRequest): Promise<StoreProfile> {

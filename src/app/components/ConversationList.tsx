@@ -497,6 +497,25 @@ export function ConversationList() {
     setShowScrollToBottom(false);
   }, []);
 
+  const scheduleScrollToConversationEnd = useCallback((behavior: ScrollBehavior = 'auto') => {
+    shouldStickToBottomRef.current = true;
+    setShowScrollToBottom(false);
+
+    const scroll = () => scrollToConversationEnd(behavior);
+    const firstFrame = window.requestAnimationFrame(() => {
+      scroll();
+      window.requestAnimationFrame(scroll);
+    });
+    const shortDelay = window.setTimeout(scroll, 80);
+    const longDelay = window.setTimeout(scroll, 220);
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.clearTimeout(shortDelay);
+      window.clearTimeout(longDelay);
+    };
+  }, [scrollToConversationEnd]);
+
   const handleMessagesScroll = useCallback(() => {
     const viewport = messagesViewportRef.current;
     if (!viewport) return;
@@ -533,6 +552,7 @@ export function ConversationList() {
           ? (data as { messages: unknown[] }).messages
           : [];
       setMessages(rows.map((row) => mapMessagePayload(row as Record<string, unknown>, conversationId)));
+      scheduleScrollToConversationEnd('auto');
       await markConversationAsRead(conversationId).catch(() => undefined);
       setConversations((current) => current.map((conversation) => (
         conversation.id === conversationId ? { ...conversation, unreadCount: 0 } : conversation
@@ -541,8 +561,9 @@ export function ConversationList() {
       toast.error(getApiErrorMessage(error, 'No se pudieron cargar los mensajes'));
     } finally {
       setIsLoadingMessages(false);
+      scheduleScrollToConversationEnd('auto');
     }
-  }, []);
+  }, [scheduleScrollToConversationEnd]);
 
   useEffect(() => {
     void loadConversations();
@@ -574,9 +595,11 @@ export function ConversationList() {
     if (selectedConversation?.id) {
       shouldStickToBottomRef.current = true;
       setShowScrollToBottom(false);
+      setMessages([]);
+      scheduleScrollToConversationEnd('auto');
       void loadMessages(selectedConversation.id);
     }
-  }, [loadMessages, selectedConversation?.id]);
+  }, [loadMessages, scheduleScrollToConversationEnd, selectedConversation?.id]);
 
   useEffect(() => {
     const loadCustomerContext = async () => {
@@ -614,6 +637,11 @@ export function ConversationList() {
 
     return () => window.cancelAnimationFrame(animationFrameId);
   }, [messages, scrollToConversationEnd, selectedConversation?.id]);
+
+  useEffect(() => {
+    if (!selectedConversation?.id || isLoadingMessages) return undefined;
+    return scheduleScrollToConversationEnd('auto');
+  }, [isLoadingMessages, messages.length, scheduleScrollToConversationEnd, selectedConversation?.id]);
 
   useEffect(() => () => {
     if (recordingTimerRef.current) window.clearInterval(recordingTimerRef.current);
@@ -1614,17 +1642,6 @@ export function ConversationList() {
         onConfirm={handleDeleteConversation}
       />
 
-      {isCreateOrderOpen && !isOrderDialogMinimized ? (
-        <Button
-          type="button"
-          variant="outline"
-          className="fixed bottom-24 right-5 z-[60] border-[var(--app-line)] bg-[var(--app-panel)] shadow-xl"
-          onClick={() => setIsOrderDialogMinimized(true)}
-        >
-          Minimizar orden
-        </Button>
-      ) : null}
-
       {isOrderDialogMinimized && isCreateOrderOpen ? (
         <button
           type="button"
@@ -1635,18 +1652,20 @@ export function ConversationList() {
         </button>
       ) : null}
 
-      {!isOrderDialogMinimized ? (
-        <CreateOrderDialog
-          open={isCreateOrderOpen}
-          onClose={() => setIsCreateOrderOpen(false)}
-          onCreated={() => {
-            setIsCreateOrderOpen(false);
-            setIsOrderDialogMinimized(false);
-          }}
-          availableProducts={availableProducts}
-          availableCategories={availableCategories}
-        />
-      ) : null}
+      <CreateOrderDialog
+        open={isCreateOrderOpen && !isOrderDialogMinimized}
+        onClose={() => {
+          setIsCreateOrderOpen(false);
+          setIsOrderDialogMinimized(false);
+        }}
+        onMinimize={() => setIsOrderDialogMinimized(true)}
+        onCreated={() => {
+          setIsCreateOrderOpen(false);
+          setIsOrderDialogMinimized(false);
+        }}
+        availableProducts={availableProducts}
+        availableCategories={availableCategories}
+      />
 
       <Dialog open={isNewChatOpen} onOpenChange={setIsNewChatOpen}>
         <DialogContent className="max-w-md border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]">

@@ -51,6 +51,44 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
   maximumFractionDigits: 0,
 });
 
+function useAnimatedNumber(target: number, duration = 900) {
+  const [value, setValue] = useState(0);
+
+  useEffect(() => {
+    const normalizedTarget = Number.isFinite(target) ? Math.max(0, target) : 0;
+    let frameId = 0;
+    let startTime: number | null = null;
+
+    setValue(0);
+
+    const animate = (timestamp: number) => {
+      if (startTime === null) {
+        startTime = timestamp;
+      }
+
+      const elapsed = timestamp - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easedProgress = 1 - Math.pow(1 - progress, 3);
+
+      setValue(normalizedTarget * easedProgress);
+
+      if (progress < 1) {
+        frameId = window.requestAnimationFrame(animate);
+      } else {
+        setValue(normalizedTarget);
+      }
+    };
+
+    frameId = window.requestAnimationFrame(animate);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [target, duration]);
+
+  return value;
+}
+
 const DASHBOARD_HEADQUARTER_STORAGE_KEY = 'cash:selected-headquarter-id';
 const DEFAULT_MAP_CENTER: LatLngExpression = [-34.603722, -58.381592];
 const DASHBOARD_ZONE_COLORS = ['#22c55e', '#ff5a0a', '#3b82f6', '#f59e0b', '#a855f7', '#ef4444'];
@@ -365,18 +403,29 @@ export function DashboardView() {
     };
   }, []);
 
-  const salesValue = metrics.salesIncome > 0 ? currencyFormatter.format(metrics.salesIncome) : '$ 1.250.000';
-  const tableValue = metrics.tables > 0 ? `${Math.min(18, metrics.tables)} / ${metrics.tables}` : '18 / 32';
-  const activeOrders = metrics.activeOrders > 0 ? String(metrics.activeOrders) : '24';
+  const salesTarget = metrics.salesIncome;
+  const activeOrdersTarget = metrics.activeOrders;
+  const occupiedTablesTarget = 0;
+  const totalTablesTarget = metrics.tables;
+  const averageTicketTarget = 0;
+  const animatedSales = useAnimatedNumber(salesTarget, 1000);
+  const animatedActiveOrders = useAnimatedNumber(activeOrdersTarget, 850);
+  const animatedOccupiedTables = useAnimatedNumber(occupiedTablesTarget, 850);
+  const animatedTotalTables = useAnimatedNumber(totalTablesTarget, 850);
+  const animatedAverageTicket = useAnimatedNumber(averageTicketTarget, 950);
+  const salesValue = currencyFormatter.format(Math.round(animatedSales));
+  const tableValue = `${Math.round(animatedOccupiedTables)} / ${Math.round(animatedTotalTables)}`;
+  const activeOrders = String(Math.round(animatedActiveOrders));
+  const averageTicket = currencyFormatter.format(Math.round(animatedAverageTicket));
 
   return (
     <AppLayout>
       <div className="dashboard-page">
         <section className="dashboard-metrics">
-          <MetricCard title="Ventas de hoy" value={salesValue} detail={loading ? 'Actualizando...' : '18% vs ayer'} icon={ShoppingBag} tone="orange" />
-          <MetricCard title="Pedidos activos" value={activeOrders} detail="12 en preparacion" icon={ReceiptText} tone="orange" />
-          <MetricCard title="Mesas ocupadas" value={tableValue} detail="56% de ocupacion" icon={Table2} tone="amber" />
-          <MetricCard title="Ticket promedio" value="$ 34.722" detail="8% vs ayer" icon={Ticket} tone="coral" />
+          <MetricCard title="Ventas de hoy" value={salesValue} detail={loading ? 'Actualizando...' : '0% vs ayer'} icon={ShoppingBag} tone="orange" />
+          <MetricCard title="Pedidos activos" value={activeOrders} detail="0 en preparacion" icon={ReceiptText} tone="orange" />
+          <MetricCard title="Mesas ocupadas" value={tableValue} detail="0% de ocupacion" icon={Table2} tone="amber" />
+          <MetricCard title="Ticket promedio" value={averageTicket} detail="0% vs ayer" icon={Ticket} tone="coral" />
         </section>
 
         <section className="dashboard-grid-main">

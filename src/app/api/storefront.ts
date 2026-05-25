@@ -16,6 +16,8 @@ export interface PublicStoreInfo {
   profileImageUrl?: string;
   logoUrl?: string;
   statusId?: number;
+  offersDelivery?: boolean;
+  offersPickup?: boolean;
   pickupHeadquarters?: PublicStoreHeadquarter[];
   defaultHeadquarterId?: string;
 }
@@ -42,6 +44,8 @@ export interface PublicStoreHeadquarter {
   name: string;
   location?: string;
   phone?: string;
+  latitude?: number;
+  longitude?: number;
   schedules?: PublicStoreSchedule[];
 }
 
@@ -50,6 +54,8 @@ export interface PublicStoreCatalog {
   categories: PublicStoreCategory[];
   headquarters: PublicStoreHeadquarter[];
   defaultHeadquarterId?: string;
+  offersDelivery?: boolean;
+  offersPickup?: boolean;
 }
 
 export interface PublicStoreSchedule {
@@ -94,6 +100,14 @@ interface BackendStoreInfo {
   headquarter?: unknown;
   pickupHeadquarters?: unknown;
   pickup_headquarters?: unknown;
+  offers_delivery?: boolean | string | number | null;
+  offersDelivery?: boolean | string | number | null;
+  delivery_enabled?: boolean | string | number | null;
+  deliveryEnabled?: boolean | string | number | null;
+  offers_pickup?: boolean | string | number | null;
+  offersPickup?: boolean | string | number | null;
+  pickup_enabled?: boolean | string | number | null;
+  pickupEnabled?: boolean | string | number | null;
 }
 
 interface BackendStoreProduct {
@@ -150,6 +164,10 @@ interface BackendHeadquarter {
   location?: string;
   address?: string;
   phone?: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  lat?: number | string | null;
+  lng?: number | string | null;
   schedules?: unknown;
 }
 
@@ -239,6 +257,18 @@ const parseEntityId = (...candidates: unknown[]) => {
   return '';
 };
 
+const normalizeBooleanFlag = (value: unknown, fallback = true) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'si', 'sí', 'on'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+  }
+
+  return fallback;
+};
+
 const normalizeCategoryIds = (item: BackendStoreProduct): string[] => {
   const collected: unknown[] = [];
 
@@ -269,12 +299,16 @@ const normalizeHeadquarter = (value: unknown): PublicStoreHeadquarter | null => 
   if (!id) {
     return null;
   }
+  const latitude = Number(candidate.latitude ?? candidate.lat);
+  const longitude = Number(candidate.longitude ?? candidate.lng);
 
   return {
     id,
     name: String(candidate.name ?? candidate.title ?? `Sede ${id}`).trim(),
     location: candidate.location ?? candidate.address ?? undefined,
     phone: candidate.phone ?? undefined,
+    latitude: Number.isFinite(latitude) ? latitude : undefined,
+    longitude: Number.isFinite(longitude) ? longitude : undefined,
     schedules: normalizeSchedules(candidate.schedules),
   };
 };
@@ -432,6 +466,20 @@ const normalizeStore = (slug: string, item: BackendStoreInfo | null): PublicStor
     profileImageUrl: resolvedProfileImageUrl,
     logoUrl: item?.logoUrl ?? item?.logo_url ?? resolvedProfileImageUrl,
     statusId: Number.isFinite(parsedStatusId) ? parsedStatusId : 1,
+    offersDelivery: normalizeBooleanFlag(
+      item?.offersDelivery
+      ?? item?.offers_delivery
+      ?? item?.deliveryEnabled
+      ?? item?.delivery_enabled,
+      true,
+    ),
+    offersPickup: normalizeBooleanFlag(
+      item?.offersPickup
+      ?? item?.offers_pickup
+      ?? item?.pickupEnabled
+      ?? item?.pickup_enabled,
+      true,
+    ),
     pickupHeadquarters,
     defaultHeadquarterId: defaultHeadquarterId || undefined,
   };
@@ -524,12 +572,29 @@ const normalizeProductsAndCategories = (payload: unknown): PublicStoreCatalog =>
       headquarters[0]?.id
     )
     : parseEntityId(headquarters[0]?.id);
+  const recordPayload = !Array.isArray(payload) && payload && typeof payload === 'object'
+    ? payload as Record<string, unknown>
+    : {};
 
   return {
     products,
     categories,
     headquarters,
     defaultHeadquarterId: defaultHeadquarterId || undefined,
+    offersDelivery: normalizeBooleanFlag(
+      recordPayload.offersDelivery
+      ?? recordPayload.offers_delivery
+      ?? recordPayload.deliveryEnabled
+      ?? recordPayload.delivery_enabled,
+      true,
+    ),
+    offersPickup: normalizeBooleanFlag(
+      recordPayload.offersPickup
+      ?? recordPayload.offers_pickup
+      ?? recordPayload.pickupEnabled
+      ?? recordPayload.pickup_enabled,
+      true,
+    ),
   };
 };
 
