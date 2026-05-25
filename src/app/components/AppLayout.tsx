@@ -15,7 +15,6 @@ import {
   Home,
   LayoutGrid,
   LogOut,
-  Menu,
   MessageSquareText,
   Moon,
   MoreHorizontal,
@@ -28,7 +27,6 @@ import {
   Truck,
   Users,
   Wallet,
-  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Toaster } from '../shared/ui/components/sonner';
@@ -189,7 +187,6 @@ export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const [loggedUser, setLoggedUser] = useState<AuthUser | null>(null);
   const [themePreference, setThemePreferenceState] = useState<ThemePreference>(() => getThemePreference());
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
@@ -488,10 +485,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   const notificationCount = unreadCount || notifications.length;
   const userAvatarUrl = getUserAvatarUrl(loggedUser);
 
-  const UserMenu = (
+  const renderUserMenu = (align: 'start' | 'end' = 'start', triggerClassName = 'legacy-user-trigger') => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" className="legacy-user-trigger">
+        <button type="button" className={triggerClassName}>
           <div className="relative flex-none">
             <Avatar className="h-11 w-11">
               {userAvatarUrl ? <AvatarImage src={userAvatarUrl} alt="Foto de perfil" /> : null}
@@ -510,7 +507,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           {!isSidebarCollapsed && <ChevronDown className="hidden h-4 w-4 text-app-muted lg:block" />}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="app-menu-surface w-64">
+      <DropdownMenuContent align={align} className="app-menu-surface w-64">
         <DropdownMenuLabel className="flex items-center gap-2">
           <CircleUserRound className="h-4 w-4 text-app-muted" />
           {loggedUser ? `${loggedUser.firstname} ${loggedUser.lastname}` : 'Juan Garcia'}
@@ -542,7 +539,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const SidebarContent = (
     <>
       <div className="legacy-sidebar-profile">
-        {UserMenu}
+        {renderUserMenu()}
       </div>
 
       <nav className="legacy-sidebar-nav">
@@ -567,7 +564,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                       title={isSidebarCollapsed ? item.label : undefined}
                       onClick={() => {
                         navigate(item.path);
-                        setIsMobileMenuOpen(false);
                         setIsMobileMoreOpen(false);
                       }}
                       className={`legacy-nav-item ${isSidebarCollapsed ? 'collapsed' : ''} ${active ? 'active' : ''}`}
@@ -596,22 +592,11 @@ export function AppLayout({ children }: AppLayoutProps) {
         {SidebarContent}
       </aside>
 
-      {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-50 bg-black/45 md:hidden" onClick={() => setIsMobileMenuOpen(false)}>
-          <aside className="legacy-sidebar flex h-full w-[280px]" onClick={(event) => event.stopPropagation()}>
-            <button type="button" aria-label="Cerrar menu" className="absolute right-4 top-4 rounded-lg p-2 text-app-muted hover:bg-app-soft" onClick={() => setIsMobileMenuOpen(false)}>
-              <X className="h-5 w-5" />
-            </button>
-            {SidebarContent}
-          </aside>
-        </div>
-      )}
-
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         <header className="app-topbar">
-          <button type="button" aria-label="Abrir menu" className="app-icon-button md:hidden" onClick={() => setIsMobileMenuOpen(true)}>
-            <Menu className="h-5 w-5" />
-          </button>
+          <div className="mobile-user-menu md:hidden">
+            {renderUserMenu('start', 'legacy-user-trigger mobile-user-trigger')}
+          </div>
 
           <div className="app-search">
             <Search className="h-5 w-5 text-app-muted" />

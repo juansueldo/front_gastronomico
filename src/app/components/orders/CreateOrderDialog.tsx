@@ -102,6 +102,7 @@ interface Props {
   onCreated: () => void;
   availableProducts: ProductItem[];
   availableCategories: ProductCategory[];
+  initialCustomer?: CustomerData | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -312,7 +313,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export function CreateOrderDialog({ open, onClose, onCreated, availableProducts, availableCategories }: Props) {
+export function CreateOrderDialog({ open, onClose, onCreated, availableProducts, availableCategories, initialCustomer = null }: Props) {
   // Paso actual
   const [step, setStep] = useState<Step>('phone');
 
@@ -382,6 +383,29 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
       setSelectedHeadquarterId(String(userHeadquarterId));
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !initialCustomer) return;
+
+    setCustomerFound(initialCustomer);
+    setCustomerNotFound(false);
+    setPhonePrefix('+54');
+    setPhone(initialCustomer.phone.replace(/^\+?54/, '').trim());
+    setStep('type');
+
+    if (initialCustomer.savedAddress) {
+      setDeliveryAddress(initialCustomer.savedAddress.formatted ?? '');
+      if (
+        Number.isFinite(initialCustomer.savedAddress.latitude)
+        && Number.isFinite(initialCustomer.savedAddress.longitude)
+      ) {
+        setDeliveryCoordinates({
+          latitude: Number(initialCustomer.savedAddress.latitude),
+          longitude: Number(initialCustomer.savedAddress.longitude),
+        });
+      }
+    }
+  }, [initialCustomer, open]);
 
   useEffect(() => {
     if (!open) {

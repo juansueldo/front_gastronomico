@@ -12,6 +12,8 @@ export interface ContactItem {
   id: number | string;
   name?: string;
   phone?: string;
+  avatarUrl?: string | null;
+  avatar_url?: string | null;
   label?: number;
   last_message?: string | null;
   last_message_date?: string | null;
@@ -84,6 +86,8 @@ function mapConversationToContact(conversation: MessagingConversation): ContactI
     id: conversation.id,
     name: customerName || customerPhone || contactIdentifier || `Conversacion ${conversation.id}`,
     phone: customerPhone || contactIdentifier,
+    avatarUrl: conversation.customer?.profileImageUrl ?? null,
+    avatar_url: conversation.customer?.profileImageUrl ?? null,
     label: mapConversationStatusToLegacyLabel(conversation.status),
     last_message: conversation.lastMessagePreview ?? 'Sin mensajes',
     last_message_date: conversation.lastMessageAt ?? null,

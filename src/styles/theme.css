@@ -214,6 +214,23 @@
     background: var(--app-soft);
   }
 
+  .mobile-user-menu {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .mobile-user-trigger {
+    width: auto;
+    gap: 0;
+    border-radius: 8px;
+    padding: 0;
+  }
+
+  .mobile-user-trigger:hover {
+    background: transparent;
+  }
+
   .legacy-sidebar-nav {
     flex: 1;
     overflow-y: auto;

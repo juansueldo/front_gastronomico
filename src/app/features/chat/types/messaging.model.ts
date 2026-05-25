@@ -29,6 +29,7 @@ export interface MessagingConversation {
     name?: string;
     phone?: string;
     email?: string;
+    profileImageUrl?: string | null;
   };
   contact?: {
     id?: string;

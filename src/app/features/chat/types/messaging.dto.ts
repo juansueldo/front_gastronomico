@@ -30,6 +30,7 @@ export type MessagingConversationDto = {
     name?: string;
     phone?: string;
     email?: string;
+    metadata?: Record<string, unknown> | null;
   };
   Contact?: {
     id?: string | number;

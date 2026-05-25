@@ -103,6 +103,10 @@ export async function markConversationAsRead(conversationId: string | number): P
   return mapMessagingConversationDtoToModel(data as MessagingConversationDto);
 }
 
+export async function deleteMessagingConversation(conversationId: string | number): Promise<void> {
+  await apiClient.delete(`${API_VERSION}/messaging/conversations/${conversationId}`);
+}
+
 export type {
   MessagingAccount,
   MessagingConversation,

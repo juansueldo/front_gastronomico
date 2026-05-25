@@ -1,5 +1,6 @@
 export {
   connectWhatsappAccount,
+  deleteMessagingConversation,
   disconnectWhatsappAccount,
   getCurrentMessagingAccount,
   listConversationMessages,

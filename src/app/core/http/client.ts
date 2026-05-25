@@ -126,8 +126,8 @@ export class ApiClient {
       const data = await response.json().catch(() => null);
       assertOk(response, data);
       
-      // Retorna data si existe, sino el objeto completo
-      return (data?.data ?? data) as T;
+      // Retorna data si existe, salvo que el caller necesite conservar metadata de paginacion.
+      return (config?.preserveEnvelope ? data : (data?.data ?? data)) as T;
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         throw ApiError.networkError();

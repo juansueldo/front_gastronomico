@@ -9,6 +9,7 @@ import { getAuthSession } from './core/storage/authStorage';
 
 export const APP_NOTIFICATION_EVENT = 'app:notification';
 export const APP_NEW_MESSAGE_EVENT = 'app:new-message';
+export const APP_CONVERSATIONS_CHANGED_EVENT = 'app:conversations-changed';
 
 type SenderType = 'contact' | 'agent';
 type ChannelType = 'whatsapp' | 'facebook' | 'instagram' | 'email';
@@ -16,6 +17,7 @@ type ChannelType = 'whatsapp' | 'facebook' | 'instagram' | 'email';
 export interface AppNewMessageDetail {
   conversationId: string;
   messageId: string;
+  providerMessageId?: string;
   msgId?: string;
   content: string;
   mediaUrl?: string;
@@ -95,6 +97,12 @@ function buildMessageDetail(notification: PushNotificationSchema): AppNewMessage
   return {
     conversationId,
     messageId: String(data.messageId ?? data.id ?? `push-${Date.now()}`),
+    providerMessageId:
+      data.providerMessageId !== undefined
+        ? String(data.providerMessageId)
+        : data.provider_message_id !== undefined
+        ? String(data.provider_message_id)
+        : undefined,
     msgId: String(data.msg_id ?? data.msgId ?? data.messageId ?? data.id ?? `push-${Date.now()}`),
     content,
     mediaUrl:

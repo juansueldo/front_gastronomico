@@ -2,6 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import { useEffect, useState } from 'react';
 import { expireAuthSession, getAuthSession, getStoreIdFromToken } from './core/storage/authStorage';
 import {
+  APP_CONVERSATIONS_CHANGED_EVENT,
   dispatchAppNewMessage,
   dispatchAppNotification,
   type AppNewMessageDetail,
@@ -190,6 +191,7 @@ function buildMessagingMessageDetail(payload: Record<string, unknown>): AppNewMe
   return {
     conversationId,
     messageId: String(message.id ?? `msg-${Date.now()}`),
+    providerMessageId: message.providerMessageId !== undefined ? String(message.providerMessageId) : undefined,
     msgId: String(message.providerMessageId ?? message.id ?? `msg-${Date.now()}`),
     content: typeof message.body === 'string' ? message.body : '',
     mediaUrl:
@@ -354,6 +356,11 @@ function registerEventHandlers(socket: Socket) {
   socket.on('messaging_account_status_changed', (data) => {
     const payload = data?.data ?? data ?? {};
     handleMessagingAccountEvent('messaging_account_status_changed', payload);
+  });
+
+  socket.on('messaging_conversation_updated', (data) => {
+    const payload = data?.data ?? data ?? {};
+    window.dispatchEvent(new CustomEvent(APP_CONVERSATIONS_CHANGED_EVENT, { detail: payload }));
   });
 
   socket.on('messaging_message_received', (data) => {

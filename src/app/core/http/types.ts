@@ -31,6 +31,7 @@ export interface RequestConfig {
   timeout?: number;
   retry?: number;
   cache?: 'short' | 'long' | 'none';
+  preserveEnvelope?: boolean;
 }
 
 // Versión de API estándar

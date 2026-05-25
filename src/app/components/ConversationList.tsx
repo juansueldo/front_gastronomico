@@ -29,11 +29,13 @@ import {
   UserPlus,
   X,
 } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Toaster } from '../shared/ui/components/sonner';
-import { Avatar, AvatarFallback } from '../shared/ui/components/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '../shared/ui/components/avatar';
 import { Badge } from '../shared/ui/components/badge';
 import { Button } from '../shared/ui/components/button';
+import { DeleteConfirmDialog } from '../shared/ui/components/delete-confirm-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../shared/ui/components/dialog';
 import { Input } from '../shared/ui/components/input';
 import { Label } from '../shared/ui/components/label';
@@ -46,12 +48,13 @@ import {
   type ContactItem,
 } from '../features/chat/services/chat.service';
 import {
+  deleteMessagingConversation,
   markConversationAsRead,
   type MessagingMessage,
 } from '../features/chat';
 import { fetchProductCategories, fetchProducts, type ProductCategory, type ProductItem } from '../features/products';
 import { findCustomerByPhone, listCustomerOrders, type CustomerLookupResult } from '../features/customers';
-import { APP_NEW_MESSAGE_EVENT, type AppNewMessageDetail } from '../pushNotifications';
+import { APP_CONVERSATIONS_CHANGED_EVENT, APP_NEW_MESSAGE_EVENT, type AppNewMessageDetail } from '../pushNotifications';
 import { ApiError } from '../core/http/errors';
 
 type ConversationFilter = 'all' | 'unread' | 'assigned';
@@ -61,6 +64,7 @@ type ConversationItem = {
   name: string;
   phone?: string;
   email?: string;
+  avatarUrl?: string | null;
   lastMessage: string;
   lastMessageAt: Date;
   unreadCount: number;
@@ -70,6 +74,7 @@ type ConversationItem = {
 
 type ChatMessage = {
   id: string;
+  providerMessageId?: string;
   body: string;
   direction: 'inbound' | 'outbound';
   createdAt: Date;
@@ -94,6 +99,12 @@ type PendingAttachment = {
   url: string;
   mime: string;
   name: string;
+};
+
+type CustomerChatNavigation = {
+  id?: number | string;
+  name?: string;
+  phone: string;
 };
 
 const filterLabels: Record<ConversationFilter, string> = {
@@ -178,11 +189,53 @@ function mapContactToConversation(contact: ContactItem): ConversationItem {
     id: String(contact.id),
     name: contact.name || contact.phone || `Conversacion ${contact.id}`,
     phone: contact.phone,
+    avatarUrl: contact.avatar_url ?? contact.avatarUrl ?? null,
     lastMessage: contact.last_message || 'Sin mensajes',
     lastMessageAt: parseDate(contact.last_message_date),
     unreadCount: Number(contact.label) === 1 ? 1 : 0,
     status: Number(contact.label) === 2 ? 'assigned' : undefined,
     channel: contact.network ?? contact.instance_description ?? 'whatsapp',
+  };
+}
+
+function getRecordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : null;
+}
+
+function getConversationField(payload: Record<string, unknown>, key: string) {
+  return payload[key] ?? payload[key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)];
+}
+
+function mapConversationUpdatePayload(payload: Record<string, unknown>, fallback?: ConversationItem): ConversationItem | null {
+  const conversation = getRecordValue(payload.conversation) ?? payload;
+  const id = conversation.id !== undefined ? String(conversation.id) : fallback?.id;
+  if (!id) return null;
+
+  const customer = getRecordValue(conversation.Customer) ?? getRecordValue(conversation.customer) ?? {};
+  const contact = getRecordValue(conversation.Contact) ?? getRecordValue(conversation.contact) ?? {};
+  const lastMessageAt = getConversationField(conversation, 'lastMessageAt');
+  const lastMessagePreview = getConversationField(conversation, 'lastMessagePreview');
+  const unreadCount = getConversationField(conversation, 'unreadCount');
+  const customerName = typeof customer.name === 'string' ? customer.name : undefined;
+  const customerPhone = typeof customer.phone === 'string' ? customer.phone : undefined;
+  const contactIdentifier = typeof contact.identifier === 'string' ? contact.identifier : undefined;
+  const channel = typeof conversation.channel === 'string' ? conversation.channel : undefined;
+  const profileImageUrl = getRecordValue(customer.metadata)?.whatsappProfileImageUrl;
+
+  return {
+    id,
+    name: customerName || fallback?.name || customerPhone || contactIdentifier || `Conversacion ${id}`,
+    phone: customerPhone || fallback?.phone || contactIdentifier,
+    avatarUrl: typeof profileImageUrl === 'string' ? profileImageUrl : fallback?.avatarUrl ?? null,
+    lastMessage: typeof lastMessagePreview === 'string' && lastMessagePreview.trim()
+      ? lastMessagePreview
+      : fallback?.lastMessage ?? 'Sin mensajes',
+    lastMessageAt: typeof lastMessageAt === 'string'
+      ? parseDate(lastMessageAt)
+      : fallback?.lastMessageAt ?? new Date(),
+    unreadCount: Number.isFinite(Number(unreadCount)) ? Number(unreadCount) : fallback?.unreadCount ?? 0,
+    status: typeof conversation.status === 'string' ? conversation.status : fallback?.status,
+    channel: channel || fallback?.channel || 'whatsapp',
   };
 }
 
@@ -192,6 +245,13 @@ function mapMessagePayload(message: Record<string, unknown>, fallbackConversatio
 
   return {
     id: String(message.id ?? message.msg_id ?? `${fallbackConversationId}-${Date.now()}`),
+    providerMessageId: message.providerMessageId !== undefined
+      ? String(message.providerMessageId)
+      : message.provider_message_id !== undefined
+        ? String(message.provider_message_id)
+        : message.msg_id !== undefined
+          ? String(message.msg_id)
+          : undefined,
     body: String(message.content ?? message.message ?? message.text ?? message.body ?? ''),
     direction: (message.direction === 'outbound' || message.direction === 'inbound')
       ? message.direction
@@ -203,6 +263,37 @@ function mapMessagePayload(message: Record<string, unknown>, fallbackConversatio
     mediaMime: typeof message.mediaMime === 'string' ? message.mediaMime : typeof message.media_mime === 'string' ? message.media_mime : undefined,
     mediaFilename: typeof message.mediaFilename === 'string' ? message.mediaFilename : typeof message.media_filename === 'string' ? message.media_filename : undefined,
   };
+}
+
+function mergeMessageByIdentity(messages: ChatMessage[], incoming: ChatMessage) {
+  const incomingBody = incoming.body.trim();
+  const incomingTime = incoming.createdAt.getTime();
+  let wasMerged = false;
+
+  const merged = messages.map((message) => {
+    const sameId = message.id === incoming.id;
+    const sameProviderId = Boolean(message.providerMessageId && incoming.providerMessageId && message.providerMessageId === incoming.providerMessageId);
+    const sameRecentOptimistic =
+      message.status === 'pending'
+      && message.direction === incoming.direction
+      && message.body.trim() === incomingBody
+      && Math.abs(message.createdAt.getTime() - incomingTime) < 30000;
+
+    if (!sameId && !sameProviderId && !sameRecentOptimistic) return message;
+
+    wasMerged = true;
+    return {
+      ...message,
+      ...incoming,
+      providerMessageId: incoming.providerMessageId ?? message.providerMessageId,
+      mediaUrl: incoming.mediaUrl ?? message.mediaUrl,
+      mediaMime: incoming.mediaMime ?? message.mediaMime,
+      mediaFilename: incoming.mediaFilename ?? message.mediaFilename,
+      status: incoming.status ?? message.status,
+    };
+  });
+
+  return wasMerged ? merged : [...messages, incoming];
 }
 
 function getMediaKind(message: ChatMessage) {
@@ -217,6 +308,35 @@ function getMediaKind(message: ChatMessage) {
 function getApiErrorMessage(error: unknown, fallback: string) {
   if (error instanceof ApiError || error instanceof Error) return error.message;
   return fallback;
+}
+
+function normalizePhoneDigits(value?: string | null) {
+  return String(value ?? '').replace(/@c\.us$/i, '').replace(/\D/g, '');
+}
+
+function phonesMatch(left?: string, right?: string) {
+  const leftDigits = normalizePhoneDigits(left);
+  const rightDigits = normalizePhoneDigits(right);
+  if (!leftDigits || !rightDigits) return false;
+  if (leftDigits === rightDigits) return true;
+  return (leftDigits.length >= 8 && rightDigits.endsWith(leftDigits))
+    || (rightDigits.length >= 8 && leftDigits.endsWith(rightDigits));
+}
+
+function getCustomerChatNavigation(state: unknown): CustomerChatNavigation | null {
+  if (!state || typeof state !== 'object') return null;
+  const candidate = (state as { customerChat?: unknown }).customerChat;
+  if (!candidate || typeof candidate !== 'object') return null;
+
+  const raw = candidate as Record<string, unknown>;
+  const phone = typeof raw.phone === 'string' ? raw.phone.trim() : '';
+  if (!phone) return null;
+
+  return {
+    id: typeof raw.id === 'string' || typeof raw.id === 'number' ? raw.id : undefined,
+    name: typeof raw.name === 'string' ? raw.name.trim() : undefined,
+    phone,
+  };
 }
 
 function htmlToWhatsappMarkdown(html: string) {
@@ -292,6 +412,8 @@ function renderWhatsappText(text: string) {
 }
 
 export function ConversationList() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -300,8 +422,11 @@ export function ConversationList() {
   const [newMessage, setNewMessage] = useState('');
   const [isSelectionToolbarVisible, setIsSelectionToolbarVisible] = useState(false);
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+  const [hasLoadedConversations, setHasLoadedConversations] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [conversationToDelete, setConversationToDelete] = useState<ConversationItem | null>(null);
+  const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
   const [recordingElapsed, setRecordingElapsed] = useState(0);
   const [recordingWaveform, setRecordingWaveform] = useState<number[]>(() => Array.from({ length: 42 }, () => 10));
@@ -317,7 +442,12 @@ export function ConversationList() {
   const [availableCategories, setAvailableCategories] = useState<ProductCategory[]>([]);
   const [newChatName, setNewChatName] = useState('');
   const [newChatPhone, setNewChatPhone] = useState('');
+  const [pendingCustomerChat, setPendingCustomerChat] = useState<CustomerChatNavigation | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const messagesViewportRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const previousConversationIdRef = useRef<string | null>(null);
+  const shouldStickToBottomRef = useRef(true);
   const editorRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -354,6 +484,30 @@ export function ConversationList() {
   const assignedTotal = conversations.filter((conversation) => conversation.status === 'assigned').length;
   const activeOrder = customerOrders.find(isActiveOrder);
 
+  const scrollToConversationEnd = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const viewport = messagesViewportRef.current;
+
+    if (viewport) {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior });
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior });
+    }
+
+    shouldStickToBottomRef.current = true;
+    setShowScrollToBottom(false);
+  }, []);
+
+  const handleMessagesScroll = useCallback(() => {
+    const viewport = messagesViewportRef.current;
+    if (!viewport) return;
+
+    const distanceToBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    const isNearBottom = distanceToBottom < 80;
+
+    shouldStickToBottomRef.current = isNearBottom;
+    setShowScrollToBottom(!isNearBottom);
+  }, []);
+
   const loadConversations = useCallback(async () => {
     setIsLoadingConversations(true);
     try {
@@ -365,6 +519,7 @@ export function ConversationList() {
       toast.error(getApiErrorMessage(error, 'No se pudieron cargar los chats'));
     } finally {
       setIsLoadingConversations(false);
+      setHasLoadedConversations(true);
     }
   }, []);
 
@@ -394,6 +549,14 @@ export function ConversationList() {
   }, [loadConversations]);
 
   useEffect(() => {
+    const customerChat = getCustomerChatNavigation(location.state);
+    if (!customerChat) return;
+
+    setPendingCustomerChat(customerChat);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
+
+  useEffect(() => {
     const loadCatalog = async () => {
       try {
         const [products, categories] = await Promise.all([fetchProducts(), fetchProductCategories()]);
@@ -409,6 +572,8 @@ export function ConversationList() {
 
   useEffect(() => {
     if (selectedConversation?.id) {
+      shouldStickToBottomRef.current = true;
+      setShowScrollToBottom(false);
       void loadMessages(selectedConversation.id);
     }
   }, [loadMessages, selectedConversation?.id]);
@@ -438,8 +603,17 @@ export function ConversationList() {
   }, [selectedConversation?.phone, selectedConversation?.id]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    const conversationChanged = previousConversationIdRef.current !== (selectedConversation?.id ?? null);
+    previousConversationIdRef.current = selectedConversation?.id ?? null;
+
+    if (!conversationChanged && !shouldStickToBottomRef.current) return;
+
+    const animationFrameId = window.requestAnimationFrame(() => {
+      scrollToConversationEnd(conversationChanged ? 'auto' : 'smooth');
+    });
+
+    return () => window.cancelAnimationFrame(animationFrameId);
+  }, [messages, scrollToConversationEnd, selectedConversation?.id]);
 
   useEffect(() => () => {
     if (recordingTimerRef.current) window.clearInterval(recordingTimerRef.current);
@@ -480,19 +654,21 @@ export function ConversationList() {
       });
 
       if (payload.conversationId === selectedConversationId) {
-        setMessages((current) => [
-          ...current,
+        setMessages((current) => mergeMessageByIdentity(
+          current,
           {
             id: payload.messageId,
+            providerMessageId: payload.providerMessageId,
             body: payload.content,
             direction: payload.sender === 'agent' ? 'outbound' : 'inbound',
             createdAt: timestamp,
+            status: payload.sender === 'agent' ? 'sent' : 'received',
             messageType: payload.messageType,
             mediaUrl: payload.mediaUrl,
             mediaMime: payload.mediaMime,
             mediaFilename: payload.mediaFilename,
           },
-        ]);
+        ));
       }
     };
 
@@ -500,10 +676,119 @@ export function ConversationList() {
     return () => window.removeEventListener(APP_NEW_MESSAGE_EVENT, handleNewMessage);
   }, [selectedConversationId]);
 
-  const handleSelectConversation = (conversationId: string) => {
+  useEffect(() => {
+    const handleConversationsChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        conversation?: {
+          id?: string | number;
+          lastMessageAt?: string | null;
+          lastMessagePreview?: string | null;
+        };
+      }>).detail;
+      const updatedConversation = detail?.conversation;
+      const updatedConversationId = updatedConversation?.id !== undefined ? String(updatedConversation.id) : null;
+      const currentConversation = updatedConversationId
+        ? conversations.find((conversation) => conversation.id === updatedConversationId)
+        : null;
+      const updatedLastMessageAt = updatedConversation?.lastMessageAt
+        ? parseDate(updatedConversation.lastMessageAt).getTime()
+        : null;
+      const currentLastMessageAt = currentConversation?.lastMessageAt.getTime() ?? null;
+      const didLastMessageChange = Boolean(
+        updatedConversationId
+        && updatedConversationId === selectedConversationId
+        && (
+          (updatedLastMessageAt !== null && updatedLastMessageAt !== currentLastMessageAt)
+          || (
+            typeof updatedConversation?.lastMessagePreview === 'string'
+            && updatedConversation.lastMessagePreview !== currentConversation?.lastMessage
+          )
+        ),
+      );
+
+      if (updatedConversationId) {
+        const status = typeof updatedConversation?.status === 'string' ? updatedConversation.status : '';
+        if (status === 'archived' || status === 'deleted') {
+          setConversations((current) => current.filter((conversation) => conversation.id !== updatedConversationId));
+          if (selectedConversationId === updatedConversationId) {
+            setSelectedConversationId(null);
+            setMessages([]);
+            setIsMobileChatOpen(false);
+          }
+          return;
+        }
+
+        setConversations((current) => {
+          const currentItem = current.find((conversation) => conversation.id === updatedConversationId);
+          const payloadRecord = detail && typeof detail === 'object'
+            ? detail as unknown as Record<string, unknown>
+            : {};
+          const nextConversation = mapConversationUpdatePayload(
+            payloadRecord,
+            currentItem,
+          );
+
+          if (!nextConversation) return current;
+          return [nextConversation, ...current.filter((conversation) => conversation.id !== nextConversation.id)];
+        });
+      } else {
+        void loadConversations();
+      }
+
+      if (selectedConversationId && didLastMessageChange) {
+        void loadMessages(selectedConversationId);
+      }
+    };
+
+    window.addEventListener(APP_CONVERSATIONS_CHANGED_EVENT, handleConversationsChanged);
+    return () => window.removeEventListener(APP_CONVERSATIONS_CHANGED_EVENT, handleConversationsChanged);
+  }, [conversations, loadConversations, loadMessages, selectedConversationId]);
+
+  const handleSelectConversation = useCallback((conversationId: string) => {
     setSelectedConversationId(conversationId);
     setIsMobileChatOpen(true);
+  }, []);
+
+  const handleDeleteConversation = async () => {
+    if (!conversationToDelete) return;
+
+    setIsDeletingConversation(true);
+    try {
+      await deleteMessagingConversation(conversationToDelete.id);
+      setConversations((current) => current.filter((conversation) => conversation.id !== conversationToDelete.id));
+      if (selectedConversationId === conversationToDelete.id) {
+        const nextConversation = conversations.find((conversation) => conversation.id !== conversationToDelete.id);
+        setSelectedConversationId(nextConversation?.id ?? null);
+        setMessages([]);
+        setIsMobileChatOpen(false);
+      }
+      setConversationToDelete(null);
+      toast.success('Contacto eliminado del chat');
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'No se pudo eliminar el contacto'));
+    } finally {
+      setIsDeletingConversation(false);
+    }
   };
+
+  useEffect(() => {
+    if (!pendingCustomerChat || !hasLoadedConversations || isLoadingConversations) return;
+
+    const existingConversation = conversations.find((conversation) => (
+      phonesMatch(conversation.phone, pendingCustomerChat.phone)
+    ));
+
+    if (existingConversation) {
+      handleSelectConversation(existingConversation.id);
+      setPendingCustomerChat(null);
+      return;
+    }
+
+    setNewChatName(pendingCustomerChat.name || pendingCustomerChat.phone);
+    setNewChatPhone(pendingCustomerChat.phone);
+    setIsNewChatOpen(true);
+    setPendingCustomerChat(null);
+  }, [conversations, handleSelectConversation, hasLoadedConversations, isLoadingConversations, pendingCustomerChat]);
 
   const handleSendMessage = async () => {
     const body = htmlToWhatsappMarkdown(editorRef.current?.innerHTML ?? newMessage);
@@ -555,6 +840,7 @@ export function ConversationList() {
               ? {
                 ...message,
                 id: sentMessage?.id ?? message.id,
+                providerMessageId: sentMessage?.providerMessageId ?? message.providerMessageId,
                 status: sentMessage?.status ?? 'sent',
                 mediaUrl: sentMessage?.mediaUrl ?? message.mediaUrl,
                 createdAt: parseDate(sentMessage?.createdAt ?? sentMessage?.sentAt),
@@ -594,6 +880,7 @@ export function ConversationList() {
           ? {
             ...message,
             id: sentMessage?.id ?? message.id,
+            providerMessageId: sentMessage?.providerMessageId ?? message.providerMessageId,
             status: sentMessage?.status ?? 'sent',
             createdAt: parseDate(sentMessage?.createdAt ?? sentMessage?.sentAt),
           }
@@ -856,20 +1143,14 @@ export function ConversationList() {
   return (
     <div className="flex h-full min-h-0 flex-col bg-body p-3 text-[var(--app-strong)] md:p-5">
       <Toaster />
-      <div className="mb-5 flex shrink-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Mensajes</h1>
-          <p className="text-sm text-[var(--app-muted)]">Gestiona conversaciones de WhatsApp y clientes.</p>
-        </div>
-        <Button onClick={() => setIsNewChatOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nuevo chat
-        </Button>
-      </div>
 
-      <section className="grid min-h-0 flex-1 overflow-hidden rounded-lg border border-[var(--app-line)] bg-[var(--app-surface)] shadow-sm xl:grid-cols-[390px_minmax(0,1fr)]">
-        <aside className={`${isMobileChatOpen ? 'hidden xl:flex' : 'flex'} min-h-0 flex-col border-b border-[var(--app-line)] bg-[var(--app-panel)] xl:border-b-0 xl:border-r`}>
+      <section className="grid h-[calc(100dvh-110px)] min-h-0 flex-none overflow-hidden rounded-lg border border-[var(--app-line)] bg-[var(--app-surface)] shadow-sm md:h-[calc(100dvh-130px)] 2xl:grid-cols-[390px_minmax(0,1fr)]">
+        <aside className={`${isMobileChatOpen ? 'hidden 2xl:flex' : 'flex'} min-h-0 flex-col border-b border-[var(--app-line)] bg-[var(--app-panel)] 2xl:border-b-0 2xl:border-r`}>
           <div className="shrink-0 border-b border-[var(--app-line)] p-4">
+            <Button className="mb-3 w-full justify-center" onClick={() => setIsNewChatOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Nuevo chat
+            </Button>
             <div className="flex gap-2">
               <div className="relative min-w-0 flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-muted)]" />
@@ -913,32 +1194,45 @@ export function ConversationList() {
             ) : filteredConversations.length === 0 ? (
               <div className="p-5 text-sm text-[var(--app-muted)]">No hay conversaciones.</div>
             ) : filteredConversations.map((conversation) => (
-              <button
+              <div
                 key={conversation.id}
-                type="button"
-                onClick={() => handleSelectConversation(conversation.id)}
-                className={`flex w-full items-start gap-3 border-b border-[var(--app-line)] p-4 text-left transition hover:bg-[var(--app-soft)] ${
+                className={`group flex w-full items-start gap-3 border-b border-[var(--app-line)] p-4 text-left transition hover:bg-[var(--app-soft)] ${
                   selectedConversation?.id === conversation.id ? 'bg-[var(--app-soft)]' : ''
                 }`}
               >
-                <Avatar className="h-12 w-12">
-                  <AvatarFallback className="bg-[var(--app-soft)] text-[var(--app-strong)]">
-                    {getInitials(conversation.name)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="truncate font-semibold">{conversation.name}</p>
-                    <span className="text-xs text-[var(--app-muted)]">{formatConversationTime(conversation.lastMessageAt)}</span>
+                <button
+                  type="button"
+                  onClick={() => handleSelectConversation(conversation.id)}
+                  className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                >
+                  <Avatar className="h-12 w-12">
+                    {conversation.avatarUrl ? <AvatarImage src={conversation.avatarUrl} alt={conversation.name} /> : null}
+                    <AvatarFallback className="bg-[var(--app-soft)] text-[var(--app-strong)]">
+                      {getInitials(conversation.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="truncate font-semibold">{conversation.name}</p>
+                      <span className="text-xs text-[var(--app-muted)]">{formatConversationTime(conversation.lastMessageAt)}</span>
+                    </div>
+                    <p className="mt-1 truncate text-sm text-[var(--app-muted)]">{conversation.lastMessage}</p>
                   </div>
-                  <p className="mt-1 truncate text-sm text-[var(--app-muted)]">{conversation.lastMessage}</p>
-                </div>
+                </button>
                 {conversation.unreadCount > 0 ? (
                   <span className="mt-7 flex size-5 items-center justify-center rounded-full bg-[var(--primary)] text-xs font-bold text-white">
                     {conversation.unreadCount}
                   </span>
                 ) : null}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setConversationToDelete(conversation)}
+                  className="mt-6 flex size-8 shrink-0 items-center justify-center rounded-md text-[var(--app-muted)] opacity-100 transition hover:bg-red-500/10 hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100"
+                  title="Eliminar contacto"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             ))}
           </div>
 
@@ -948,15 +1242,16 @@ export function ConversationList() {
           </button>
         </aside>
 
-        <main className={`${isMobileChatOpen ? 'flex' : 'hidden xl:flex'} min-h-0 min-w-0 flex-col bg-[var(--app-surface)]`}>
+        <main className={`${isMobileChatOpen ? 'flex' : 'hidden 2xl:flex'} h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--app-surface)]`}>
           {selectedConversation ? (
             <>
-              <header className="flex min-h-[86px] shrink-0 items-center justify-between gap-3 border-b border-[var(--app-line)] bg-[var(--app-panel)] px-3 sm:px-4">
+              <header className="flex min-h-[78px] shrink-0 items-center justify-between gap-3 border-b border-[var(--app-line)] bg-[var(--app-panel)] px-3 sm:min-h-[86px] sm:px-4">
                 <div className="flex min-w-0 items-center gap-3">
-                  <Button type="button" variant="ghost" size="icon" className="xl:hidden" onClick={() => setIsMobileChatOpen(false)}>
+                  <Button type="button" variant="ghost" size="icon" className="2xl:hidden" onClick={() => setIsMobileChatOpen(false)}>
                     <ArrowLeft className="h-5 w-5" />
                   </Button>
                   <Avatar className="h-12 w-12">
+                    {selectedConversation.avatarUrl ? <AvatarImage src={selectedConversation.avatarUrl} alt={selectedConversation.name} /> : null}
                     <AvatarFallback className="bg-[var(--app-soft)] text-[var(--app-strong)]">
                       {getInitials(selectedConversation.name)}
                     </AvatarFallback>
@@ -968,18 +1263,18 @@ export function ConversationList() {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                   <Button variant="outline" className="hidden border-[var(--app-line)] bg-[var(--app-surface)] sm:inline-flex">
                     <UserPlus className="mr-2 h-4 w-4" />
                     Asignar
                   </Button>
-                  <Button variant="outline" size="icon" className="border-[var(--app-line)] bg-[var(--app-surface)]">
+                  <Button variant="outline" size="icon" className="hidden border-[var(--app-line)] bg-[var(--app-surface)] md:inline-flex">
                     <Tag className="h-4 w-4" />
                   </Button>
-                  <Button variant="outline" size="icon" className="border-[var(--app-line)] bg-[var(--app-surface)]">
+                  <Button variant="outline" size="icon" className="hidden border-[var(--app-line)] bg-[var(--app-surface)] md:inline-flex">
                     <Star className="h-4 w-4" />
                   </Button>
-                  <Button variant="outline" size="icon" className="border-[var(--app-line)] bg-[var(--app-surface)]">
+                  <Button variant="outline" size="icon" className="hidden border-[var(--app-line)] bg-[var(--app-surface)] sm:inline-flex">
                     <Phone className="h-4 w-4" />
                   </Button>
                   <Button
@@ -995,8 +1290,7 @@ export function ConversationList() {
               </header>
 
               <div className="shrink-0 border-b border-[var(--app-line)] bg-[var(--app-panel)] px-4 py-3">
-                <Badge className="mb-3 bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">WhatsApp</Badge>
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--app-line)] bg-[var(--app-surface)] p-3 text-sm">
+                <div className="flex flex-col gap-3 rounded-lg border border-[var(--app-line)] bg-[var(--app-surface)] p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[var(--primary)]/15 text-[var(--primary)]">
                       <PackageCheck className="h-5 w-5" />
@@ -1007,66 +1301,83 @@ export function ConversationList() {
                         : 'Sin pedido activo'}
                     </p>
                   </div>
-                  <Button className="shrink-0" onClick={() => activeOrder ? setIsCustomerPanelOpen(true) : setIsCreateOrderOpen(true)}>
-                    {activeOrder ? 'Ver pedido' : 'Crear pedido'}
+                  <Button className="w-full shrink-0 sm:w-auto" onClick={() => setIsCreateOrderOpen(true)}>
+                    Crear pedido
                   </Button>
                 </div>
               </div>
 
-              <div className="max-h-[554px] min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_1px_1px,rgba(249,115,22,0.10)_1px,transparent_0)] [background-size:22px_22px] p-4">
-                <div className="mx-auto mb-4 w-fit rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] px-4 py-1 text-sm font-medium">
-                  Hoy
-                </div>
-                {isLoadingMessages ? (
-                  <div className="text-sm text-[var(--app-muted)]">Cargando mensajes...</div>
-                ) : messages.length === 0 ? (
-                  <div className="rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] p-4 text-sm text-[var(--app-muted)]">
-                    Todavia no hay mensajes en esta conversacion.
+              <div className="relative min-h-0 flex-1">
+                <div
+                  ref={messagesViewportRef}
+                  onScroll={handleMessagesScroll}
+                  className="h-full max-h-[554px] min-h-0 overflow-y-auto bg-[radial-gradient(circle_at_1px_1px,rgba(249,115,22,0.10)_1px,transparent_0)] [background-size:22px_22px] p-4"
+                >
+                  <div className="mx-auto mb-4 w-fit rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] px-4 py-1 text-sm font-medium">
+                    Hoy
                   </div>
-                ) : messages.map((message) => {
-                  const outbound = message.direction === 'outbound';
-                  const mediaKind = getMediaKind(message);
-                  return (
-                    <div key={message.id} className={`mb-3 flex ${outbound ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[78%] rounded-xl px-4 py-3 shadow-sm ${
-                        outbound
-                          ? 'rounded-tr-sm bg-emerald-100 text-slate-950 dark:bg-emerald-950/70 dark:text-white'
-                          : 'rounded-tl-sm border border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]'
-                      }`}
-                      >
-                        {message.mediaUrl ? (
-                          <div className={message.body ? 'mb-2' : ''}>
-                            {mediaKind === 'image' ? (
-                              <img src={message.mediaUrl} alt={message.mediaFilename ?? 'Imagen adjunta'} className="max-h-72 w-full rounded-lg object-cover" />
-                            ) : mediaKind === 'video' ? (
-                              <video src={message.mediaUrl} controls className="max-h-72 w-full rounded-lg" />
-                            ) : mediaKind === 'audio' ? (
-                              <audio src={message.mediaUrl} controls className="w-64 max-w-full" />
-                            ) : (
-                              <a href={message.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg border border-[var(--app-line)] bg-[var(--app-soft)] p-3 text-sm underline">
-                                <Paperclip className="h-4 w-4" />
-                                {message.mediaFilename || 'Abrir adjunto'}
-                              </a>
-                            )}
+                  {isLoadingMessages ? (
+                    <div className="text-sm text-[var(--app-muted)]">Cargando mensajes...</div>
+                  ) : messages.length === 0 ? (
+                    <div className="rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] p-4 text-sm text-[var(--app-muted)]">
+                      Todavia no hay mensajes en esta conversacion.
+                    </div>
+                  ) : messages.map((message) => {
+                    const outbound = message.direction === 'outbound';
+                    const mediaKind = getMediaKind(message);
+                    return (
+                      <div key={message.id} className={`mb-3 flex ${outbound ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[78%] rounded-xl px-4 py-3 shadow-sm ${
+                          outbound
+                            ? 'rounded-tr-sm bg-emerald-100 text-slate-950 dark:bg-emerald-950/70 dark:text-white'
+                            : 'rounded-tl-sm border border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]'
+                        }`}
+                        >
+                          {message.mediaUrl ? (
+                            <div className={message.body ? 'mb-2' : ''}>
+                              {mediaKind === 'image' ? (
+                                <img src={message.mediaUrl} alt={message.mediaFilename ?? 'Imagen adjunta'} className="max-h-72 w-full rounded-lg object-cover" />
+                              ) : mediaKind === 'video' ? (
+                                <video src={message.mediaUrl} controls className="max-h-72 w-full rounded-lg" />
+                              ) : mediaKind === 'audio' ? (
+                                <audio src={message.mediaUrl} controls className="w-64 max-w-full" />
+                              ) : (
+                                <a href={message.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg border border-[var(--app-line)] bg-[var(--app-soft)] p-3 text-sm underline">
+                                  <Paperclip className="h-4 w-4" />
+                                  {message.mediaFilename || 'Abrir adjunto'}
+                                </a>
+                              )}
+                            </div>
+                          ) : null}
+                          {message.body ? (
+                            <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                              {renderWhatsappText(message.body)}
+                            </div>
+                          ) : null}
+                          <div className="mt-2 flex items-center justify-end gap-1 text-[11px] opacity-70">
+                            <span>{formatMessageTime(message.createdAt)}</span>
+                            {outbound ? <span className="text-sky-500">✓✓</span> : null}
                           </div>
-                        ) : null}
-                        {message.body ? (
-                          <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                            {renderWhatsappText(message.body)}
-                          </div>
-                        ) : null}
-                        <div className="mt-2 flex items-center justify-end gap-1 text-[11px] opacity-70">
-                          <span>{formatMessageTime(message.createdAt)}</span>
-                          {outbound ? <span className="text-sky-500">✓✓</span> : null}
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-                <div ref={messagesEndRef} />
+                    );
+                  })}
+                  <div ref={messagesEndRef} />
+                </div>
+                {showScrollToBottom ? (
+                  <Button
+                    type="button"
+                    size="icon"
+                    className="absolute bottom-4 right-4 z-10 size-11 rounded-full border border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)] shadow-lg hover:bg-[var(--app-soft)]"
+                    onClick={() => scrollToConversationEnd('smooth')}
+                    title="Ir al final de la conversación"
+                  >
+                    <ChevronDown className="h-5 w-5" />
+                  </Button>
+                ) : null}
               </div>
 
-              <footer className="mt-auto shrink-0 border-t border-[var(--app-line)] bg-[var(--app-panel)] p-4">
+              <footer className="shrink-0 p-3 sm:p-4">
                 <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
                   {quickReplies.map((reply) => {
                     const Icon = reply.icon;
@@ -1102,7 +1413,7 @@ export function ConversationList() {
                   </div>
                 ) : null}
 
-                <div className="relative flex items-end gap-2 rounded-[28px] border border-[var(--app-line)] bg-[var(--app-panel)] px-3 py-2 text-[var(--app-strong)] shadow-sm">
+                <div className="relative flex items-end gap-2 rounded-[28px] border border-[var(--app-line)] bg-[var(--app-panel)] px-3 py-1 text-[var(--app-strong)] shadow-sm">
                   {isSelectionToolbarVisible ? (
                     <div className="absolute bottom-[calc(100%+10px)] left-12 z-20 flex items-center gap-1 rounded-xl border border-[var(--app-line)] bg-[var(--app-panel)] p-2 text-[var(--app-strong)] shadow-xl">
                       <button type="button" className="rounded-md p-2 hover:bg-[var(--app-soft)]" onMouseDown={(event) => event.preventDefault()} onClick={() => applyEditorCommand('bold')}><Bold className="h-4 w-4" /></button>
@@ -1154,9 +1465,9 @@ export function ConversationList() {
                       <Button variant="ghost" size="icon" className="mb-1 size-10 shrink-0 rounded-full text-[var(--app-strong)] hover:bg-[var(--app-soft)]">
                         <Smile className="h-5 w-5" />
                       </Button>
-                      <div className="relative flex max-h-40 min-h-[42px] flex-1 flex-col justify-end overflow-hidden py-2">
+                      <div className="relative flex max-h-40 min-h-[32px] mb-1 flex-1 flex-col justify-end overflow-hidden py-2">
                         {!newMessage.trim() ? (
-                          <span className="pointer-events-none absolute left-0 bottom-2 text-sm text-[var(--app-muted)]">Escribe un mensaje</span>
+                          <span className="pointer-events-none absolute left-0 mb-1 bottom-2 text-sm text-[var(--app-muted)]">Escribe un mensaje</span>
                         ) : null}
                         <div
                           ref={editorRef}
@@ -1221,6 +1532,7 @@ export function ConversationList() {
                 </div>
                 <div className="flex items-center gap-3">
                   <Avatar className="h-14 w-14">
+                    {selectedConversation.avatarUrl ? <AvatarImage src={selectedConversation.avatarUrl} alt={selectedConversation.name} /> : null}
                     <AvatarFallback className="bg-[var(--app-soft)] text-[var(--app-strong)]">
                       {getInitials(selectedConversation.name)}
                     </AvatarFallback>
@@ -1240,9 +1552,7 @@ export function ConversationList() {
               <section className="border-t border-[var(--app-line)] pt-5">
                 <div className="mb-4 flex items-center justify-between">
                   <h3 className="font-semibold">{activeOrder ? 'Pedido activo' : 'Pedidos recientes'}</h3>
-                  {!activeOrder ? (
-                    <button type="button" className="text-sm font-semibold text-[var(--primary)]" onClick={() => setIsCreateOrderOpen(true)}>Crear pedido</button>
-                  ) : null}
+                  <button type="button" className="text-sm font-semibold text-[var(--primary)]" onClick={() => setIsCreateOrderOpen(true)}>Crear pedido</button>
                 </div>
                 <div className="space-y-4 text-sm">
                   {(activeOrder ? [activeOrder] : customerOrders.slice(0, 3)).map((order) => (
@@ -1287,6 +1597,22 @@ export function ConversationList() {
         </aside>
         ) : null}
       </section>
+
+      <DeleteConfirmDialog
+        open={Boolean(conversationToDelete)}
+        onOpenChange={(open) => {
+          if (!open) setConversationToDelete(null);
+        }}
+        itemLabel="Contacto"
+        itemName={conversationToDelete?.name ?? ''}
+        itemIcon={conversationToDelete ? (
+          <span className="flex size-8 items-center justify-center rounded-full bg-[var(--primary)]/15 text-xs font-bold text-[var(--primary)]">
+            {getInitials(conversationToDelete.name)}
+          </span>
+        ) : null}
+        loading={isDeletingConversation}
+        onConfirm={handleDeleteConversation}
+      />
 
       {isCreateOrderOpen && !isOrderDialogMinimized ? (
         <Button

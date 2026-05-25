@@ -37,12 +37,12 @@ export async function listCustomers(params: ListCustomersParams = {}): Promise<C
       sortBy: params.sortBy,
       sortDir: params.sortDir,
     },
-    config: { cache: 'none' },
+    config: { cache: 'none', preserveEnvelope: true },
   });
 
   if (data && typeof data === 'object' && !Array.isArray(data)) {
     const candidate = data as Record<string, unknown>;
-    const total = Number(candidate.recordsFiltered ?? candidate.count ?? candidate.total);
+    const total = Number(candidate.recordsFiltered ?? candidate.count ?? candidate.total ?? candidate.recordsTotal);
     const rows = extractCustomerRows(data).map(mapCustomerDtoToModel);
     return { rows, total: Number.isFinite(total) ? total : rows.length };
   }

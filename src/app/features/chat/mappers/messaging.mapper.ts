@@ -39,6 +39,11 @@ export function mapMessagingConversationDtoToModel(item: MessagingConversationDt
         name: item.Customer.name,
         phone: item.Customer.phone,
         email: item.Customer.email,
+        profileImageUrl: typeof item.Customer.metadata?.whatsappProfileImageUrl === 'string'
+          ? item.Customer.metadata.whatsappProfileImageUrl
+          : typeof item.Customer.metadata?.profileImageUrl === 'string'
+            ? item.Customer.metadata.profileImageUrl
+            : null,
       }
       : undefined,
     contact: item.Contact
