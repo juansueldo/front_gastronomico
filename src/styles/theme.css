@@ -231,6 +231,26 @@
     background: transparent;
   }
 
+  .storefront-zone-select {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .storefront-zone-select [data-slot='select-value'] {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .storefront-zone-select [data-slot='select-value'] > span,
+  .storefront-zone-select [data-slot='select-value'] span {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .legacy-sidebar-nav {
     flex: 1;
     overflow-y: auto;

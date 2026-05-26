@@ -5,6 +5,8 @@ import { Input } from '../shared/ui/components/input';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '../shared/ui/components/dialog';
@@ -49,6 +51,11 @@ import {
 import { listHeadquarters, type Headquarter } from '../features/headquarters';
 import { getLoggedUser } from '../core/storage/authStorage';
 import { getStorageItem, removeStorageItem, setStorageItem } from '../shared/storage';
+
+const COMPACT_DIALOG_CONTENT_CLASS = 'w-[calc(100vw-2rem)] max-w-[620px] gap-0 overflow-visible p-0';
+const FORM_CONTROL_CLASS =
+  'h-10 rounded-md border-[var(--app-line)] bg-[var(--app-panel-subtle)] text-[var(--app-strong)] placeholder:text-[var(--app-muted)] focus:border-[var(--primary)] focus-visible:border-[var(--primary)] focus-visible:ring-[var(--primary)]/25';
+const SELECT_CONTENT_CLASS = 'border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]';
 
 interface TableItem {
   id: string;
@@ -1157,11 +1164,15 @@ export function TablesView() {
       </Dialog>
 
       <Dialog open={isCreateTableDialogOpen} onOpenChange={setIsCreateTableDialogOpen}>
-        <DialogContent className="bg-card card text-foreground">
-          <DialogHeader>
+        <DialogContent className={COMPACT_DIALOG_CONTENT_CLASS}>
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+              <Armchair size={18} />
+            </div>
             <DialogTitle>Nueva mesa</DialogTitle>
+            <DialogDescription>Agrega una mesa al salón y define su sector.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="space-y-3 px-5 py-4">
             <Input
               type="number"
               min="1"
@@ -1169,11 +1180,13 @@ export function TablesView() {
               placeholder="Número de mesa (vacío = automático)"
               value={newTableNumber}
               onChange={(event) => setNewTableNumber(event.target.value)}
+              className={FORM_CONTROL_CLASS}
             />
             <Input
               placeholder="Mozo"
               value={newTableWaiter}
               onChange={(event) => setNewTableWaiter(event.target.value)}
+              className={FORM_CONTROL_CLASS}
             />
             <Input
               type="number"
@@ -1182,30 +1195,45 @@ export function TablesView() {
               placeholder="Capacidad (opcional)"
               value={newTableCapacity}
               onChange={(event) => setNewTableCapacity(event.target.value)}
+              className={FORM_CONTROL_CLASS}
             />
             <Select value={newTableArea} onValueChange={(value) => setNewTableArea(value as TableItem['area'])}>
-              <SelectTrigger>
+              <SelectTrigger className={FORM_CONTROL_CLASS}>
                 <SelectValue placeholder="Sector" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className={SELECT_CONTENT_CLASS}>
                 {areaOptions.map((area) => (
                   <SelectItem key={area} value={area}>{area}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Button className="w-full" onClick={handleCreateTable}>
+          </div>
+          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsCreateTableDialogOpen(false)}
+              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+            >
+              Cancelar
+            </Button>
+            <Button className="gap-2" onClick={handleCreateTable}>
               Crear mesa
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={!!editingTable} onOpenChange={(open) => !open && setEditingTable(null)}>
-        <DialogContent className="border-border bg-card text-foreground">
-          <DialogHeader>
+        <DialogContent className={COMPACT_DIALOG_CONTENT_CLASS}>
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+              <Armchair size={18} />
+            </div>
             <DialogTitle>Editar Mesa {editingTable?.number}</DialogTitle>
+            <DialogDescription>Actualiza los datos de la mesa seleccionada.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="space-y-3 px-5 py-4">
             <Input
               type="number"
               min="1"
@@ -1213,11 +1241,13 @@ export function TablesView() {
               placeholder="Número de mesa"
               value={editTableNumber}
               onChange={(event) => setEditTableNumber(event.target.value)}
+              className={FORM_CONTROL_CLASS}
             />
             <Input
               placeholder="Mozo"
               value={editTableWaiter}
               onChange={(event) => setEditTableWaiter(event.target.value)}
+              className={FORM_CONTROL_CLASS}
             />
             <Input
               type="number"
@@ -1226,12 +1256,13 @@ export function TablesView() {
               placeholder="Capacidad"
               value={editTableCapacity}
               onChange={(event) => setEditTableCapacity(event.target.value)}
+              className={FORM_CONTROL_CLASS}
             />
             <Select value={editTableArea} onValueChange={(value) => setEditTableArea(value as TableItem['area'])}>
-              <SelectTrigger>
+              <SelectTrigger className={FORM_CONTROL_CLASS}>
                 <SelectValue placeholder="Sector" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className={SELECT_CONTENT_CLASS}>
                 {areaOptions.map((area) => (
                   <SelectItem key={area} value={area}>{area}</SelectItem>
                 ))}
@@ -1241,11 +1272,22 @@ export function TablesView() {
               placeholder="Descripción (opcional)"
               value={editTableDescription}
               onChange={(event) => setEditTableDescription(event.target.value)}
+              className={FORM_CONTROL_CLASS}
             />
-            <Button className="w-full" onClick={handleSaveTableChanges}>
+          </div>
+          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditingTable(null)}
+              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+            >
+              Cancelar
+            </Button>
+            <Button className="gap-2" onClick={handleSaveTableChanges}>
               Guardar cambios
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

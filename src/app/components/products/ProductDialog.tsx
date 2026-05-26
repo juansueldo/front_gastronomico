@@ -6,9 +6,12 @@ import { Checkbox } from '../../shared/ui/components/checkbox';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '../../shared/ui/components/dialog';
+import { PackagePlus } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -41,6 +44,10 @@ interface Props {
 }
 
 const CREATE_STEPS: CreateStep[] = ['basic', 'image', 'categories'];
+const WIDE_DIALOG_CONTENT_CLASS =
+  'max-h-[90vh] w-[calc(100vw-2rem)] !max-w-[calc(100vw-2rem)] overflow-visible p-0 sm:w-[70vw] sm:!max-w-[70vw]';
+const FORM_CONTROL_CLASS =
+  'h-10 rounded-md border-[var(--app-line)] bg-[var(--app-panel-subtle)] text-[var(--app-strong)] placeholder:text-[var(--app-muted)] focus:border-[var(--primary)] focus-visible:border-[var(--primary)] focus-visible:ring-[var(--primary)]/25';
 
 function StepIndicator({ current, steps }: { current: CreateStep; steps: CreateStep[] }) {
   const idx = steps.indexOf(current);
@@ -61,7 +68,7 @@ function StepIndicator({ current, steps }: { current: CreateStep; steps: CreateS
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs text-gray-400 mb-1">{children}</p>;
+  return <p className="mb-1 text-xs font-semibold text-[var(--app-strong)]">{children}</p>;
 }
 
 export function ProductDialog({
@@ -145,6 +152,7 @@ export function ProductDialog({
           placeholder="Nombre"
           value={name}
           onChange={(event) => onNameChange(event.target.value)}
+          className={FORM_CONTROL_CLASS}
         />
       </div>
       <div>
@@ -153,6 +161,7 @@ export function ProductDialog({
           placeholder="Descripción (opcional)"
           value={description}
           onChange={(event) => onDescriptionChange(event.target.value)}
+          className={FORM_CONTROL_CLASS}
         />
       </div>
       <div>
@@ -164,6 +173,7 @@ export function ProductDialog({
           placeholder="Precio"
           value={price}
           onChange={(event) => onPriceChange(event.target.value)}
+          className={FORM_CONTROL_CLASS}
         />
       </div>
     </div>
@@ -175,6 +185,7 @@ export function ProductDialog({
       <Input
         type="file"
         accept="image/*"
+        className={FORM_CONTROL_CLASS}
         onChange={(event) => {
           const file = event.target.files?.[0] ?? null;
           void onProductImageChange(file);
@@ -183,7 +194,7 @@ export function ProductDialog({
 
       {imagePreviewUrl ? (
         <div className="space-y-2">
-          <div className="h-40 w-full overflow-hidden rounded-md border border-orange-700 bg-body">
+          <div className="h-40 w-full overflow-hidden rounded-md border border-[var(--app-line)] bg-[var(--app-panel-subtle)]">
             <img
               src={imagePreviewUrl}
               alt="Vista previa del producto"
@@ -194,7 +205,7 @@ export function ProductDialog({
             type="button"
             size="sm"
             variant="outline"
-            className="border-orange-600 bg-transparent text-white hover:bg-gray-700"
+            className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
             onClick={onClearProductImage}
           >
             Quitar imagen
@@ -207,17 +218,17 @@ export function ProductDialog({
   );
 
   const renderCategoriesStep = () => (
-    <div className="space-y-3 rounded-md border border-orange-700 bg-body p-3">
+    <div className="space-y-3 rounded-md border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-gray-300">Categorías</p>
         {categories.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button type="button" size="sm" variant="outline" className="border-orange-600 bg-transparent text-white hover:bg-gray-700">
+              <Button type="button" size="sm" variant="outline" className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]">
                 Seleccionar categorías
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="max-h-72 w-64 overflow-y-auto border-orange-700 bg-card text-white">
+            <DropdownMenuContent align="end" className="max-h-72 w-64 overflow-y-auto border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]">
               {categories.map((category) => (
                 <DropdownMenuCheckboxItem
                   key={category.id}
@@ -260,7 +271,7 @@ export function ProductDialog({
         </div>
       )}
 
-      <div className="space-y-2 border-t border-orange-700/50 pt-3">
+      <div className="space-y-2 border-t border-[var(--app-line)] pt-3">
         {categories.map((category) => (
           <label key={category.id} className="flex items-center gap-2 text-sm text-white cursor-pointer">
             <Checkbox
@@ -275,11 +286,11 @@ export function ProductDialog({
   );
 
   const renderFooter = () => (
-    <div className="flex items-center gap-2">
+    <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
       <Button
         type="button"
         variant="outline"
-        className="border-orange-600 bg-transparent text-white hover:bg-gray-700"
+        className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
         onClick={goBack}
         disabled={step === 'basic'}
       >
@@ -287,15 +298,15 @@ export function ProductDialog({
       </Button>
 
       {step !== 'categories' ? (
-        <Button type="button" className="flex-1" onClick={goNext}>
+        <Button type="button" className="flex-1 sm:flex-none" onClick={goNext}>
           Continuar →
         </Button>
       ) : (
-        <Button type="button" className="flex-1" onClick={() => { void onSaveProduct(); }}>
+        <Button type="button" className="flex-1 sm:flex-none" onClick={() => { void onSaveProduct(); }}>
           {isCreateMode ? 'Crear producto' : 'Guardar cambios'}
         </Button>
       )}
-    </div>
+    </DialogFooter>
   );
 
   const renderWizardContent = () => (
@@ -304,23 +315,24 @@ export function ProductDialog({
       {step === 'basic' && renderBasicStep()}
       {step === 'image' && renderImageStep()}
       {step === 'categories' && renderCategoriesStep()}
-      {renderFooter()}
     </>
   );
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogContent className="bg-card border-orange-700 text-white">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-3">
-            <span>{editingProductId ? 'Editar producto' : 'Nuevo producto'}</span>
-            <span className="text-xs font-normal text-gray-500">{stepLabels[step]}</span>
-          </DialogTitle>
+      <DialogContent className={WIDE_DIALOG_CONTENT_CLASS}>
+        <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+          <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+            <PackagePlus size={18} />
+          </div>
+          <DialogTitle>{editingProductId ? 'Editar producto' : 'Nuevo producto'}</DialogTitle>
+          <DialogDescription>{stepLabels[step]}</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
+        <div className="max-h-[calc(90vh-150px)] space-y-4 overflow-y-auto px-5 py-4">
           {renderWizardContent()}
         </div>
+        {renderFooter()}
       </DialogContent>
     </Dialog>
   );

@@ -30,6 +30,20 @@ export interface PublicStoreProduct {
   imageUrl?: string;
   available: boolean;
   categoryIds: string[];
+  ingredientOptions?: PublicStoreIngredientOption[];
+}
+
+export interface PublicStoreIngredientOption {
+  id: string;
+  inventoryItemId: number;
+  name: string;
+  unit?: string;
+  isRemovable: boolean;
+  isAddable: boolean;
+  defaultIncluded: boolean;
+  extraPrice: number;
+  extraQuantity: number;
+  maxExtraQuantity: number;
 }
 
 export interface PublicStoreCategory {
@@ -137,6 +151,9 @@ interface BackendStoreProduct {
     image_url?: string;
     emoji?: string;
   }>;
+  ingredientOptions?: Array<Record<string, unknown>>;
+  ingredient_options?: Array<Record<string, unknown>>;
+  ProductIngredientOptions?: Array<Record<string, unknown>>;
 }
 
 interface BackendStoreCategory {
@@ -487,6 +504,7 @@ const normalizeStore = (slug: string, item: BackendStoreInfo | null): PublicStor
 
 const normalizeProduct = (item: BackendStoreProduct): PublicStoreProduct => {
   const parsedPrice = Number(item.price ?? 0);
+  const rawOptions = item.ingredientOptions ?? item.ingredient_options ?? item.ProductIngredientOptions ?? [];
 
   return {
     id: String(item.id ?? `store-product-${Date.now()}-${Math.random()}`),
@@ -496,6 +514,20 @@ const normalizeProduct = (item: BackendStoreProduct): PublicStoreProduct => {
     imageUrl: item.image_url ?? item.imageUrl ?? undefined,
     available: item.active ?? item.is_active ?? true,
     categoryIds: normalizeCategoryIds(item),
+    ingredientOptions: Array.isArray(rawOptions)
+      ? rawOptions.map((option) => ({
+        id: String(option.id ?? ''),
+        inventoryItemId: Number(option.inventoryItemId ?? option.inventory_item_id),
+        name: String(option.name ?? ''),
+        unit: String(option.unit ?? 'unidad'),
+        isRemovable: option.isRemovable !== false && option.is_removable !== false,
+        isAddable: option.isAddable === true || option.is_addable === true,
+        defaultIncluded: option.defaultIncluded !== false && option.default_included !== false,
+        extraPrice: Number(option.extraPrice ?? option.extra_price ?? 0),
+        extraQuantity: Number(option.extraQuantity ?? option.extra_quantity ?? 1),
+        maxExtraQuantity: Number(option.maxExtraQuantity ?? option.max_extra_quantity ?? 1),
+      })).filter((option) => option.id && Number.isFinite(option.inventoryItemId))
+      : [],
   };
 };
 
@@ -790,6 +822,12 @@ interface CreatePublicOrderInput {
   total: number;
   productIds: string[];
   items: string[];
+  orderItems?: Array<{
+    productId: string;
+    quantity: number;
+    removedIngredients?: number[];
+    extraIngredients?: Array<{ inventoryItemId: number; quantity: number }>;
+  }>;
   headquarterId?: string | number;
   scheduledFor?: string;
   scheduledDate?: string;
@@ -833,9 +871,9 @@ export const createPublicStoreOrder = async (slug: string, input: CreatePublicOr
       longitude: input.deliveryLongitude,
       notes: input.notes,
       total: input.total,
-      product_ids: input.productIds,
-      productIds: input.productIds,
-      items: input.items,
+      product_ids: input.orderItems ? undefined : input.productIds,
+      productIds: input.orderItems ? undefined : input.productIds,
+      items: input.orderItems ?? input.items,
       headquarter_id: input.headquarterId,
       headquarterId: input.headquarterId,
       pickup_headquarter_id: input.headquarterId,

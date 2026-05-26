@@ -7,6 +7,8 @@ import { Button } from '../shared/ui/components/button';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '../shared/ui/components/dialog';
@@ -18,6 +20,11 @@ import { Avatar, AvatarFallback, AvatarImage } from '../shared/ui/components/ava
 import { DeleteConfirmDialog } from '../shared/ui/components/delete-confirm-dialog';
 
 const roleOptions = ['admin', 'manager', 'supervisor', 'user', 'agent'];
+const WIDE_DIALOG_CONTENT_CLASS =
+  'max-h-[90vh] w-[calc(100vw-2rem)] !max-w-[calc(100vw-2rem)] gap-0 overflow-visible p-0 sm:w-[70vw] sm:!max-w-[70vw]';
+const FORM_CONTROL_CLASS =
+  'h-10 rounded-md border-[var(--app-line)] bg-[var(--app-panel-subtle)] text-[var(--app-strong)] placeholder:text-[var(--app-muted)] focus:border-[var(--primary)] focus-visible:border-[var(--primary)] focus-visible:ring-[var(--primary)]/25';
+const SELECT_CONTENT_CLASS = 'border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]';
 
 type UserFormState = {
   username: string;
@@ -369,11 +376,17 @@ export function UsersView() {
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
-        <DialogContent className="card bg-card text-white">
-          <DialogHeader>
+        <DialogContent className={WIDE_DIALOG_CONTENT_CLASS}>
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+              <UserRound size={18} />
+            </div>
             <DialogTitle>{editingUserId ? 'Editar usuario' : 'Nuevo usuario'}</DialogTitle>
+            <DialogDescription>
+              {editingUserId ? 'Actualiza los datos y permisos del usuario.' : 'Crea un usuario y asignale una sede y rol.'}
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="max-h-[calc(90vh-150px)] space-y-3 overflow-y-auto px-5 py-4">
             {error ? (
               <p className="rounded-md border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-200">{error}</p>
             ) : null}
@@ -383,12 +396,14 @@ export function UsersView() {
                 placeholder="Usuario *"
                 value={form.username}
                 onChange={(event) => handleFieldChange('username', event.target.value)}
+                className={FORM_CONTROL_CLASS}
               />
               <Input
                 placeholder="Email"
                 type="email"
                 value={form.email}
                 onChange={(event) => handleFieldChange('email', event.target.value)}
+                className={FORM_CONTROL_CLASS}
               />
             </div>
 
@@ -397,11 +412,13 @@ export function UsersView() {
                 placeholder="Nombre"
                 value={form.firstname}
                 onChange={(event) => handleFieldChange('firstname', event.target.value)}
+                className={FORM_CONTROL_CLASS}
               />
               <Input
                 placeholder="Apellido"
                 value={form.lastname}
                 onChange={(event) => handleFieldChange('lastname', event.target.value)}
+                className={FORM_CONTROL_CLASS}
               />
             </div>
 
@@ -410,10 +427,10 @@ export function UsersView() {
                 value={form.headquarterId}
                 onValueChange={(value) => handleFieldChange('headquarterId', value)}
               >
-                <SelectTrigger>
+                <SelectTrigger className={FORM_CONTROL_CLASS}>
                   <SelectValue placeholder={isLoadingHeadquarters ? 'Cargando sedes...' : 'Sede *'} />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className={SELECT_CONTENT_CLASS}>
                   {headquarters.map((headquarter) => (
                     <SelectItem key={headquarter.id} value={String(headquarter.id)}>
                       {headquarter.name}
@@ -433,10 +450,10 @@ export function UsersView() {
                   }));
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger className={FORM_CONTROL_CLASS}>
                   <SelectValue placeholder="Rol" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className={SELECT_CONTENT_CLASS}>
                   {availableRoleOptions.map((roleOption) => (
                     <SelectItem key={roleOption} value={roleOption}>
                       {roleOption}
@@ -450,13 +467,23 @@ export function UsersView() {
                   type="password"
                 value={form.password}
                 onChange={(event) => handleFieldChange('password', event.target.value)}
+                className={FORM_CONTROL_CLASS}
               />
             </div>
-
-            <Button className="w-full" disabled={saving} onClick={() => void handleSaveUser()}>
+          </div>
+          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleDialogChange(false)}
+              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+            >
+              Cancelar
+            </Button>
+            <Button disabled={saving} onClick={() => void handleSaveUser()}>
               {saving ? 'Guardando...' : editingUserId ? 'Guardar cambios' : 'Crear usuario'}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

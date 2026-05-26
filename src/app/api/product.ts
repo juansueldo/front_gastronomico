@@ -52,6 +52,7 @@ export interface UpdateProductRequest {
 
 export interface RecipeIngredient {
   id?: string;
+  inventoryItemId?: number | string;
   name: string;
   quantity: number;
   unit: string;
@@ -62,6 +63,20 @@ export interface ProductRecipeConfig {
   usesRecipe: boolean;
   ingredients: RecipeIngredient[];
   updatedAt?: string;
+}
+
+export interface ProductIngredientOption {
+  id?: string;
+  productId?: string;
+  inventoryItemId: number;
+  name: string;
+  unit?: string;
+  isRemovable: boolean;
+  isAddable: boolean;
+  defaultIncluded: boolean;
+  extraPrice: number;
+  extraQuantity: number;
+  maxExtraQuantity: number;
 }
 
 export interface ProductStockBalance {
@@ -234,6 +249,7 @@ export async function listProductRecipes(): Promise<ProductRecipeConfig[]> {
     ingredients: Array.isArray(row?.ingredients)
       ? row.ingredients.map((ingredient: any) => ({
           id: String(ingredient?.id ?? ''),
+          inventoryItemId: ingredient?.inventoryItemId ?? ingredient?.inventory_item_id,
           name: String(ingredient?.name ?? ''),
           quantity: Number(ingredient?.quantity ?? 0),
           unit: String(ingredient?.unit ?? 'unidad'),
@@ -248,6 +264,34 @@ export async function listProductRecipes(): Promise<ProductRecipeConfig[]> {
  */
 export async function consumeProductRecipe(payload: ConsumeProductRecipeRequest): Promise<any> {
   return apiClient.post(`${API_VERSION}/product/recipe/consume`, payload);
+}
+
+export async function saveProductIngredientOptions(payload: {
+  productId: string;
+  options: ProductIngredientOption[];
+}): Promise<{ productId: string; options: ProductIngredientOption[] }> {
+  return apiClient.post(`${API_VERSION}/product/ingredient-options/save`, payload);
+}
+
+export async function getProductIngredientOptions(productId: string): Promise<ProductIngredientOption[]> {
+  const data = await apiClient.get(`${API_VERSION}/product/ingredient-options`, {
+    params: { productId },
+    config: { cache: 'none' },
+  });
+  const rows = Array.isArray(data) ? data : data?.options ?? data?.data ?? [];
+  return rows.map((row: any) => ({
+    id: row?.id ? String(row.id) : undefined,
+    productId: row?.productId ? String(row.productId) : undefined,
+    inventoryItemId: Number(row?.inventoryItemId ?? row?.inventory_item_id),
+    name: String(row?.name ?? ''),
+    unit: String(row?.unit ?? 'unidad'),
+    isRemovable: row?.isRemovable ?? row?.is_removable ?? true,
+    isAddable: row?.isAddable ?? row?.is_addable ?? false,
+    defaultIncluded: row?.defaultIncluded ?? row?.default_included ?? true,
+    extraPrice: Number(row?.extraPrice ?? row?.extra_price ?? 0),
+    extraQuantity: Number(row?.extraQuantity ?? row?.extra_quantity ?? 1),
+    maxExtraQuantity: Number(row?.maxExtraQuantity ?? row?.max_extra_quantity ?? 1),
+  })).filter((row: ProductIngredientOption) => Number.isFinite(row.inventoryItemId));
 }
 
 /**

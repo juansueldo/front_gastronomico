@@ -191,7 +191,15 @@ const mapBackendOrder = (order: any): KitchenOrderItem => {
       ? order.OrderItems.map((item: any) => {
         const name = item?.Product?.name ?? `Producto ${item?.productId ?? ''}`.trim();
         const quantity = Number(item?.quantity ?? 0);
-        return quantity > 1 ? `${name} x${quantity}` : String(name);
+        const modifiers = Array.isArray(item?.OrderItemModifiers)
+          ? item.OrderItemModifiers.map((modifier: any) => (
+            modifier?.type === 'removed'
+              ? `Sin ${modifier?.name}`
+              : `Extra ${modifier?.name}${Number(modifier?.quantity ?? 1) > 1 ? ` x${modifier.quantity}` : ''}`
+          ))
+          : [];
+        const baseLabel = quantity > 1 ? `${name} x${quantity}` : String(name);
+        return modifiers.length > 0 ? `${baseLabel} (${modifiers.join(', ')})` : baseLabel;
       })
       : [];
 

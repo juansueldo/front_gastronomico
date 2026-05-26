@@ -118,6 +118,10 @@ const resolveAddressCoordinates = async (query: string): Promise<{ latitude: num
     longitude: geocodedAddress.longitude,
   };
 };
+type ProductModifierSelection = {
+  removedIngredients: number[];
+  extraIngredients: Record<number, number>;
+};
 
 const buildScheduleState = (schedules: PublicStoreSchedule[] | undefined, now: Date) => {
   if (!schedules || schedules.length === 0) {
@@ -224,6 +228,7 @@ export function PublicStorefrontView() {
   const [categoryIconsById, setCategoryIconsById] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [cartQuantities, setCartQuantities] = useState<Record<string, number>>({});
+  const [cartModifierSelections, setCartModifierSelections] = useState<Record<string, ProductModifierSelection>>({});
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [orderType, setOrderType] = useState<'delivery' | 'pickup'>('delivery');
@@ -255,6 +260,7 @@ export function PublicStorefrontView() {
   const [activeProduct, setActiveProduct] = useState<PublicStoreProduct | null>(null);
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
   const [productDialogQuantity, setProductDialogQuantity] = useState(1);
+  const [productDialogModifiers, setProductDialogModifiers] = useState<ProductModifierSelection>({ removedIngredients: [], extraIngredients: {} });
   const [visibleProductsCount, setVisibleProductsCount] = useState(PRODUCT_BATCH_SIZE);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
   const addressSuggestAbortRef = useRef<AbortController | null>(null);
@@ -301,11 +307,18 @@ export function PublicStorefrontView() {
     .map((product) => ({
       ...product,
       quantity: cartQuantities[product.id] ?? 0,
+      modifierSelection: cartModifierSelections[product.id] ?? { removedIngredients: [], extraIngredients: {} },
     }))
     .filter((product) => product.quantity > 0);
 
   const cartItemsCount = cartItems.reduce((accumulator, product) => accumulator + product.quantity, 0);
-  const cartTotal = cartItems.reduce((accumulator, product) => accumulator + (product.price * product.quantity), 0);
+  const cartTotal = cartItems.reduce((accumulator, product) => {
+    const extraTotal = product.ingredientOptions?.reduce((total, option) => {
+      const extraQuantity = product.modifierSelection.extraIngredients[option.inventoryItemId] ?? 0;
+      return total + (option.extraPrice * extraQuantity);
+    }, 0) ?? 0;
+    return accumulator + ((product.price + extraTotal) * product.quantity);
+  }, 0);
 
   const pickupHeadquarter = headquarters.find((headquarter) => headquarter.id === selectedHeadquarterId);
   const fallbackHeadquarter = headquarters.find((headquarter) => headquarter.id === storeDefaultHeadquarterId) ?? headquarters[0];
@@ -324,7 +337,12 @@ export function PublicStorefrontView() {
   const availableScheduleDays = scheduleState.dayOptions;
   const selectedScheduleDay = availableScheduleDays.find((day) => day.id === selectedScheduleDayId) ?? availableScheduleDays[0];
   const selectedScheduleSlot = selectedScheduleDay?.slots.find((slot) => slot.id === selectedScheduleSlotId) ?? selectedScheduleDay?.slots[0];
-  const productDialogTotal = (activeProduct?.price ?? 0) * productDialogQuantity;
+  const productDialogExtraTotal = activeProduct?.ingredientOptions?.reduce((total, option) => {
+    const quantity = productDialogModifiers.extraIngredients[option.inventoryItemId] ?? 0;
+    return total + (option.extraPrice * quantity);
+  }, 0) ?? 0;
+  const productDialogUnitTotal = (activeProduct?.price ?? 0) + productDialogExtraTotal;
+  const productDialogTotalWithModifiers = productDialogUnitTotal * productDialogQuantity;
   const isAsapScheduleUnavailable = !isPickupZonePending && scheduleState.hasSchedules && !scheduleState.isOpenNow;
   const canConfirmCheckout = (
     customerName.trim().length > 0
@@ -805,6 +823,7 @@ export function PublicStorefrontView() {
     const currentQuantity = cartQuantities[product.id] ?? 0;
     setActiveProduct(product);
     setProductDialogQuantity(currentQuantity > 0 ? currentQuantity : 1);
+    setProductDialogModifiers(cartModifierSelections[product.id] ?? { removedIngredients: [], extraIngredients: {} });
     setIsProductDialogOpen(true);
   };
 
@@ -812,6 +831,7 @@ export function PublicStorefrontView() {
     setIsProductDialogOpen(false);
     setActiveProduct(null);
     setProductDialogQuantity(1);
+    setProductDialogModifiers({ removedIngredients: [], extraIngredients: {} });
   };
 
   const setProductQuantity = (productId: string, quantity: number) => {
@@ -830,6 +850,10 @@ export function PublicStorefrontView() {
 
   const removeProductFromCart = (productId: string) => {
     setProductQuantity(productId, 0);
+    setCartModifierSelections((current) => {
+      const { [productId]: _removed, ...rest } = current;
+      return rest;
+    });
   };
 
   const confirmProductSelection = () => {
@@ -838,11 +862,16 @@ export function PublicStorefrontView() {
     }
 
     setProductQuantity(activeProduct.id, productDialogQuantity);
+    setCartModifierSelections((current) => ({
+      ...current,
+      [activeProduct.id]: productDialogModifiers,
+    }));
     closeProductDialog();
   };
 
   const clearCart = () => {
     setCartQuantities({});
+    setCartModifierSelections({});
   };
 
   const loadActiveDeliveryZones = async () => {
@@ -999,6 +1028,20 @@ export function PublicStorefrontView() {
       const productIds = cartItems.flatMap((product) => (
         Array.from({ length: product.quantity }, () => product.id)
       ));
+      const orderItems = cartItems.map((product) => {
+        const selection = cartModifierSelections[product.id] ?? { removedIngredients: [], extraIngredients: {} };
+        return {
+          productId: product.id,
+          quantity: product.quantity,
+          removedIngredients: selection.removedIngredients,
+          extraIngredients: Object.entries(selection.extraIngredients)
+            .map(([inventoryItemId, quantity]) => ({
+              inventoryItemId: Number(inventoryItemId),
+              quantity: Number(quantity),
+            }))
+            .filter((extra) => Number.isFinite(extra.inventoryItemId) && extra.quantity > 0),
+        };
+      });
       const items = cartItems.map((product) => (
         product.quantity > 1 ? `${product.name} x${product.quantity}` : product.name
       ));
@@ -1013,6 +1056,7 @@ export function PublicStorefrontView() {
         notes: mergedNotes || undefined,
         total: cartTotal,
         productIds,
+        orderItems,
         items,
         headquarterId: orderType === 'pickup' ? selectedHeadquarterId : undefined,
         scheduledDate,
@@ -1150,7 +1194,10 @@ export function PublicStorefrontView() {
             <div className="space-y-3 border-white/10 text-[#f3f5f7] md:border-l md:pl-6">
               <p className="flex items-center gap-3 text-sm"><Phone className="h-4 w-4 text-[#ff9f7d]" /> {fallbackHeadquarter?.phone ?? 'Sin telefono'}</p>
               <p className="flex items-center gap-3 text-sm"><Mail className="h-4 w-4 text-[#ff9f7d]" /> {`${slug}@tienda.com`}</p>
-              <p className="flex items-center gap-3 text-sm"><MapPin className="h-4 w-4 text-[#ff9f7d]" /> {fallbackHeadquarter?.location ?? 'Retiro en sede'}</p>
+              <p className="flex min-w-0 items-center gap-3 text-sm">
+                <MapPin className="h-4 w-4 shrink-0 text-[#ff9f7d]" />
+                <span className="min-w-0 truncate">{fallbackHeadquarter?.location ?? 'Retiro en sede'}</span>
+              </p>
             </div>
 
             <div className="space-y-3 border-white/10 md:border-l md:pl-6">
@@ -1229,7 +1276,7 @@ export function PublicStorefrontView() {
                 onValueChange={setSelectedHeadquarterId}
                 disabled={headquarters.length === 0}
               >
-                <SelectTrigger className="h-12 rounded-full border border-[#eee2d8] !bg-white !text-[#1d2530] shadow-inner data-[placeholder]:!text-[#8f98a3] [&_svg]:!text-[#6b7280]">
+                <SelectTrigger className="storefront-zone-select h-12 rounded-full border border-[#eee2d8] !bg-white !text-[#1d2530] shadow-inner data-[placeholder]:!text-[#8f98a3] [&_svg]:!text-[#6b7280]">
                   <SelectValue
                     className="!text-[#3f3f3f] text-base"
                     placeholder={headquarters.length === 0 ? 'Sin sedes disponibles' : 'Sede de retiro'}
@@ -1242,10 +1289,10 @@ export function PublicStorefrontView() {
                       value={headquarter.id}
                       className="!text-[#1f2937] focus:!bg-[#f3f4f6] focus:!text-[#1f2937] data-[state=checked]:!bg-[#f3f4f6] data-[state=checked]:!text-[#1f2937]"
                     >
-                      <span className="flex flex-col gap-0.5">
-                        <span className="font-semibold">{headquarter.name}</span>
+                      <span className="flex min-w-0 max-w-full flex-col gap-0.5">
+                        <span className="truncate font-semibold">{headquarter.name}</span>
                         {headquarter.location ? (
-                          <span className="text-xs text-[#6b7280]">{headquarter.location}</span>
+                          <span className="truncate text-xs text-[#6b7280]">{headquarter.location}</span>
                         ) : null}
                       </span>
                     </SelectItem>
@@ -1844,6 +1891,86 @@ export function PublicStorefrontView() {
                   {currencyFormatter.format(activeProduct.price * 0.83)}
                 </p>
 
+                {activeProduct.ingredientOptions && activeProduct.ingredientOptions.length > 0 ? (
+                  <div className="mt-5 space-y-4 rounded-2xl border border-[#eaded4] bg-white p-4">
+                    {activeProduct.ingredientOptions.some((option) => option.defaultIncluded && option.isRemovable) ? (
+                      <section className="space-y-2">
+                        <p className="text-sm font-black text-[#1d2530]">Quitar ingredientes</p>
+                        {activeProduct.ingredientOptions
+                          .filter((option) => option.defaultIncluded && option.isRemovable)
+                          .map((option) => {
+                            const isRemoved = productDialogModifiers.removedIngredients.includes(option.inventoryItemId);
+                            return (
+                              <label key={`remove-${option.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-[#f0e4d9] px-3 py-2 text-sm text-[#3f4752]">
+                                <span>{option.name}</span>
+                                <input
+                                  type="checkbox"
+                                  checked={isRemoved}
+                                  onChange={(event) => {
+                                    setProductDialogModifiers((current) => ({
+                                      ...current,
+                                      removedIngredients: event.target.checked
+                                        ? [...current.removedIngredients, option.inventoryItemId]
+                                        : current.removedIngredients.filter((id) => id !== option.inventoryItemId),
+                                    }));
+                                  }}
+                                />
+                              </label>
+                            );
+                          })}
+                      </section>
+                    ) : null}
+
+                    {activeProduct.ingredientOptions.some((option) => option.isAddable) ? (
+                      <section className="space-y-2">
+                        <p className="text-sm font-black text-[#1d2530]">Agregar extras</p>
+                        {activeProduct.ingredientOptions
+                          .filter((option) => option.isAddable)
+                          .map((option) => {
+                            const quantity = productDialogModifiers.extraIngredients[option.inventoryItemId] ?? 0;
+                            return (
+                              <div key={`extra-${option.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-[#f0e4d9] px-3 py-2">
+                                <div>
+                                  <p className="text-sm font-semibold text-[#1d2530]">{option.name}</p>
+                                  <p className="text-xs text-[#69727d]">+{currencyFormatter.format(option.extraPrice)}</p>
+                                </div>
+                                <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-[#eaded4]">
+                                  <button
+                                    type="button"
+                                    onClick={() => setProductDialogModifiers((current) => ({
+                                      ...current,
+                                      extraIngredients: {
+                                        ...current.extraIngredients,
+                                        [option.inventoryItemId]: Math.max(0, quantity - 1),
+                                      },
+                                    }))}
+                                    className="h-9 w-9 text-[#1d2530] hover:bg-[#fff3ef]"
+                                  >
+                                    -
+                                  </button>
+                                  <span className="h-9 w-9 border-x border-[#eaded4] text-center text-sm font-black leading-9 text-[#1d2530]">{quantity}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setProductDialogModifiers((current) => ({
+                                      ...current,
+                                      extraIngredients: {
+                                        ...current.extraIngredients,
+                                        [option.inventoryItemId]: Math.min(option.maxExtraQuantity, quantity + 1),
+                                      },
+                                    }))}
+                                    className="h-9 w-9 text-[#1d2530] hover:bg-[#fff3ef]"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </section>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 <div className="mt-6 grid grid-cols-3 items-center overflow-hidden rounded-2xl border border-[#eaded4] bg-white">
                   <button
                     type="button"
@@ -1872,7 +1999,7 @@ export function PublicStorefrontView() {
                   className="mt-5 flex h-14 w-full items-center justify-between rounded-2xl bg-[#ff5a2f] px-6 text-base font-black !text-[#ffffff] shadow-[0_14px_30px_rgba(255,90,47,0.28)] transition hover:bg-[#ed4f25]"
                 >
                   <span>Agregar a mi pedido</span>
-                  <span>{currencyFormatter.format(productDialogTotal)}</span>
+                  <span>{currencyFormatter.format(productDialogTotalWithModifiers)}</span>
                 </button>
               </div>
             </div>

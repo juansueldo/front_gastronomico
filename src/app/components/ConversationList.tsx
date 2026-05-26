@@ -36,7 +36,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../shared/ui/components/ava
 import { Badge } from '../shared/ui/components/badge';
 import { Button } from '../shared/ui/components/button';
 import { DeleteConfirmDialog } from '../shared/ui/components/delete-confirm-dialog';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../shared/ui/components/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../shared/ui/components/dialog';
 import { Input } from '../shared/ui/components/input';
 import { Label } from '../shared/ui/components/label';
 import { CreateOrderDialog } from './orders/CreateOrderDialog';
@@ -58,6 +58,10 @@ import { APP_CONVERSATIONS_CHANGED_EVENT, APP_NEW_MESSAGE_EVENT, type AppNewMess
 import { ApiError } from '../core/http/errors';
 
 type ConversationFilter = 'all' | 'unread' | 'assigned';
+
+const COMPACT_DIALOG_CONTENT_CLASS = 'w-[calc(100vw-2rem)] max-w-[620px] gap-0 overflow-visible p-0';
+const FORM_CONTROL_CLASS =
+  'h-10 rounded-md border-[var(--app-line)] bg-[var(--app-panel-subtle)] text-[var(--app-strong)] placeholder:text-[var(--app-muted)] focus:border-[var(--primary)] focus-visible:border-[var(--primary)] focus-visible:ring-[var(--primary)]/25';
 
 type ConversationItem = {
   id: string;
@@ -163,6 +167,15 @@ function formatConversationTime(date: Date) {
   if (date.toDateString() === yesterday.toDateString()) return 'Ayer';
 
   return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+}
+
+function truncateConversationPreview(value: string, maxLength = 30) {
+  const normalizedValue = value.replace(/\s+/g, ' ').trim();
+  if (normalizedValue.length <= maxLength) {
+    return normalizedValue;
+  }
+
+  return `${normalizedValue.slice(0, maxLength).trimEnd()}...`;
 }
 
 function formatMessageTime(date: Date) {
@@ -1244,7 +1257,9 @@ export function ConversationList() {
                       <p className="truncate font-semibold">{conversation.name}</p>
                       <span className="text-xs text-[var(--app-muted)]">{formatConversationTime(conversation.lastMessageAt)}</span>
                     </div>
-                    <p className="mt-1 truncate text-sm text-[var(--app-muted)]">{conversation.lastMessage}</p>
+                    <p className="mt-1 truncate text-sm text-[var(--app-muted)]">
+                      {truncateConversationPreview(conversation.lastMessage)}
+                    </p>
                   </div>
                 </button>
                 {conversation.unreadCount > 0 ? (
@@ -1668,24 +1683,35 @@ export function ConversationList() {
       />
 
       <Dialog open={isNewChatOpen} onOpenChange={setIsNewChatOpen}>
-        <DialogContent className="max-w-md border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]">
-          <DialogHeader>
+        <DialogContent className={COMPACT_DIALOG_CONTENT_CLASS}>
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+              <UserPlus size={18} />
+            </div>
             <DialogTitle>Nuevo chat</DialogTitle>
+            <DialogDescription>Inicia una conversación de WhatsApp con un contacto.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 px-5 py-4">
             <div>
               <Label>Nombre</Label>
-              <Input value={newChatName} onChange={(event) => setNewChatName(event.target.value)} placeholder="Ej: Maria Lopez" className="mt-2" />
+              <Input value={newChatName} onChange={(event) => setNewChatName(event.target.value)} placeholder="Ej: Maria Lopez" className={`mt-2 ${FORM_CONTROL_CLASS}`} />
             </div>
             <div>
               <Label>Telefono</Label>
-              <Input value={newChatPhone} onChange={(event) => setNewChatPhone(event.target.value)} placeholder="Ej: +54 9 11 1234 5678" className="mt-2" />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsNewChatOpen(false)}>Cancelar</Button>
-              <Button type="button" onClick={handleCreateChat} disabled={isSending}>Iniciar chat</Button>
+              <Input value={newChatPhone} onChange={(event) => setNewChatPhone(event.target.value)} placeholder="Ej: +54 9 11 1234 5678" className={`mt-2 ${FORM_CONTROL_CLASS}`} />
             </div>
           </div>
+          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsNewChatOpen(false)}
+              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+            >
+              Cancelar
+            </Button>
+            <Button type="button" onClick={handleCreateChat} disabled={isSending}>Iniciar chat</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

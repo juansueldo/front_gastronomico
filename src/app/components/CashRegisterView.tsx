@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Badge } from '../shared/ui/components/badge';
 import { Button } from '../shared/ui/components/button';
 import { Input } from '../shared/ui/components/input';
-import {Dialog, DialogContent, DialogHeader, DialogTitle} from '../shared/ui/components/dialog';
+import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from '../shared/ui/components/dialog';
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '../shared/ui/components/select';
+import { CircleDollarSign, WalletCards } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError } from '../core/http/errors';
 import { closeDailyCashMovements, createCashMovement, fetchCashMovements, getCashMovementsByDate, listCashMovements, type CashMovement, type PaymentMethod } from '../features/cash-register';
@@ -17,6 +18,10 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
   maximumFractionDigits: 0,
 });
 const CASH_HEADQUARTER_STORAGE_KEY = 'cash:selected-headquarter-id';
+const COMPACT_DIALOG_CONTENT_CLASS = 'max-h-[90vh] w-[calc(100vw-2rem)] max-w-[680px] gap-0 overflow-visible p-0';
+const FORM_CONTROL_CLASS =
+  'h-10 rounded-md border-[var(--app-line)] bg-[var(--app-panel-subtle)] text-[var(--app-strong)] placeholder:text-[var(--app-muted)] focus:border-[var(--primary)] focus-visible:border-[var(--primary)] focus-visible:ring-[var(--primary)]/25';
+const SELECT_CONTENT_CLASS = 'border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]';
 
 const getStoredHeadquarterId = () => getStorageItem(CASH_HEADQUARTER_STORAGE_KEY);
 
@@ -368,27 +373,28 @@ export function CashRegisterView() {
 
   return (
     <div className="h-full bg-body overflow-y-auto">
-      <div className="p-4 md:p-6 space-y-6">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div>
+      <div className="space-y-5 p-4 pb-24 md:space-y-6 md:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
             <h1 className="text-xl md:text-2xl font-semibold text-white">Caja</h1>
-            <p className="text-sm text-gray-400">
+            <p className="mt-1 text-sm leading-5 text-gray-400">
               {selectedHeadquarterName ? `Sede: ${selectedHeadquarterName}. ` : ''}
               {movementFilterMode === 'current-shift'
                 ? 'Mostrando movimientos desde el último cierre'
                 : `Mostrando movimientos del ${new Date(`${selectedMovementDate}T00:00:00`).toLocaleDateString('es-AR')}`}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-auto lg:grid-cols-[auto_auto_auto_auto] lg:items-center">
             <Badge
               variant="secondary"
-              className={hasOpeningInCurrentShift ? 'bg-label-success text-white' : 'bg-label-danger text-white'}
+              className={`justify-center px-3 py-2 text-center ${hasOpeningInCurrentShift ? 'bg-label-success text-white' : 'bg-label-danger text-white'}`}
             >
               {hasOpeningInCurrentShift ? 'Caja abierta' : 'Caja cerrada'}
             </Badge>
             <Button
               size="sm"
               variant="secondary"
+              className="w-full lg:w-auto"
               onClick={handleOpenOpeningDialog}
               disabled={!selectedHeadquarterId || isLoadingHeadquarters}
             >
@@ -397,6 +403,7 @@ export function CashRegisterView() {
             <Button
               size="sm"
               variant="secondary"
+              className="w-full lg:w-auto"
               onClick={() => setIsManualDialogOpen(true)}
               disabled={!selectedHeadquarterId || isLoadingHeadquarters || !hasOpeningInCurrentShift}
             >
@@ -404,6 +411,7 @@ export function CashRegisterView() {
             </Button>
             <Button
               size="sm"
+              className="w-full lg:w-auto"
               onClick={() => void handleCloseCashRegister()}
               disabled={!selectedHeadquarterId || isLoadingHeadquarters || !hasOpeningInCurrentShift}
             >
@@ -412,7 +420,7 @@ export function CashRegisterView() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(220px,280px)_minmax(220px,260px)_190px_auto] xl:items-center">
           <Select
             value={selectedHeadquarterId}
             onValueChange={(value) => {
@@ -426,7 +434,7 @@ export function CashRegisterView() {
             }}
             disabled={isLoadingHeadquarters || headquarters.length === 0}
           >
-            <SelectTrigger className="w-[280px]">
+            <SelectTrigger className="w-full">
               <SelectValue placeholder={isLoadingHeadquarters ? 'Cargando sedes...' : 'Seleccionar sede'} />
             </SelectTrigger>
             <SelectContent>
@@ -448,7 +456,7 @@ export function CashRegisterView() {
               }
             }}
           >
-            <SelectTrigger className="w-[260px]">
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="Filtrar movimientos" />
             </SelectTrigger>
             <SelectContent>
@@ -462,13 +470,14 @@ export function CashRegisterView() {
               type="date"
               value={selectedMovementDate}
               onChange={(event) => setSelectedMovementDate(event.target.value)}
-              className="w-[190px]"
+              className="w-full"
             />
           )}
 
           <Button
             size="sm"
             variant="secondary"
+            className="w-full xl:w-auto"
             onClick={() => void loadMovements()}
             disabled={isLoadingMovements || !selectedHeadquarterId || (movementFilterMode === 'date' && !selectedMovementDate)}
           >
@@ -476,80 +485,89 @@ export function CashRegisterView() {
           </Button>
         </div>
 
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-          <div className="p-3 rounded-lg border card bg-blue-500/10 border-blue-500/70">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-lg border card bg-blue-500/10 border-blue-500/70 p-4 sm:p-3">
             <p className="text-xs text-gray-400">Ventas</p>
-            <p className="text-lg font-semibold text-white">{currencyFormatter.format(totalSales)}</p>
+            <p className="mt-1 break-words text-lg font-semibold text-white">{currencyFormatter.format(totalSales)}</p>
           </div>
-          <div className="p-3 rounded-lg border card bg-green-500/10 border-green-500/70">
+          <div className="rounded-lg border card bg-green-500/10 border-green-500/70 p-4 sm:p-3">
             <p className="text-xs text-gray-400">Ingresos</p>
-            <p className="text-lg font-semibold text-white">{currencyFormatter.format(totalIncomes)}</p>
+            <p className="mt-1 break-words text-lg font-semibold text-white">{currencyFormatter.format(totalIncomes)}</p>
           </div>
-          <div className="p-3 rounded-lg border card bg-red-500/10 border-red-500/70">
+          <div className="rounded-lg border card bg-red-500/10 border-red-500/70 p-4 sm:p-3">
             <p className="text-xs text-gray-400">Egresos</p>
-            <p className="text-lg font-semibold text-white">{currencyFormatter.format(totalExpenses)}</p>
+            <p className="mt-1 break-words text-lg font-semibold text-white">{currencyFormatter.format(totalExpenses)}</p>
           </div>
-          <div className="p-3 rounded-lg border border-yellow-500/70 card bg-yellow-500/10">
+          <div className="rounded-lg border border-yellow-500/70 card bg-yellow-500/10 p-4 sm:p-3">
             <p className="text-xs text-gray-300">Efectivo esperado</p>
-            <p className="text-lg font-semibold text-white">{currencyFormatter.format(expectedCash)}</p>
+            <p className="mt-1 break-words text-lg font-semibold text-white">{currencyFormatter.format(expectedCash)}</p>
           </div>
         </div>
 
-        <div className="rounded-lg border card bg-card">
-          <div className="px-4 py-3 border-b border-[--border] flex items-center justify-between">
+        <div className="overflow-hidden rounded-lg border card bg-card">
+          <div className="flex flex-col gap-2 border-b border-[--border] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-sm font-medium text-white">
               {movementFilterMode === 'current-shift' ? 'Movimientos del turno' : 'Movimientos por fecha'}
             </h2>
-            <Badge variant="secondary" className="bg-label-secondary text-white text-xs">
+            <Badge variant="secondary" className="w-fit bg-label-secondary text-white text-xs">
               {movements.length} movimientos
             </Badge>
           </div>
 
           <div className="divide-y divide-gray-700">
             {movements.map((movement) => (
-              <div key={movement.id} className="px-4 py-3 flex items-center justify-between gap-3">
+              <div key={movement.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
                     <span className="text-xs text-gray-400">{movement.time}</span>
                     <Badge variant="secondary" className={getTypeBadgeClass(movement.type)}>
                       {getTypeLabel(movement.type)}
                     </Badge>
                   </div>
-                  <p className="text-sm text-white truncate">{movement.concept}</p>
+                  <p className="break-words text-sm text-white sm:truncate">{movement.concept}</p>
                   <p className="text-xs text-gray-400">{getPaymentMethodLabel(movement.paymentMethod)}</p>
                 </div>
 
-                <span className={`text-sm font-medium ${movement.amount >= 0 ? 'text-white' : 'text-red-400'}`}>
+                <span className={`shrink-0 self-end text-sm font-medium sm:self-auto ${movement.amount >= 0 ? 'text-white' : 'text-red-400'}`}>
                   {movement.amount >= 0 ? '+' : '-'}{currencyFormatter.format(Math.abs(movement.amount))}
                 </span>
               </div>
             ))}
+            {movements.length === 0 ? (
+              <div className="px-4 py-10 text-center text-sm text-gray-400">
+                No hay movimientos para mostrar.
+              </div>
+            ) : null}
           </div>
         </div>
 
         <Dialog open={isManualDialogOpen} onOpenChange={setIsManualDialogOpen}>
-          <DialogContent className="bg-card card text-white">
-            <DialogHeader>
+          <DialogContent className={COMPACT_DIALOG_CONTENT_CLASS}>
+            <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+              <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+                <CircleDollarSign size={18} />
+              </div>
               <DialogTitle>Registrar ingreso/egreso</DialogTitle>
+              <DialogDescription>Carga un movimiento manual en la caja activa.</DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-3">
+            <div className="space-y-3 px-5 py-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Select value={manualType} onValueChange={(value) => setManualType(value as 'ingreso' | 'egreso')}>
-                  <SelectTrigger>
+                  <SelectTrigger className={FORM_CONTROL_CLASS}>
                     <SelectValue placeholder="Tipo" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className={SELECT_CONTENT_CLASS}>
                     <SelectItem value="ingreso">Ingreso</SelectItem>
                     <SelectItem value="egreso">Egreso</SelectItem>
                   </SelectContent>
                 </Select>
 
                 <Select value={manualPaymentMethod} onValueChange={(value) => setManualPaymentMethod(value as PaymentMethod)}>
-                  <SelectTrigger>
+                  <SelectTrigger className={FORM_CONTROL_CLASS}>
                     <SelectValue placeholder="Método de pago" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className={SELECT_CONTENT_CLASS}>
                     <SelectItem value="efectivo">Efectivo</SelectItem>
                     <SelectItem value="transferencia">Transferencia</SelectItem>
                     <SelectItem value="tarjeta">Tarjeta</SelectItem>
@@ -562,6 +580,7 @@ export function CashRegisterView() {
                   placeholder="Concepto"
                   value={manualConcept}
                   onChange={(event) => setManualConcept(event.target.value)}
+                  className={FORM_CONTROL_CLASS}
                 />
                 <Input
                   type="number"
@@ -570,27 +589,42 @@ export function CashRegisterView() {
                   placeholder="Importe"
                   value={manualAmount}
                   onChange={(event) => setManualAmount(event.target.value)}
+                  className={FORM_CONTROL_CLASS}
                 />
               </div>
-
-              <Button className="w-full" onClick={handleAddManualMovement}>
+            </div>
+            <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsManualDialogOpen(false)}
+                className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+              >
+                Cancelar
+              </Button>
+              <Button className="gap-2" onClick={handleAddManualMovement}>
                 Guardar movimiento
               </Button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 
         <Dialog open={isOpeningDialogOpen} onOpenChange={setIsOpeningDialogOpen}>
-          <DialogContent className="bg-card card text-white">
-            <DialogHeader>
+          <DialogContent className={COMPACT_DIALOG_CONTENT_CLASS}>
+            <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+              <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+                <WalletCards size={18} />
+              </div>
               <DialogTitle>Registrar apertura de caja</DialogTitle>
+              <DialogDescription>Define el concepto y monto inicial para abrir caja.</DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-3">
+            <div className="space-y-3 px-5 py-4">
               <Input
                 placeholder="Concepto"
                 value={openingConcept}
                 onChange={(event) => setOpeningConcept(event.target.value)}
+                className={FORM_CONTROL_CLASS}
               />
               <Input
                 type="number"
@@ -599,6 +633,7 @@ export function CashRegisterView() {
                 placeholder="Monto inicial"
                 value={openingAmount}
                 onChange={(event) => setOpeningAmount(event.target.value)}
+                className={FORM_CONTROL_CLASS}
               />
               {lastClosingAmount !== null && (
                 <p className="text-xs text-gray-400">
@@ -606,10 +641,20 @@ export function CashRegisterView() {
                   {isLoadingLastClosingAmount ? ' (actualizando...)' : ''}
                 </p>
               )}
-              <Button className="w-full" onClick={() => void handleOpenCashRegister()}>
+            </div>
+            <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsOpeningDialogOpen(false)}
+                className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+              >
+                Cancelar
+              </Button>
+              <Button className="gap-2" onClick={() => void handleOpenCashRegister()}>
                 Confirmar apertura
               </Button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

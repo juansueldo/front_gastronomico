@@ -594,7 +594,7 @@ export function ConnectionsView() {
         </div>
 
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <DialogContent className="bg-card text-white border-orange-700 max-w-lg">
+          <DialogContent className="w-[calc(100vw-2rem)] !max-w-[calc(100vw-2rem)] border-orange-700 bg-card text-white sm:w-[70vw] sm:!max-w-[70vw]">
             <DialogHeader>
               <DialogTitle>{editingConnectionId ? 'Editar conexión' : 'Agregar conexión'}</DialogTitle>
             </DialogHeader>

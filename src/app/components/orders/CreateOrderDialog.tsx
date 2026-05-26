@@ -48,6 +48,10 @@ type ScheduleDayOption = {
   slots: ScheduleSlotOption[];
 };
 
+const FORM_CONTROL_CLASS =
+  'h-10 rounded-md border-[var(--app-line)] bg-[var(--app-panel-subtle)] text-[var(--app-strong)] placeholder:text-[var(--app-muted)] focus:border-[var(--primary)] focus-visible:border-[var(--primary)] focus-visible:ring-[var(--primary)]/25';
+const SELECT_CONTENT_CLASS = 'border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]';
+
 interface CustomerData {
   id?: number;
   name: string;
@@ -821,6 +825,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
           value={newCustomerName}
           onChange={(e) => setNewCustomerName(e.target.value)}
           autoFocus
+          className={FORM_CONTROL_CLASS}
         />
       </div>
       <div className="flex gap-3 pt-2">
@@ -912,10 +917,10 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
           <div>
             <FieldLabel>Sede *</FieldLabel>
             <Select value={selectedHeadquarterId} onValueChange={setSelectedHeadquarterId}>
-              <SelectTrigger>
+              <SelectTrigger className={FORM_CONTROL_CLASS}>
                 <SelectValue placeholder={isLoadingHeadquarters ? 'Cargando sedes...' : 'Seleccioná una sede'} />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className={SELECT_CONTENT_CLASS}>
                 {headquarters.map((headquarter) => (
                   <SelectItem key={headquarter.id} value={String(headquarter.id)}>
                     {headquarter.name}
@@ -933,6 +938,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
                 value={newOrderTableId}
                 onChange={(e) => setNewOrderTableId(e.target.value)}
                 type="number"
+                className={FORM_CONTROL_CLASS}
               />
             </div>
             <div>
@@ -942,6 +948,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
                 value={newOrderWaiterId}
                 onChange={(e) => setNewOrderWaiterId(e.target.value)}
                 type="number"
+                className={FORM_CONTROL_CLASS}
               />
             </div>
           </div>
@@ -975,10 +982,10 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
         <div>
           <FieldLabel>Sede *</FieldLabel>
           <Select value={selectedHeadquarterId} onValueChange={setSelectedHeadquarterId}>
-            <SelectTrigger>
+            <SelectTrigger className={FORM_CONTROL_CLASS}>
               <SelectValue placeholder={isLoadingHeadquarters ? 'Cargando sedes...' : 'Seleccioná una sede'} />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className={SELECT_CONTENT_CLASS}>
               {headquarters.map((headquarter) => (
                 <SelectItem key={headquarter.id} value={String(headquarter.id)}>
                   {headquarter.name}
@@ -1009,6 +1016,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
             onBlur={() => {
               window.setTimeout(() => setShowDeliveryAddressSuggestions(false), 120);
             }}
+            className={FORM_CONTROL_CLASS}
           />
           {showDeliveryAddressSuggestions && deliveryAddressSuggestions.length > 0 ? (
             <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-[80] max-h-56 overflow-y-auto rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] p-1 shadow-[0_18px_46px_rgb(0_0_0_/_28%)]">
@@ -1073,7 +1081,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
         placeholder="Buscar producto..."
         value={productFilter}
         onChange={(e) => setProductFilter(e.target.value)}
-        className="h-8 text-sm"
+        className={`${FORM_CONTROL_CLASS} h-9 text-sm`}
       />
 
       <div className="flex flex-wrap gap-1">
@@ -1229,10 +1237,10 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
                 <div>
                   <FieldLabel>Día</FieldLabel>
                   <Select value={selectedScheduleDayId} onValueChange={setSelectedScheduleDayId}>
-                    <SelectTrigger>
+                    <SelectTrigger className={FORM_CONTROL_CLASS}>
                       <SelectValue placeholder="Seleccioná un día" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className={SELECT_CONTENT_CLASS}>
                       {availableScheduleDays.map((day) => (
                         <SelectItem key={day.id} value={day.id}>
                           {day.label}
@@ -1244,10 +1252,10 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
                 <div>
                   <FieldLabel>Horario</FieldLabel>
                   <Select value={selectedScheduleSlotId} onValueChange={setSelectedScheduleSlotId}>
-                    <SelectTrigger>
+                    <SelectTrigger className={FORM_CONTROL_CLASS}>
                       <SelectValue placeholder="Seleccioná un horario" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className={SELECT_CONTENT_CLASS}>
                       {(selectedScheduleDay?.slots ?? []).map((slot) => (
                         <SelectItem key={slot.id} value={slot.id}>
                           {slot.label}

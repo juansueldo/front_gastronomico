@@ -1486,7 +1486,7 @@ export function ChatView() {
       </Dialog>
 
       <Dialog open={isContactDialogOpen} onOpenChange={setIsContactDialogOpen}>
-        <DialogContent className="bg-card text-white border-orange-700 max-w-lg">
+        <DialogContent className="w-[calc(100vw-2rem)] !max-w-[calc(100vw-2rem)] border-orange-700 bg-card text-white sm:w-[70vw] sm:!max-w-[70vw]">
           <DialogHeader>
             <DialogTitle>Datos del contacto</DialogTitle>
           </DialogHeader>
@@ -1504,7 +1504,7 @@ export function ChatView() {
       </Dialog>
 
       <Dialog open={isScheduleOrderDialogOpen} onOpenChange={setIsScheduleOrderDialogOpen}>
-        <DialogContent className="bg-card text-white border-orange-700 max-w-lg">
+        <DialogContent className="w-[calc(100vw-2rem)] !max-w-[calc(100vw-2rem)] border-orange-700 bg-card text-white sm:w-[70vw] sm:!max-w-[70vw]">
           <DialogHeader>
             <DialogTitle>Agendar orden para {conversation.contactName}</DialogTitle>
           </DialogHeader>

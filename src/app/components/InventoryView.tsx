@@ -6,6 +6,8 @@ import { Input } from '../shared/ui/components/input';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '../shared/ui/components/dialog';
@@ -61,6 +63,11 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
   currency: 'ARS',
   maximumFractionDigits: 0,
 });
+
+const WIDE_DIALOG_CONTENT_CLASS =
+  'max-h-[90vh] w-[calc(100vw-2rem)] !max-w-[calc(100vw-2rem)] overflow-visible p-0 sm:w-[70vw] sm:!max-w-[70vw]';
+const FORM_CONTROL_CLASS =
+  'h-10 rounded-md border-[var(--app-line)] bg-[var(--app-panel-subtle)] text-[var(--app-strong)] placeholder:text-[var(--app-muted)] focus:border-[var(--primary)] focus-visible:border-[var(--primary)] focus-visible:ring-[var(--primary)]/25';
 
 export function InventoryView() {
   const [products, setProducts] = useState<ProductItem[]>([]);
@@ -642,18 +649,17 @@ export function InventoryView() {
           }
         }}
       >
-        <DialogContent className="bg-card border-orange-700 text-white max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              <span className="inline-flex items-center gap-2">
-                <Wrench className="h-4 w-4" />
-                Ajustar stock
-              </span>
-            </DialogTitle>
+        <DialogContent className={WIDE_DIALOG_CONTENT_CLASS}>
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+              <Wrench size={18} />
+            </div>
+            <DialogTitle>Ajustar stock</DialogTitle>
+            <DialogDescription>Actualiza el stock actual y mínimo del ítem seleccionado.</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
-            <div className="rounded-md border border-orange-700 bg-body p-3 text-sm text-gray-300">
+          <div className="max-h-[calc(90vh-150px)] space-y-3 overflow-y-auto px-5 py-4">
+            <div className="rounded-md border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3 text-sm text-[var(--app-muted)]">
               {adjustTarget?.type === 'ingredient'
                 ? `${adjustTarget.name} (${adjustTarget.unit})`
                 : adjustTarget?.productName ?? 'Item'}
@@ -666,6 +672,7 @@ export function InventoryView() {
               placeholder="Stock actual"
               value={currentStockInput}
               onChange={(event) => setCurrentStockInput(event.target.value)}
+              className={FORM_CONTROL_CLASS}
             />
 
             <Input
@@ -675,12 +682,24 @@ export function InventoryView() {
               placeholder="Stock mínimo"
               value={minStockInput}
               onChange={(event) => setMinStockInput(event.target.value)}
+              className={FORM_CONTROL_CLASS}
             />
 
-            <Button className="w-full" onClick={() => { void saveStockAdjustment(); }}>
+          </div>
+          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsAdjustDialogOpen(false)}
+              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+            >
+              Cancelar
+            </Button>
+            <Button className="gap-2" onClick={() => { void saveStockAdjustment(); }}>
+              <Wrench size={15} />
               Guardar stock
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -696,22 +715,28 @@ export function InventoryView() {
           }
         }}
       >
-        <DialogContent className="bg-card border-orange-700 text-white max-w-md">
-          <DialogHeader>
+        <DialogContent className={WIDE_DIALOG_CONTENT_CLASS}>
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+              <Plus size={18} />
+            </div>
             <DialogTitle>Crear ingrediente</DialogTitle>
+            <DialogDescription>Registra un nuevo ingrediente para usarlo en recetas e inventario.</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className="max-h-[calc(90vh-150px)] space-y-3 overflow-y-auto px-5 py-4">
             <Input
               placeholder="Nombre"
               value={ingredientNameInput}
               onChange={(event) => setIngredientNameInput(event.target.value)}
+              className={FORM_CONTROL_CLASS}
             />
 
             <Input
               placeholder="Unidad (kg, lt, unidad...)"
               value={ingredientUnitInput}
               onChange={(event) => setIngredientUnitInput(event.target.value)}
+              className={FORM_CONTROL_CLASS}
             />
 
             <Input
@@ -721,6 +746,7 @@ export function InventoryView() {
               placeholder="Stock inicial"
               value={ingredientInitialStockInput}
               onChange={(event) => setIngredientInitialStockInput(event.target.value)}
+              className={FORM_CONTROL_CLASS}
             />
 
             <Input
@@ -730,12 +756,24 @@ export function InventoryView() {
               placeholder="Stock mínimo"
               value={ingredientMinStockInput}
               onChange={(event) => setIngredientMinStockInput(event.target.value)}
+              className={FORM_CONTROL_CLASS}
             />
 
-            <Button className="w-full" onClick={() => { void handleCreateIngredient(); }}>
+          </div>
+          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsCreateIngredientDialogOpen(false)}
+              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+            >
+              Cancelar
+            </Button>
+            <Button className="gap-2" onClick={() => { void handleCreateIngredient(); }}>
+              <Plus size={15} />
               Crear ingrediente
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -749,13 +787,17 @@ export function InventoryView() {
           }
         }}
       >
-        <DialogContent className="bg-card border-orange-700 text-white max-w-md">
-          <DialogHeader>
+        <DialogContent className={WIDE_DIALOG_CONTENT_CLASS}>
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+              <PackageCheck size={18} />
+            </div>
             <DialogTitle>Registrar consumo</DialogTitle>
+            <DialogDescription>Descuenta unidades del producto seleccionado del inventario.</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
-            <div className="rounded-md border border-orange-700 bg-body p-3 text-sm text-gray-300">
+          <div className="max-h-[calc(90vh-150px)] space-y-3 overflow-y-auto px-5 py-4">
+            <div className="rounded-md border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3 text-sm text-[var(--app-muted)]">
               {consumeTarget?.productName ?? 'Producto'}
             </div>
 
@@ -766,12 +808,24 @@ export function InventoryView() {
               placeholder="Cantidad a consumir"
               value={consumeQuantityInput}
               onChange={(event) => setConsumeQuantityInput(event.target.value)}
+              className={FORM_CONTROL_CLASS}
             />
 
-            <Button className="w-full" onClick={() => { void handleConsumeInventory(); }}>
+          </div>
+          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsConsumeDialogOpen(false)}
+              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+            >
+              Cancelar
+            </Button>
+            <Button className="gap-2" onClick={() => { void handleConsumeInventory(); }}>
+              <PackageCheck size={15} />
               Confirmar consumo
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -784,16 +838,20 @@ export function InventoryView() {
           }
         }}
       >
-        <DialogContent className="bg-card border-orange-700 text-white max-w-xl">
-          <DialogHeader>
+        <DialogContent className={WIDE_DIALOG_CONTENT_CLASS}>
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+              <ShoppingCart size={18} />
+            </div>
             <DialogTitle>Consumir inventario por pedido</DialogTitle>
+            <DialogDescription>Selecciona productos y cantidades para descontar stock manualmente.</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className="max-h-[calc(90vh-150px)] space-y-3 overflow-y-auto px-5 py-4">
             {consumeOrderLines.map((line) => (
               <div key={line.id} className="grid grid-cols-1 md:grid-cols-[1fr_120px_92px] gap-2">
                 <select
-                  className="h-10 rounded-md border border-orange-700 bg-body px-3 text-sm text-white"
+                  className="h-10 rounded-md border border-[var(--app-line)] bg-[var(--app-panel-subtle)] px-3 text-sm text-[var(--app-strong)] outline-none focus:border-[var(--primary)] focus:shadow-[0_0_0_1px_var(--primary)]"
                   value={line.productId}
                   onChange={(event) => updateConsumeOrderLine(line.id, 'productId', event.target.value)}
                 >
@@ -809,9 +867,11 @@ export function InventoryView() {
                   placeholder="Cantidad"
                   value={line.quantity}
                   onChange={(event) => updateConsumeOrderLine(line.id, 'quantity', event.target.value)}
+                  className={FORM_CONTROL_CLASS}
                 />
                 <Button
-                  className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
+                  variant="outline"
+                  className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
                   onClick={() => removeConsumeOrderLine(line.id)}
                 >
                   Quitar
@@ -819,18 +879,21 @@ export function InventoryView() {
               </div>
             ))}
 
-            <div className="flex items-center justify-between gap-2">
-              <Button
-                className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
-                onClick={addConsumeOrderLine}
-              >
-                Agregar línea
-              </Button>
-              <Button onClick={() => { void handleConsumeOrder(); }}>
-                Aplicar consumo
-              </Button>
-            </div>
           </div>
+          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+              onClick={addConsumeOrderLine}
+            >
+              Agregar línea
+            </Button>
+            <Button className="gap-2" onClick={() => { void handleConsumeOrder(); }}>
+              <ShoppingCart size={15} />
+              Aplicar consumo
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
