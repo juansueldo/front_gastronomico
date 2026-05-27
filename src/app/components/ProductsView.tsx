@@ -62,6 +62,8 @@ export function ProductsView() {
     recipesByProductId,
     isRecipeDialogOpen,
     setIsRecipeDialogOpen,
+    isSavingProduct,
+    isSavingRecipe,
     recipeProduct,
     recipeUsesIngredients,
     setRecipeUsesIngredients,
@@ -143,7 +145,7 @@ export function ProductsView() {
   };
 
   const saveModifierOptions = async () => {
-    if (!modifierProduct) return;
+    if (isSavingModifiers || !modifierProduct) return;
     setIsSavingModifiers(true);
     try {
       const result = await productApi.saveProductIngredientOptions({
@@ -285,6 +287,7 @@ export function ProductsView() {
         onToggleCategory={toggleCategory}
         onRemoveCategorySelection={removeCategorySelection}
         onSaveProduct={handleSaveProduct}
+        isSaving={isSavingProduct}
       />
 
       <Dialog
@@ -363,13 +366,14 @@ export function ProductsView() {
               type="button"
               variant="outline"
               onClick={() => setIsRecipeDialogOpen(false)}
+              disabled={isSavingRecipe}
               className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
             >
               Cancelar
             </Button>
-            <Button className="gap-2" onClick={handleSaveRecipe}>
+            <Button className="gap-2" onClick={handleSaveRecipe} disabled={isSavingRecipe}>
               <BookOpenText size={15} />
-              Guardar receta
+              {isSavingRecipe ? 'Guardando...' : 'Guardar receta'}
             </Button>
           </DialogFooter>
         </DialogContent>

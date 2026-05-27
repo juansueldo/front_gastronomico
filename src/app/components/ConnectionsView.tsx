@@ -289,6 +289,10 @@ export function ConnectionsView() {
   const handleSaveConnection = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    if (isSaving) {
+      return;
+    }
+
     if (!description.trim() || !phone.trim()) {
       toast.error('Completa descripción y teléfono de la conexión');
       return;

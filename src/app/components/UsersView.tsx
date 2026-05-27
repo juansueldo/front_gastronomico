@@ -267,6 +267,10 @@ export function UsersView() {
   };
 
   const handleSaveUser = async () => {
+    if (saving) {
+      return;
+    }
+
     const username = form.username.trim();
     const firstname = form.firstname.trim();
     const lastname = form.lastname.trim();

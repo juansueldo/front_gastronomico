@@ -24,6 +24,7 @@ import {
   searchAddressSuggestions,
   type AddressSuggestion,
 } from '../shared/services/geocoding.service';
+import { initializeTheme } from '../theme';
 
 type StoreLoadState = 'idle' | 'loading' | 'ready' | 'not-found' | 'error';
 type CheckoutStep = 'menu' | 'checkout' | 'success';
@@ -264,6 +265,24 @@ export function PublicStorefrontView() {
   const [visibleProductsCount, setVisibleProductsCount] = useState(PRODUCT_BATCH_SIZE);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
   const addressSuggestAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+
+    const root = document.documentElement;
+    const enforceLightTheme = () => {
+      root.classList.remove('dark');
+    };
+
+    enforceLightTheme();
+    const observer = new MutationObserver(enforceLightTheme);
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+
+    return () => {
+      observer.disconnect();
+      initializeTheme();
+    };
+  }, []);
 
   const categoryEntries = useMemo(
     () => Object.entries(categoriesById)
@@ -719,7 +738,7 @@ export function PublicStorefrontView() {
         <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center justify-center">
           <div className="relative mb-8 h-52 w-52 sm:h-64 sm:w-64">
             <div className="absolute inset-6 rounded-full border border-[#ffe4d4]" />
-            <div className="absolute inset-6 rounded-full border-[5px] border-transparent border-r-[#ff5a2f] border-t-[#ff9a5c] shadow-[0_0_18px_rgba(255,90,47,0.22)]" />
+            <div className="absolute inset-6 rounded-full border-[5px] border-[#ff8a4c] shadow-[0_0_18px_rgba(255,90,47,0.22)]" />
             <div className="absolute inset-[23%] rounded-full bg-[#fff1e8]" />
             <div className="absolute inset-[34%] rounded-full bg-white shadow-[0_16px_45px_rgba(255,90,47,0.18)]" />
             <Store className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 text-[#ff8a4c] sm:h-14 sm:w-14" strokeWidth={1.8} />
@@ -798,7 +817,7 @@ export function PublicStorefrontView() {
         <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center justify-center">
           <div className="relative mb-8 h-52 w-52 sm:h-64 sm:w-64">
             <div className="absolute inset-6 rounded-full border border-[#ffe4d4]" />
-            <div className="absolute inset-6 rounded-full border-[5px] border-transparent border-r-[#ff5a2f] border-t-[#ff9a5c] shadow-[0_0_18px_rgba(255,90,47,0.22)]" />
+            <div className="absolute inset-6 rounded-full border-[5px] border-[#ff8a4c] shadow-[0_0_18px_rgba(255,90,47,0.22)]" />
             <div className="absolute inset-[23%] rounded-full bg-[#fff1e8]" />
             <div className="absolute inset-[34%] rounded-full bg-white shadow-[0_16px_45px_rgba(255,90,47,0.18)]" />
             <Store className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 text-[#ff8a4c] sm:h-14 sm:w-14" strokeWidth={1.8} />
@@ -1133,8 +1152,8 @@ export function PublicStorefrontView() {
       onClick={() => openProductDialog(product)}
       className="w-full overflow-hidden rounded-2xl border border-[#efe7df] bg-white p-3 text-left shadow-[0_10px_28px_rgba(29,36,45,0.08)] transition hover:-translate-y-0.5 hover:border-[#ffb08f] hover:shadow-[0_14px_36px_rgba(29,36,45,0.12)]"
     >
-      <div className="grid items-center gap-3 md:grid-cols-[1fr_108px]">
-        <div>
+      <div className="grid grid-cols-[minmax(0,1fr)_88px] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_108px]">
+        <div className="min-w-0">
           <p className="text-base font-extrabold text-[#1d2530]">{product.name}</p>
           {product.description ? (
             <p className="mt-1 line-clamp-2 min-h-10 text-xs text-[#69727d]">{product.description}</p>
@@ -1143,9 +1162,9 @@ export function PublicStorefrontView() {
           )}
           <p className="mt-2 text-2xl font-black text-[#ff5a2f]">{currencyFormatter.format(product.price)}</p>
         </div>
-        <div className="h-24 overflow-hidden rounded-xl border border-[#f0e7de] bg-[#fff7f0]">
+        <div className="flex h-24 items-center justify-center overflow-hidden rounded-xl border border-[#f0e7de] bg-white p-2">
           {product.imageUrl ? (
-            <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
+            <img src={product.imageUrl} alt={product.name} className="h-full w-full object-contain" />
           ) : (
             <div className="flex h-full items-center justify-center text-[#9ea3ae]">
               <Store className="h-8 w-8" />
@@ -1161,7 +1180,6 @@ export function PublicStorefrontView() {
       <section className="relative overflow-hidden bg-[#141d28] pb-28 text-[#ffffff]">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_18px_18px,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[length:24px_24px] opacity-70" />
         <div className="absolute inset-y-0 right-0 hidden w-[36%] bg-[radial-gradient(circle_at_72%_35%,rgba(255,90,47,0.35),transparent_0_24%,transparent_35%),linear-gradient(135deg,transparent,rgba(255,255,255,0.06))] lg:block" />
-        <div className="absolute -right-20 -top-20 hidden h-80 w-80 rounded-full border border-[#ff8a4c]/40 bg-[#ff5a2f]/10 shadow-[0_0_80px_rgba(255,90,47,0.18)] lg:block" />
         <div className="relative mx-auto max-w-7xl px-4 pt-8 md:px-6 md:pt-10">
           <div className="grid gap-6 md:grid-cols-[1.45fr_1fr_1fr]">
             <div className="flex items-start gap-4">
@@ -1194,10 +1212,6 @@ export function PublicStorefrontView() {
             <div className="space-y-3 border-white/10 text-[#f3f5f7] md:border-l md:pl-6">
               <p className="flex items-center gap-3 text-sm"><Phone className="h-4 w-4 text-[#ff9f7d]" /> {fallbackHeadquarter?.phone ?? 'Sin telefono'}</p>
               <p className="flex items-center gap-3 text-sm"><Mail className="h-4 w-4 text-[#ff9f7d]" /> {`${slug}@tienda.com`}</p>
-              <p className="flex min-w-0 items-center gap-3 text-sm">
-                <MapPin className="h-4 w-4 shrink-0 text-[#ff9f7d]" />
-                <span className="min-w-0 truncate">{fallbackHeadquarter?.location ?? 'Retiro en sede'}</span>
-              </p>
             </div>
 
             <div className="space-y-3 border-white/10 md:border-l md:pl-6">
@@ -1208,9 +1222,6 @@ export function PublicStorefrontView() {
                 </div>
                 <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-[#ff5a2f] shadow">
                   <Instagram className="h-5 w-5" />
-                </div>
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-[#ff5a2f] shadow">
-                  <Store className="h-5 w-5" />
                 </div>
                 {offersDelivery ? (
                   <button
@@ -1748,7 +1759,6 @@ export function PublicStorefrontView() {
             {checkoutStep !== 'success' ? (
               <aside className="relative h-fit overflow-hidden rounded-2xl border border-[#263342] bg-[#141d28] p-5 text-white shadow-[0_18px_45px_rgba(20,29,40,0.22)] md:sticky md:top-4">
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12px_12px,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[length:24px_24px] opacity-60" />
-              <div className="pointer-events-none absolute -bottom-24 -right-16 h-56 w-56 rounded-full border border-[#ff8a4c]/20 bg-[#ff5a2f]/10" />
               <div className="relative">
               <div className="flex items-center justify-between">
                 <h3 className="text-2xl font-black leading-none text-white">Mi pedido</h3>

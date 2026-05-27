@@ -25,6 +25,7 @@ import {
   SunMedium,
   Tags,
   Truck,
+  UserRoundCheck,
   Users,
   Wallet,
 } from 'lucide-react';
@@ -79,6 +80,7 @@ const navCategories: Array<{ category: string; items: NavItem[] }> = [
       { path: '/orders', icon: ClipboardList, label: 'Pedidos', allowedRoles: ['admin', 'manager', 'user', 'supervisor', 'agent'] },
       { path: '/customers', icon: CircleUserRound, label: 'Clientes', allowedRoles: ['admin', 'manager', 'user', 'supervisor', 'agent'] },
       { path: '/kitchen', icon: ChefHat, label: 'Cocina', allowedRoles: ['admin', 'manager', 'supervisor'] },
+      { path: '/waiters', icon: UserRoundCheck, label: 'Mozos', allowedRoles: ['admin', 'supervisor'] },
       { path: '/tables', icon: LayoutGrid, label: 'Mesas', allowedRoles: ['admin', 'manager', 'supervisor'] },
       { path: '/cash-register', icon: Wallet, label: 'Caja', allowedRoles: ['admin'] },
       { path: '/headquarters', icon: BriefcaseBusiness, label: 'Sedes', allowedRoles: ['admin', 'manager', 'supervisor'] },

@@ -718,7 +718,6 @@ export function ActiveOrdersView() {
 
   const filteredOrders = useMemo(() => {
     const normalizedSearch = searchValue.trim().toLowerCase();
-    const todayLabel = toLocalDateLabel(new Date());
 
     const withFilters = orders.filter((order) => {
       const matchesSearch = !normalizedSearch
@@ -730,10 +729,7 @@ export function ActiveOrdersView() {
       const matchesChannel = channelFilter === 'all' || order.type === channelFilter;
 
       const orderDateLabel = getOrderDateLabel(order);
-      let matchesDate = orderDateLabel === todayLabel;
-      if (dateFilter) {
-        matchesDate = orderDateLabel === dateFilter;
-      }
+      const matchesDate = !dateFilter || orderDateLabel === dateFilter;
 
       return matchesSearch && matchesStatus && matchesChannel && matchesDate;
     });

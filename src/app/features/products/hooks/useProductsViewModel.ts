@@ -84,6 +84,8 @@ export function useProductsViewModel() {
   const [recipeProduct, setRecipeProduct] = useState<ProductItem | null>(null);
   const [recipeUsesIngredients, setRecipeUsesIngredients] = useState(false);
   const [recipeIngredients, setRecipeIngredients] = useState<RecipeIngredientDraft[]>([]);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [isSavingRecipe, setIsSavingRecipe] = useState(false);
 
   const loadCatalog = async () => {
     const [backendProducts, backendCategoriesResult, backendRecipes] = await Promise.all([
@@ -195,6 +197,10 @@ export function useProductsViewModel() {
   };
 
   const handleSaveRecipe = async () => {
+    if (isSavingRecipe) {
+      return;
+    }
+
     if (!recipeProduct) {
       return;
     }
@@ -227,6 +233,7 @@ export function useProductsViewModel() {
     let savedRecipe: ProductRecipeConfig;
 
     try {
+      setIsSavingRecipe(true);
       savedRecipe = await productApi.saveProductRecipe({
         productId: recipeProduct.id,
         usesRecipe: recipeUsesIngredients,
@@ -235,6 +242,8 @@ export function useProductsViewModel() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo guardar la receta');
       return;
+    } finally {
+      setIsSavingRecipe(false);
     }
 
     setRecipesByProductId((prev) => ({
@@ -309,6 +318,10 @@ export function useProductsViewModel() {
   };
 
   const handleSaveProduct = async () => {
+    if (isSavingProduct) {
+      return;
+    }
+
     const trimmedName = name.trim();
     const parsedPrice = Number(price.replace(',', '.'));
 
@@ -328,6 +341,7 @@ export function useProductsViewModel() {
     }
 
     try {
+      setIsSavingProduct(true);
       if (editingProductId) {
         await productApi.updateProduct(editingProductId, {
           name: trimmedName,
@@ -354,6 +368,8 @@ export function useProductsViewModel() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo guardar el producto');
       return;
+    } finally {
+      setIsSavingProduct(false);
     }
 
     setIsDialogOpen(false);
@@ -387,6 +403,8 @@ export function useProductsViewModel() {
     recipesByProductId,
     isRecipeDialogOpen,
     setIsRecipeDialogOpen,
+    isSavingProduct,
+    isSavingRecipe,
     recipeProduct,
     recipeUsesIngredients,
     setRecipeUsesIngredients,

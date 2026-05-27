@@ -116,6 +116,7 @@ export function CategoriesView() {
   const [reloadKey, setReloadKey] = useState(0);
   const [categoryToDelete, setCategoryToDelete] = useState<ProductCategory | null>(null);
   const [isDeletingCategory, setIsDeletingCategory] = useState(false);
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
 
   const filteredIconEntries = Object.entries(ICON_MAP).filter(([iconName]) => {
     const q = iconQuery.trim().toLowerCase();
@@ -169,6 +170,10 @@ export function CategoriesView() {
   };
 
   const handleSaveCategory = async () => {
+    if (isSavingCategory) {
+      return;
+    }
+
     const trimmedName = name.trim();
     const trimmedDescription = description.trim();
 
@@ -178,6 +183,7 @@ export function CategoriesView() {
     }
 
     try {
+      setIsSavingCategory(true);
       const payload = {
         name: trimmedName,
         description: trimmedDescription || undefined,
@@ -196,6 +202,8 @@ export function CategoriesView() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo guardar la categoría');
       return;
+    } finally {
+      setIsSavingCategory(false);
     }
 
     setIsDialogOpen(false);
@@ -473,13 +481,14 @@ export function CategoriesView() {
               type="button"
               variant="outline"
               onClick={() => setIsDialogOpen(false)}
+              disabled={isSavingCategory}
               className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
             >
               Cancelar
             </Button>
-            <Button type="button" onClick={handleSaveCategory} className="gap-2">
+            <Button type="button" onClick={handleSaveCategory} className="gap-2" disabled={isSavingCategory}>
               <PlusCircle size={15} />
-              {editingCategoryId ? 'Guardar cambios' : 'Crear categoría'}
+              {isSavingCategory ? 'Guardando...' : editingCategoryId ? 'Guardar cambios' : 'Crear categoría'}
             </Button>
           </DialogFooter>
         </DialogContent>

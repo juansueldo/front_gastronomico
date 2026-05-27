@@ -252,11 +252,9 @@ export function KitchenOrdersView() {
 
     try {
       const backendOrders = await fetchActiveOrders();
-      const todayLabel = toLocalDateLabel(new Date());
       const normalizedOrders = backendOrders
         .map(mapBackendOrder)
-        .filter((order) => order.status !== 'Entregado')
-        .filter((order) => getOrderDateLabel(order) === todayLabel);
+        .filter((order) => order.status !== 'Entregado');
 
       normalizedOrders.sort((a, b) => {
         const aTime = getOrderReferenceDate(a)?.getTime() ?? 0;

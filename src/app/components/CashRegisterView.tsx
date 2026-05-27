@@ -104,6 +104,8 @@ export function CashRegisterView() {
   const [openingConcept, setOpeningConcept] = useState('Apertura de caja');
   const [lastClosingAmount, setLastClosingAmount] = useState<number | null>(null);
   const [isLoadingLastClosingAmount, setIsLoadingLastClosingAmount] = useState(false);
+  const [isSavingManualMovement, setIsSavingManualMovement] = useState(false);
+  const [isSavingOpening, setIsSavingOpening] = useState(false);
 
   const loadMovements = async (options?: {
     mode?: 'current-shift' | 'date';
@@ -257,6 +259,10 @@ export function CashRegisterView() {
     .reduce((accumulator, movement) => accumulator + movement.amount, 0);
 
   const handleAddManualMovement = async () => {
+    if (isSavingManualMovement) {
+      return;
+    }
+
     const trimmedConcept = manualConcept.trim();
     const parsedAmount = Number(manualAmount.replace(',', '.'));
 
@@ -280,6 +286,7 @@ export function CashRegisterView() {
     }
 
     try {
+      setIsSavingManualMovement(true);
       await createCashMovement({
         type: manualType,
         concept: trimmedConcept,
@@ -296,6 +303,8 @@ export function CashRegisterView() {
         toast.error('No se pudo registrar el movimiento');
       }
       return;
+    } finally {
+      setIsSavingManualMovement(false);
     }
 
     toast.success(`${manualType === 'ingreso' ? 'Ingreso' : 'Egreso'} registrado`);
@@ -305,6 +314,10 @@ export function CashRegisterView() {
   };
 
   const handleOpenCashRegister = async () => {
+    if (isSavingOpening) {
+      return;
+    }
+
     if (!selectedHeadquarterId) {
       toast.error('Seleccioná una sede para abrir la caja');
       return;
@@ -319,6 +332,7 @@ export function CashRegisterView() {
     }
 
     try {
+      setIsSavingOpening(true);
       await createCashMovement({
         type: 'opening',
         concept: trimmedConcept,
@@ -338,6 +352,8 @@ export function CashRegisterView() {
       } else {
         toast.error('No se pudo registrar la apertura de caja');
       }
+    } finally {
+      setIsSavingOpening(false);
     }
   };
 
@@ -598,12 +614,13 @@ export function CashRegisterView() {
                 type="button"
                 variant="outline"
                 onClick={() => setIsManualDialogOpen(false)}
+                disabled={isSavingManualMovement}
                 className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
               >
                 Cancelar
               </Button>
-              <Button className="gap-2" onClick={handleAddManualMovement}>
-                Guardar movimiento
+              <Button className="gap-2" onClick={handleAddManualMovement} disabled={isSavingManualMovement}>
+                {isSavingManualMovement ? 'Guardando...' : 'Guardar movimiento'}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -647,12 +664,13 @@ export function CashRegisterView() {
                 type="button"
                 variant="outline"
                 onClick={() => setIsOpeningDialogOpen(false)}
+                disabled={isSavingOpening}
                 className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
               >
                 Cancelar
               </Button>
-              <Button className="gap-2" onClick={() => void handleOpenCashRegister()}>
-                Confirmar apertura
+              <Button className="gap-2" onClick={() => void handleOpenCashRegister()} disabled={isSavingOpening}>
+                {isSavingOpening ? 'Guardando...' : 'Confirmar apertura'}
               </Button>
             </DialogFooter>
           </DialogContent>

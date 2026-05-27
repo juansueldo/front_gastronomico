@@ -41,6 +41,7 @@ interface Props {
   onToggleCategory: (categoryId: string) => void;
   onRemoveCategorySelection: (categoryId: string) => void;
   onSaveProduct: () => Promise<void>;
+  isSaving?: boolean;
 }
 
 const CREATE_STEPS: CreateStep[] = ['basic', 'image', 'categories'];
@@ -89,6 +90,7 @@ export function ProductDialog({
   onToggleCategory,
   onRemoveCategorySelection,
   onSaveProduct,
+  isSaving = false,
 }: Props) {
   const [step, setStep] = useState<CreateStep>('basic');
   const isCreateMode = !editingProductId;
@@ -292,7 +294,7 @@ export function ProductDialog({
         variant="outline"
         className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
         onClick={goBack}
-        disabled={step === 'basic'}
+        disabled={step === 'basic' || isSaving}
       >
         Atrás
       </Button>
@@ -302,8 +304,8 @@ export function ProductDialog({
           Continuar →
         </Button>
       ) : (
-        <Button type="button" className="flex-1 sm:flex-none" onClick={() => { void onSaveProduct(); }}>
-          {isCreateMode ? 'Crear producto' : 'Guardar cambios'}
+        <Button type="button" className="flex-1 sm:flex-none" onClick={() => { void onSaveProduct(); }} disabled={isSaving}>
+          {isSaving ? 'Guardando...' : isCreateMode ? 'Crear producto' : 'Guardar cambios'}
         </Button>
       )}
     </DialogFooter>

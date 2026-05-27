@@ -91,6 +91,10 @@ export function InventoryView() {
   ]);
   const [currentStockInput, setCurrentStockInput] = useState('0');
   const [minStockInput, setMinStockInput] = useState('0');
+  const [isSavingStockAdjustment, setIsSavingStockAdjustment] = useState(false);
+  const [isCreatingIngredient, setIsCreatingIngredient] = useState(false);
+  const [isSavingConsumption, setIsSavingConsumption] = useState(false);
+  const [isSavingOrderConsumption, setIsSavingOrderConsumption] = useState(false);
 
   const parseDecimalInput = (value: string) => Number(value.replace(',', '.'));
   const normalizeIngredientKey = (name: string, unit: string) => `${name.trim().toLowerCase()}::${unit.trim().toLowerCase()}`;
@@ -308,6 +312,10 @@ export function InventoryView() {
   };
 
   const saveStockAdjustment = async () => {
+    if (isSavingStockAdjustment) {
+      return;
+    }
+
     if (!adjustTarget) {
       return;
     }
@@ -325,40 +333,40 @@ export function InventoryView() {
       return;
     }
 
-    if (adjustTarget.type === 'ingredient') {
-      try {
+    try {
+      setIsSavingStockAdjustment(true);
+
+      if (adjustTarget.type === 'ingredient') {
         await productApi.upsertIngredientStock({
           name: adjustTarget.name,
           unit: adjustTarget.unit,
           currentStock: parsedCurrentStock,
           minStock: parsedMinStock,
         });
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'No se pudo actualizar el stock del ingrediente');
-        return;
-      }
-
-      toast.success('Stock de ingrediente actualizado');
-    } else {
-      try {
+        toast.success('Stock de ingrediente actualizado');
+      } else {
         await productApi.upsertProductStock({
           productId: adjustTarget.productId,
           currentStock: parsedCurrentStock,
           minStock: parsedMinStock,
         });
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'No se pudo actualizar el stock del producto');
-        return;
+        toast.success('Stock de producto actualizado');
       }
 
-      toast.success('Stock de producto actualizado');
+      await loadInventoryContext();
+      setIsAdjustDialogOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo actualizar el stock');
+    } finally {
+      setIsSavingStockAdjustment(false);
     }
-
-    await loadInventoryContext();
-    setIsAdjustDialogOpen(false);
   };
 
   const handleCreateIngredient = async () => {
+    if (isCreatingIngredient) {
+      return;
+    }
+
     const trimmedName = ingredientNameInput.trim();
     const trimmedUnit = ingredientUnitInput.trim();
     const parsedCurrentStock = parseDecimalInput(ingredientInitialStockInput);
@@ -385,6 +393,7 @@ export function InventoryView() {
     }
 
     try {
+      setIsCreatingIngredient(true);
       await productApi.createIngredient({
         name: trimmedName,
         unit: trimmedUnit,
@@ -400,6 +409,8 @@ export function InventoryView() {
       await loadInventoryContext();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo crear el ingrediente');
+    } finally {
+      setIsCreatingIngredient(false);
     }
   };
 
@@ -410,6 +421,10 @@ export function InventoryView() {
   };
 
   const handleConsumeInventory = async () => {
+    if (isSavingConsumption) {
+      return;
+    }
+
     if (!consumeTarget) {
       return;
     }
@@ -422,6 +437,7 @@ export function InventoryView() {
     }
 
     try {
+      setIsSavingConsumption(true);
       await productApi.consumeProductStock({
         productId: consumeTarget.productId,
         quantity,
@@ -432,6 +448,8 @@ export function InventoryView() {
       await loadInventoryContext();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo registrar el consumo');
+    } finally {
+      setIsSavingConsumption(false);
     }
   };
 
@@ -457,6 +475,10 @@ export function InventoryView() {
   };
 
   const handleConsumeOrder = async () => {
+    if (isSavingOrderConsumption) {
+      return;
+    }
+
     const items = consumeOrderLines
       .map((line) => ({
         productId: line.productId,
@@ -470,6 +492,7 @@ export function InventoryView() {
     }
 
     try {
+      setIsSavingOrderConsumption(true);
       await productApi.consumeOrderInventory({ items });
       toast.success('Consumo por pedido aplicado');
       setIsConsumeOrderDialogOpen(false);
@@ -477,6 +500,8 @@ export function InventoryView() {
       await loadInventoryContext();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo aplicar el consumo por pedido');
+    } finally {
+      setIsSavingOrderConsumption(false);
     }
   };
 
@@ -691,13 +716,14 @@ export function InventoryView() {
               type="button"
               variant="outline"
               onClick={() => setIsAdjustDialogOpen(false)}
+              disabled={isSavingStockAdjustment}
               className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
             >
               Cancelar
             </Button>
-            <Button className="gap-2" onClick={() => { void saveStockAdjustment(); }}>
+            <Button className="gap-2" onClick={() => { void saveStockAdjustment(); }} disabled={isSavingStockAdjustment}>
               <Wrench size={15} />
-              Guardar stock
+              {isSavingStockAdjustment ? 'Guardando...' : 'Guardar stock'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -765,13 +791,14 @@ export function InventoryView() {
               type="button"
               variant="outline"
               onClick={() => setIsCreateIngredientDialogOpen(false)}
+              disabled={isCreatingIngredient}
               className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
             >
               Cancelar
             </Button>
-            <Button className="gap-2" onClick={() => { void handleCreateIngredient(); }}>
+            <Button className="gap-2" onClick={() => { void handleCreateIngredient(); }} disabled={isCreatingIngredient}>
               <Plus size={15} />
-              Crear ingrediente
+              {isCreatingIngredient ? 'Guardando...' : 'Crear ingrediente'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -817,13 +844,14 @@ export function InventoryView() {
               type="button"
               variant="outline"
               onClick={() => setIsConsumeDialogOpen(false)}
+              disabled={isSavingConsumption}
               className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
             >
               Cancelar
             </Button>
-            <Button className="gap-2" onClick={() => { void handleConsumeInventory(); }}>
+            <Button className="gap-2" onClick={() => { void handleConsumeInventory(); }} disabled={isSavingConsumption}>
               <PackageCheck size={15} />
-              Confirmar consumo
+              {isSavingConsumption ? 'Guardando...' : 'Confirmar consumo'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -886,12 +914,13 @@ export function InventoryView() {
               variant="outline"
               className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
               onClick={addConsumeOrderLine}
+              disabled={isSavingOrderConsumption}
             >
               Agregar línea
             </Button>
-            <Button className="gap-2" onClick={() => { void handleConsumeOrder(); }}>
+            <Button className="gap-2" onClick={() => { void handleConsumeOrder(); }} disabled={isSavingOrderConsumption}>
               <ShoppingCart size={15} />
-              Aplicar consumo
+              {isSavingOrderConsumption ? 'Guardando...' : 'Aplicar consumo'}
             </Button>
           </DialogFooter>
         </DialogContent>

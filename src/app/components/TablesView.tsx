@@ -24,10 +24,15 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  CreditCard,
   Eye,
   Grid2X2,
   List,
   MapPin,
+  MoreVertical,
+  PackagePlus,
+  ReceiptText,
+  Trash2,
   Users,
   UserRoundPlus,
 } from 'lucide-react';
@@ -42,20 +47,88 @@ import {
 } from '../features/tables';
 import {
   fetchProducts,
+  listProductCategories,
+  type ProductCategory,
   type ProductItem,
 } from '../features/products';
 import {
   createCashMovement,
   type PaymentMethod,
 } from '../features/cash-register';
+import { createOrder as createBackendOrder, fetchActiveOrders, type CreateOrderRequest } from '../features/orders/services/orders.service';
 import { listHeadquarters, type Headquarter } from '../features/headquarters';
 import { getLoggedUser } from '../core/storage/authStorage';
 import { getStorageItem, removeStorageItem, setStorageItem } from '../shared/storage';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../shared/ui/components/dropdown-menu';
 
 const COMPACT_DIALOG_CONTENT_CLASS = 'w-[calc(100vw-2rem)] max-w-[620px] gap-0 overflow-visible p-0';
+const WIDE_DIALOG_CONTENT_CLASS =
+  'max-h-[90vh] w-[calc(100vw-2rem)] !max-w-[calc(100vw-2rem)] gap-0 overflow-visible p-0 sm:w-[70vw] sm:!max-w-[70vw]';
 const FORM_CONTROL_CLASS =
   'h-10 rounded-md border-[var(--app-line)] bg-[var(--app-panel-subtle)] text-[var(--app-strong)] placeholder:text-[var(--app-muted)] focus:border-[var(--primary)] focus-visible:border-[var(--primary)] focus-visible:ring-[var(--primary)]/25';
 const SELECT_CONTENT_CLASS = 'border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]';
+
+const getProductImageUrl = (product: ProductItem) => (
+  product.image ?? product.imageUrl ?? product.image_url ?? null
+);
+
+const getProductCategoryIds = (product: ProductItem) => {
+  const row = product as ProductItem & {
+    category_ids?: Array<string | number>;
+    categoryId?: string | number;
+    categoryIds?: Array<string | number>;
+  };
+
+  const ids: Array<string | number> = [];
+  if (Array.isArray(row.categoryIds)) ids.push(...row.categoryIds);
+  if (Array.isArray(row.category_ids)) ids.push(...row.category_ids);
+  if (row.categoryId !== undefined && row.categoryId !== null && row.categoryId !== '') ids.push(row.categoryId);
+
+  return ids.map((id) => String(id));
+};
+
+const getOrderTableId = (order: any) => {
+  const value = order?.tableId ?? order?.table_id ?? order?.Table?.id;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? String(parsed) : '';
+};
+
+const getOrderTotal = (order: any) => {
+  const total = Number(order?.total_amount ?? order?.total ?? 0);
+  return Number.isFinite(total) ? total : 0;
+};
+
+const getOrderCreatedTime = (order: any) => {
+  const rawDate = order?.createdAt ?? order?.order_date ?? order?.created_at;
+  const parsedDate = rawDate ? new Date(rawDate) : null;
+  if (!parsedDate || Number.isNaN(parsedDate.getTime())) {
+    return '';
+  }
+
+  return parsedDate.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+};
+
+const getOrderItemsSummary = (order: any) => {
+  if (Array.isArray(order?.items)) {
+    return order.items.map((item: any) => String(item)).filter(Boolean);
+  }
+
+  if (!Array.isArray(order?.OrderItems)) {
+    return [];
+  }
+
+  return order.OrderItems.map((item: any) => {
+    const name = item?.Product?.name ?? item?.product?.name ?? `Producto ${item?.productId ?? item?.product_id ?? ''}`.trim();
+    const quantity = Number(item?.quantity ?? 0);
+    return quantity > 1 ? `${name} x${quantity}` : String(name);
+  }).filter(Boolean);
+};
 
 interface TableItem {
   id: string;
@@ -66,6 +139,8 @@ interface TableItem {
   status: 'libre' | 'ocupada' | 'por-cerrar' | 'reservada';
   openedAt?: string;
   totalAmount?: number;
+  activeOrderCount?: number;
+  activeOrderItems?: string[];
   capacity?: number;
   description?: string;
   backendStatusId?: number;
@@ -253,10 +328,16 @@ export function TablesView() {
   const [editTableCapacity, setEditTableCapacity] = useState('');
   const [editTableDescription, setEditTableDescription] = useState('');
   const [tableToDelete, setTableToDelete] = useState<TableItem | null>(null);
+  const [isCreatingTable, setIsCreatingTable] = useState(false);
+  const [isSavingTable, setIsSavingTable] = useState(false);
   const [draggedTableId, setDraggedTableId] = useState<string | null>(null);
   const [dragOverTableId, setDragOverTableId] = useState<string | null>(null);
   const [availableProducts, setAvailableProducts] = useState<ProductItem[]>([]);
-  const [selectedProductId, setSelectedProductId] = useState<string>('');
+  const [availableCategories, setAvailableCategories] = useState<ProductCategory[]>([]);
+  const [tableCategoryFilter, setTableCategoryFilter] = useState('all');
+  const [tableProductFilter, setTableProductFilter] = useState('');
+  const [tableProductQuantities, setTableProductQuantities] = useState<Record<string, number>>({});
+  const [isAddingTableProducts, setIsAddingTableProducts] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('efectivo');
   const [activeStatusFilter, setActiveStatusFilter] = useState<'todas' | TableItem['status']>('todas');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -275,8 +356,49 @@ export function TablesView() {
       return;
     }
 
-    const backendTables = await fetchTables(resolvedHeadquarterId);
-    setTables(backendTables.map(mapBackendTableToUi));
+    const [backendTables, backendOrders] = await Promise.all([
+      fetchTables(resolvedHeadquarterId),
+      fetchActiveOrders().catch(() => []),
+    ]);
+
+    const ordersByTableId = new Map<string, any[]>();
+    backendOrders
+      .filter((order: any) => {
+        const type = String(order?.type ?? '').toLowerCase();
+        return type === 'dine-in' || type === 'salon' || type === 'table';
+      })
+      .forEach((order: any) => {
+        const tableId = getOrderTableId(order);
+        if (!tableId) {
+          return;
+        }
+        ordersByTableId.set(tableId, [...(ordersByTableId.get(tableId) ?? []), order]);
+      });
+
+    setTables(backendTables.map((backendTable, index) => {
+      const table = mapBackendTableToUi(backendTable, index);
+      const tableOrders = ordersByTableId.get(String(table.id)) ?? [];
+
+      if (tableOrders.length === 0) {
+        return table;
+      }
+
+      const activeOrderItems = tableOrders.flatMap(getOrderItemsSummary);
+      const totalAmount = tableOrders.reduce((total, order) => total + getOrderTotal(order), 0);
+      const openedAt = tableOrders
+        .map(getOrderCreatedTime)
+        .find(Boolean);
+
+      return {
+        ...table,
+        status: 'ocupada',
+        guests: table.guests > 0 ? table.guests : 1,
+        openedAt: openedAt || table.openedAt || getCurrentTime(),
+        totalAmount,
+        activeOrderCount: tableOrders.length,
+        activeOrderItems,
+      };
+    }));
   };
 
   useEffect(() => {
@@ -310,15 +432,14 @@ export function TablesView() {
 
         setSelectedHeadquarterId(initialHeadquarterId);
 
-        const [_, products] = await Promise.all([
+        const [_, products, categoriesResult] = await Promise.all([
           loadTables(initialHeadquarterId),
           fetchProducts(),
+          listProductCategories({ page: 1, pageSize: 200 }),
         ]);
 
         setAvailableProducts(products);
-        if (products.length > 0) {
-          setSelectedProductId(products[0].id);
-        }
+        setAvailableCategories(categoriesResult.rows ?? []);
       } catch (error) {
         if (error instanceof ApiError) {
           toast.error(error.message);
@@ -341,12 +462,6 @@ export function TablesView() {
     }
   }, [selectedHeadquarterId]);
 
-  useEffect(() => {
-    if (!selectedProductId && availableProducts.length > 0) {
-      setSelectedProductId(availableProducts[0].id);
-    }
-  }, [availableProducts, selectedProductId]);
-
   const freeCount = tables.filter((table) => table.status === 'libre').length;
   const occupiedCount = tables.filter((table) => table.status === 'ocupada').length;
   const closingCount = tables.filter((table) => table.status === 'por-cerrar').length;
@@ -355,6 +470,21 @@ export function TablesView() {
   const filteredTables = activeStatusFilter === 'todas'
     ? tables
     : tables.filter((table) => table.status === activeStatusFilter);
+  const normalizedTableProductFilter = tableProductFilter.trim().toLowerCase();
+  const filteredActionProducts = normalizedTableProductFilter
+    ? availableProducts.filter((product) => (
+      product.name.toLowerCase().includes(normalizedTableProductFilter)
+      || (product.description ?? '').toLowerCase().includes(normalizedTableProductFilter)
+    ))
+    : availableProducts;
+  const categoryFilteredActionProducts = tableCategoryFilter === 'all'
+    ? filteredActionProducts
+    : filteredActionProducts.filter((product) => getProductCategoryIds(product).includes(tableCategoryFilter));
+  const selectedActionProducts = getSelectedTableProducts();
+  const selectedActionProductsTotal = selectedActionProducts.reduce(
+    (total, item) => total + (item.product.price * item.quantity),
+    0,
+  );
   const areaLabelsInUse = areaOptions.filter((area) => filteredTables.some((table) => table.area === area));
   const tablesByArea = areaLabelsInUse.map((area) => ({
     area,
@@ -414,6 +544,9 @@ export function TablesView() {
   };
 
   const handleOpenActions = (table: TableItem) => {
+    setTableProductFilter('');
+    setTableCategoryFilter('all');
+    setTableProductQuantities({});
     setActionTable(table);
   };
 
@@ -450,32 +583,110 @@ export function TablesView() {
     toast.success(`Cuenta abierta en Mesa ${actionTable.number}`);
   };
 
-  const handleAddProduct = () => {
+  const incrementTableProduct = (productId: string) => {
+    setTableProductQuantities((current) => ({
+      ...current,
+      [productId]: (current[productId] ?? 0) + 1,
+    }));
+  };
+
+  const decrementTableProduct = (productId: string) => {
+    setTableProductQuantities((current) => {
+      const nextQuantity = Math.max(0, (current[productId] ?? 0) - 1);
+      const next = { ...current };
+
+      if (nextQuantity <= 0) {
+        delete next[productId];
+      } else {
+        next[productId] = nextQuantity;
+      }
+
+      return next;
+    });
+  };
+
+  function getSelectedTableProducts() {
+    return availableProducts
+      .map((product) => ({
+        product,
+        quantity: tableProductQuantities[product.id] ?? 0,
+      }))
+      .filter((item) => item.quantity > 0);
+  }
+
+  const handleAddProduct = async () => {
+    if (isAddingTableProducts) {
+      return;
+    }
+
     if (!actionTable) {
       return;
     }
 
-    const selectedProduct = availableProducts.find((product) => product.id === selectedProductId);
+    const selectedItems = getSelectedTableProducts();
 
-    if (!selectedProduct) {
-      toast.error('Seleccioná un producto válido');
+    if (selectedItems.length === 0) {
+      toast.error('Seleccioná al menos un producto');
       return;
     }
 
-    if (!Number.isFinite(selectedProduct.price) || selectedProduct.price <= 0) {
-      toast.error('El producto seleccionado no tiene un precio válido');
+    if (!selectedHeadquarterId) {
+      toast.error('Seleccioná una sede para crear el pedido');
       return;
     }
 
-    updateTable(actionTable.id, (table) => ({
-      ...table,
-      status: 'ocupada',
-      guests: table.guests > 0 ? table.guests : 1,
-      openedAt: table.openedAt ?? getCurrentTime(),
-      totalAmount: getTableTotalAmount(table) + selectedProduct.price,
-    }));
+    const loggedUser = getLoggedUser();
+    const userId = Number(loggedUser?.id);
+    const headquarterId = Number(selectedHeadquarterId);
+    const storeId = Number(loggedUser?.storeId);
+    const tableId = Number(actionTable.id);
+    const fallbackTableId = Number(actionTable.number);
+    const resolvedTableId = Number.isInteger(tableId) && tableId > 0 ? tableId : fallbackTableId;
 
-    toast.success(`${selectedProduct.name} sumado a Mesa ${actionTable.number}`);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      toast.error('Usuario inválido para crear el pedido');
+      return;
+    }
+
+    if (!Number.isInteger(headquarterId) || headquarterId <= 0) {
+      toast.error('Sede inválida para crear el pedido');
+      return;
+    }
+
+    const totalToAdd = selectedItems.reduce((total, item) => total + (item.product.price * item.quantity), 0);
+    const payload: CreateOrderRequest = {
+      storeId: Number.isInteger(storeId) && storeId > 0 ? storeId : undefined,
+      headquarterId,
+      userId,
+      customerName: `Mesa ${actionTable.number}`,
+      customerPhone: String(actionTable.number).padStart(10, '0'),
+      type: 'dine-in',
+      items: selectedItems.map((item) => ({ productId: item.product.id, quantity: item.quantity })),
+      tableId: Number.isInteger(resolvedTableId) && resolvedTableId > 0 ? resolvedTableId : undefined,
+      is_asap: true,
+    };
+
+    try {
+      setIsAddingTableProducts(true);
+      await createBackendOrder(payload);
+
+      updateTable(actionTable.id, (table) => ({
+        ...table,
+        status: 'ocupada',
+        guests: table.guests > 0 ? table.guests : 1,
+        openedAt: table.openedAt ?? getCurrentTime(),
+        totalAmount: getTableTotalAmount(table) + totalToAdd,
+      }));
+
+      setTableProductQuantities({});
+      setTableProductFilter('');
+      void loadTables();
+      toast.success(`Pedido enviado a cocina para Mesa ${actionTable.number}`);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : 'No se pudo enviar el pedido a cocina');
+    } finally {
+      setIsAddingTableProducts(false);
+    }
   };
 
   const handleChargeTable = async () => {
@@ -534,17 +745,21 @@ export function TablesView() {
     setIsMoveTableDialogOpen(true);
   };
 
-  const handleOpenEditTable = () => {
-    if (!actionTable) {
+  const openEditTableFor = (table: TableItem | null) => {
+    if (!table) {
       return;
     }
 
-    setEditTableNumber(String(actionTable.number));
-    setEditTableArea(actionTable.area);
-    setEditTableWaiter(actionTable.waiter === 'Sin asignar' ? '' : actionTable.waiter);
-    setEditTableCapacity(actionTable.capacity ? String(actionTable.capacity) : '');
-    setEditTableDescription(actionTable.description ?? '');
-    setEditingTable(actionTable);
+    setEditTableNumber(String(table.number));
+    setEditTableArea(table.area);
+    setEditTableWaiter(table.waiter === 'Sin asignar' ? '' : table.waiter);
+    setEditTableCapacity(table.capacity ? String(table.capacity) : '');
+    setEditTableDescription(table.description ?? '');
+    setEditingTable(table);
+  };
+
+  const handleOpenEditTable = () => {
+    openEditTableFor(actionTable);
   };
 
   const handleConfirmMoveTable = async () => {
@@ -580,6 +795,10 @@ export function TablesView() {
   };
 
   const handleCreateTable = async () => {
+    if (isCreatingTable) {
+      return;
+    }
+
     if (!selectedHeadquarterId) {
       toast.error('Seleccioná una sede para crear la mesa');
       return;
@@ -602,6 +821,7 @@ export function TablesView() {
     }
 
     try {
+      setIsCreatingTable(true);
       await createTable({
         name: `Mesa ${nextTableNumber}`,
         table_number: nextTableNumber,
@@ -622,6 +842,8 @@ export function TablesView() {
         toast.error('No se pudo crear la mesa');
       }
       return;
+    } finally {
+      setIsCreatingTable(false);
     }
 
     setIsCreateTableDialogOpen(false);
@@ -633,6 +855,10 @@ export function TablesView() {
   };
 
   const handleSaveTableChanges = async () => {
+    if (isSavingTable) {
+      return;
+    }
+
     if (!editingTable) {
       return;
     }
@@ -658,6 +884,7 @@ export function TablesView() {
     }
 
     try {
+      setIsSavingTable(true);
       await updateBackendTable(editingTable.id, {
         name: `Mesa ${nextTableNumber}`,
         table_number: nextTableNumber,
@@ -680,6 +907,8 @@ export function TablesView() {
       } else {
         toast.error('No se pudo actualizar la mesa');
       }
+    } finally {
+      setIsSavingTable(false);
     }
   };
 
@@ -990,9 +1219,64 @@ export function TablesView() {
                         >
                           <div className="mb-3 flex items-center justify-between gap-2">
                             <h2 className="text-3xl font-semibold text-foreground md:text-4xl">Mesa {table.number}</h2>
-                            <Badge variant="secondary" className={statusBadgeClasses[table.status]}>
-                              {statusLabels[table.status]}
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary" className={statusBadgeClasses[table.status]}>
+                                {statusLabels[table.status]}
+                              </Badge>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--app-line)] bg-[var(--app-panel-subtle)] text-[var(--app-muted)] transition hover:border-[var(--primary)]/70 hover:text-[var(--app-strong)]"
+                                    onClick={(event) => event.stopPropagation()}
+                                    onPointerDown={(event) => event.stopPropagation()}
+                                    title="Más acciones"
+                                  >
+                                    <MoreVertical className="h-4 w-4" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent
+                                  align="end"
+                                  className="w-52 border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]"
+                                  onClick={(event) => event.stopPropagation()}
+                                  onPointerDown={(event) => event.stopPropagation()}
+                                >
+                                  <DropdownMenuItem onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleOpenDetail(table);
+                                  }}>
+                                    <Eye className="mr-2 h-4 w-4" />
+                                    Ver detalle
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleOpenActions(table);
+                                  }}>
+                                    <ReceiptText className="mr-2 h-4 w-4" />
+                                    Acciones
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleOpenActions(table);
+                                    openEditTableFor(table);
+                                  }}>
+                                    <Armchair className="mr-2 h-4 w-4" />
+                                    Editar mesa
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-red-500 focus:text-red-500"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setTableToDelete(table);
+                                    }}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Eliminar
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
                           </div>
 
                           <div className="space-y-2 text-sm">
@@ -1015,6 +1299,17 @@ export function TablesView() {
                           </div>
 
                           <div className="mt-3 border-t border-border pt-3">
+                            {table.activeOrderItems && table.activeOrderItems.length > 0 ? (
+                              <div className="mb-3 rounded-xl border border-[var(--app-line)] bg-[var(--app-panel-subtle)] px-3 py-2">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--app-muted)]">
+                                  En cocina {table.activeOrderCount ? `(${table.activeOrderCount})` : ''}
+                                </p>
+                                <p className="mt-1 line-clamp-2 text-sm text-[var(--app-strong)]">
+                                  {table.activeOrderItems.slice(0, 4).join(', ')}
+                                  {table.activeOrderItems.length > 4 ? '...' : ''}
+                                </p>
+                              </div>
+                            ) : null}
                             <div className="mb-3 flex items-center justify-between">
                               <span className="text-sm text-muted-foreground">Total</span>
                               <span className="text-2xl font-medium text-foreground">{formatCurrency(getTableTotalAmount(table))}</span>
@@ -1049,12 +1344,16 @@ export function TablesView() {
       </div>
 
       <Dialog open={!!detailTable} onOpenChange={() => setDetailTable(null)}>
-        <DialogContent className="bg-card card text-foreground">
-          <DialogHeader>
+        <DialogContent className={COMPACT_DIALOG_CONTENT_CLASS}>
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+              <Eye size={18} />
+            </div>
             <DialogTitle>Detalle de Mesa {detailTable?.number}</DialogTitle>
+            <DialogDescription>Consulta el estado y consumo actual de la mesa.</DialogDescription>
           </DialogHeader>
           {detailTable && (
-            <div className="space-y-3 text-sm">
+            <div className="space-y-3 px-5 py-4 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Estado</span>
                 <Badge variant="secondary" className={statusBadgeClasses[detailTable.status]}>
@@ -1085,7 +1384,19 @@ export function TablesView() {
                 <span className="text-muted-foreground">Total</span>
                 <span className="font-medium">{formatCurrency(getTableTotalAmount(detailTable))}</span>
               </div>
-              <Button className="w-full" onClick={() => setActionTable(detailTable)}>
+              {detailTable.activeOrderItems && detailTable.activeOrderItems.length > 0 ? (
+                <div className="rounded-xl border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--app-muted)]">
+                    Productos enviados a cocina
+                  </p>
+                  <ul className="space-y-1 text-[var(--app-strong)]">
+                    {detailTable.activeOrderItems.map((item, index) => (
+                      <li key={`${item}-${index}`}>• {item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <Button className="w-full" onClick={() => handleOpenActions(detailTable)}>
                 Acciones de mesa
               </Button>
             </div>
@@ -1094,71 +1405,204 @@ export function TablesView() {
       </Dialog>
 
       <Dialog open={!!actionTable} onOpenChange={() => setActionTable(null)}>
-        <DialogContent className="bg-card card text-foreground">
-          <DialogHeader>
+        <DialogContent className={WIDE_DIALOG_CONTENT_CLASS}>
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+              <ReceiptText size={18} />
+            </div>
             <DialogTitle>Acciones Mesa {actionTable?.number}</DialogTitle>
+            <DialogDescription>Agrega productos, cobra la mesa o administra su configuración.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <Button className="w-full" onClick={handleOpenBill}>
-              Abrir cuenta
-            </Button>
-            <div className="space-y-2 border-t border-border pt-2">
-              <p className="text-sm text-muted-foreground">Sumar producto a la mesa</p>
-              {availableProducts.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No hay productos cargados</p>
-              ) : (
-                <Select value={selectedProductId} onValueChange={setSelectedProductId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar producto" />
+
+          <div className="max-h-[calc(90vh-150px)] space-y-4 overflow-y-auto px-5 py-4">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
+              <section className="space-y-3 rounded-lg border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--app-strong)]">Productos</p>
+                    <p className="text-xs text-[var(--app-muted)]">Seleccioná cantidades como en un pedido de salón.</p>
+                  </div>
+                  <Badge variant="secondary" className="w-fit bg-label-info text-xs">
+                    {selectedActionProducts.reduce((total, item) => total + item.quantity, 0)} items
+                  </Badge>
+                </div>
+
+                <Input
+                  placeholder="Buscar producto..."
+                  value={tableProductFilter}
+                  onChange={(event) => setTableProductFilter(event.target.value)}
+                  className={FORM_CONTROL_CLASS}
+                />
+
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setTableCategoryFilter('all')}
+                    className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                      tableCategoryFilter === 'all'
+                        ? 'border-[var(--primary)] bg-[var(--primary)] text-white'
+                        : 'border-[var(--app-line)] text-[var(--app-muted)] hover:border-[var(--primary)]/70 hover:text-[var(--app-strong)]'
+                    }`}
+                  >
+                    Todas
+                  </button>
+                  {availableCategories.map((category) => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      onClick={() => setTableCategoryFilter(String(category.id))}
+                      className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                        tableCategoryFilter === String(category.id)
+                          ? 'border-[var(--primary)] bg-[var(--primary)] text-white'
+                          : 'border-[var(--app-line)] text-[var(--app-muted)] hover:border-[var(--primary)]/70 hover:text-[var(--app-strong)]'
+                      }`}
+                    >
+                      {category.name}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="max-h-[380px] space-y-2 overflow-y-auto pr-1">
+                  {categoryFilteredActionProducts.length === 0 ? (
+                    <p className="rounded-md border border-dashed border-[var(--app-line)] px-3 py-6 text-center text-sm text-[var(--app-muted)]">
+                      No hay productos para mostrar.
+                    </p>
+                  ) : (
+                    categoryFilteredActionProducts.map((product) => {
+                      const quantity = tableProductQuantities[product.id] ?? 0;
+                      const imageUrl = getProductImageUrl(product);
+                      return (
+                        <div
+                          key={product.id}
+                          className={`flex items-center gap-3 rounded-lg border px-3 py-2 transition ${
+                            quantity > 0
+                              ? 'border-[var(--primary)] bg-[var(--primary)]/10'
+                              : 'border-[var(--app-line)] bg-[var(--app-panel)]'
+                          }`}
+                        >
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-[var(--app-line)] bg-[var(--app-panel-subtle)]">
+                            {imageUrl ? (
+                              <img src={imageUrl} alt={product.name} className="h-full w-full object-cover" />
+                            ) : (
+                              <PackagePlus className="h-5 w-5 text-[var(--app-muted)]" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-[var(--app-strong)]">{product.name}</p>
+                            <p className="text-xs text-[var(--app-muted)]">{formatCurrency(product.price)}</p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => decrementTableProduct(product.id)}
+                              disabled={quantity === 0 || isAddingTableProducts}
+                              className="h-8 w-8 rounded-md border border-[var(--app-line)] text-[var(--app-muted)] transition hover:border-[var(--primary)] hover:text-[var(--app-strong)] disabled:opacity-40"
+                            >
+                              -
+                            </button>
+                            <span className="w-6 text-center text-sm font-semibold text-[var(--app-strong)]">{quantity}</span>
+                            <button
+                              type="button"
+                              onClick={() => incrementTableProduct(product.id)}
+                              disabled={isAddingTableProducts}
+                              className="h-8 w-8 rounded-md border border-[var(--primary)] text-[var(--primary)] transition hover:bg-[var(--primary)]/10 disabled:opacity-40"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </section>
+
+              <aside className="space-y-3 rounded-lg border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-[var(--app-muted)]">Mesa</span>
+                  <span className="text-sm font-semibold text-[var(--app-strong)]">{actionTable ? `Mesa ${actionTable.number}` : '-'}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-[var(--app-muted)]">Total actual</span>
+                  <span className="text-sm font-semibold text-[var(--app-strong)]">
+                    {actionTable ? formatCurrency(getTableTotalAmount(actionTable)) : formatCurrency(0)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3 border-t border-[var(--app-line)] pt-3">
+                  <span className="text-sm text-[var(--app-muted)]">A agregar</span>
+                  <span className="text-lg font-semibold text-[var(--app-strong)]">{formatCurrency(selectedActionProductsTotal)}</span>
+                </div>
+                <div className="space-y-2 rounded-md border border-[var(--app-line)] bg-[var(--app-panel)] p-2">
+                  {selectedActionProducts.length === 0 ? (
+                    <p className="px-2 py-4 text-center text-xs text-[var(--app-muted)]">Sin productos seleccionados</p>
+                  ) : (
+                    selectedActionProducts.map((item) => (
+                      <div key={item.product.id} className="flex items-center justify-between gap-3 text-xs">
+                        <span className="min-w-0 truncate text-[var(--app-strong)]">{item.product.name} x{item.quantity}</span>
+                        <span className="shrink-0 text-[var(--app-muted)]">{formatCurrency(item.product.price * item.quantity)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <Button
+                  className="w-full gap-2"
+                  onClick={() => { void handleAddProduct(); }}
+                  disabled={isAddingTableProducts || selectedActionProducts.length === 0}
+                >
+                  <PackagePlus className="h-4 w-4" />
+                  {isAddingTableProducts ? 'Enviando...' : 'Enviar a cocina'}
+                </Button>
+              </aside>
+            </div>
+
+            <div className="grid gap-3 border-t border-[var(--app-line)] pt-4 lg:grid-cols-2">
+              <div className="space-y-2 rounded-lg border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3">
+                <p className="text-sm font-semibold text-[var(--app-strong)]">Cobrar mesa</p>
+                <Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as PaymentMethod)}>
+                  <SelectTrigger className={FORM_CONTROL_CLASS}>
+                    <SelectValue placeholder="Seleccionar método de pago" />
                   </SelectTrigger>
-                  <SelectContent>
-                    {availableProducts.map((product) => (
-                      <SelectItem key={product.id} value={product.id}>
-                        {product.name} · {formatCurrency(product.price)}
-                      </SelectItem>
-                    ))}
+                  <SelectContent className={SELECT_CONTENT_CLASS}>
+                    <SelectItem value="efectivo">Efectivo</SelectItem>
+                    <SelectItem value="transferencia">Transferencia</SelectItem>
+                    <SelectItem value="tarjeta">Tarjeta</SelectItem>
                   </SelectContent>
                 </Select>
-              )}
-              <Button variant="secondary" className="w-full" onClick={handleAddProduct}>
-                Sumar producto
+                <Button className="w-full gap-2" onClick={handleChargeTable}>
+                  <CreditCard className="h-4 w-4" />
+                  Cobrar ({actionTable ? formatCurrency(getTableTotalAmount(actionTable)) : formatCurrency(0)})
+                </Button>
+              </div>
+
+              <div className="space-y-2 rounded-lg border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3">
+                <p className="text-sm font-semibold text-[var(--app-strong)]">Administración</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <Button variant="outline" className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]" onClick={handleOpenBill}>
+                    Abrir cuenta
+                  </Button>
+                  <Button variant="outline" className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]" onClick={handleOpenEditTable}>
+                    Editar mesa
+                  </Button>
+                  <Button variant="outline" className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]" onClick={handleMoveTable}>
+                    Mover mesa
+                  </Button>
+                  <Button variant="outline" className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]" onClick={handleToggleTableAvailability}>
+                    {actionTable?.status === 'reservada' ? 'Marcar libre' : 'Reservar'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end border-t border-[var(--app-line)] pt-4">
+              <Button
+                variant="destructive"
+                className="gap-2"
+                onClick={() => actionTable && setTableToDelete(actionTable)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Eliminar mesa
               </Button>
             </div>
-            <div className="space-y-2 border-t border-border pt-2">
-              <p className="text-sm text-muted-foreground">Cobrar mesa</p>
-              <Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as PaymentMethod)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar método de pago" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="efectivo">Efectivo</SelectItem>
-                  <SelectItem value="transferencia">Transferencia</SelectItem>
-                  <SelectItem value="tarjeta">Tarjeta</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button className="w-full" onClick={handleChargeTable}>
-                Cobrar ({actionTable ? formatCurrency(getTableTotalAmount(actionTable)) : formatCurrency(0)})
-              </Button>
-            </div>
-            <Button variant="secondary" className="w-full" onClick={handleOpenEditTable}>
-              Editar mesa
-            </Button>
-            <Button variant="secondary" className="w-full" onClick={handleMoveTable}>
-              Mover mesa
-            </Button>
-            <Button variant="secondary" className="w-full" onClick={handleToggleTableAvailability}>
-              {actionTable?.status === 'reservada' ? 'Marcar como libre' : 'Marcar como reservada'}
-            </Button>
-            <Button variant="destructive" className="w-full" onClick={handleCloseTable}>
-              Cerrar mesa
-            </Button>
-            <Button
-              variant="destructive"
-              className="w-full"
-              onClick={() => actionTable && setTableToDelete(actionTable)}
-            >
-              Eliminar mesa
-            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -1213,12 +1657,13 @@ export function TablesView() {
               type="button"
               variant="outline"
               onClick={() => setIsCreateTableDialogOpen(false)}
+              disabled={isCreatingTable}
               className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
             >
               Cancelar
             </Button>
-            <Button className="gap-2" onClick={handleCreateTable}>
-              Crear mesa
+            <Button className="gap-2" onClick={handleCreateTable} disabled={isCreatingTable}>
+              {isCreatingTable ? 'Guardando...' : 'Crear mesa'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1280,51 +1725,82 @@ export function TablesView() {
               type="button"
               variant="outline"
               onClick={() => setEditingTable(null)}
+              disabled={isSavingTable}
               className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
             >
               Cancelar
             </Button>
-            <Button className="gap-2" onClick={handleSaveTableChanges}>
-              Guardar cambios
+            <Button className="gap-2" onClick={handleSaveTableChanges} disabled={isSavingTable}>
+              {isSavingTable ? 'Guardando...' : 'Guardar cambios'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={!!tableToDelete} onOpenChange={(open) => !open && setTableToDelete(null)}>
-        <DialogContent className="border-border bg-card text-foreground">
-          <DialogHeader>
+        <DialogContent className={COMPACT_DIALOG_CONTENT_CLASS}>
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-red-500/45 bg-red-500/10 text-red-500">
+              <Trash2 size={18} />
+            </div>
             <DialogTitle>Eliminar Mesa {tableToDelete?.number}</DialogTitle>
+            <DialogDescription>Esta acción eliminará la mesa de forma permanente.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 text-sm">
-            <p className="text-muted-foreground">Esta acción eliminará la mesa de forma permanente.</p>
-            <Button variant="destructive" className="w-full" onClick={handleDeleteTable}>
+          <div className="px-5 py-4 text-sm">
+            <p className="rounded-md border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3 text-[var(--app-muted)]">
+              Se quitará del salón y no podrá usarse para nuevas órdenes.
+            </p>
+          </div>
+          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setTableToDelete(null)}
+              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+            >
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteTable}>
               Confirmar eliminación
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={isMoveTableDialogOpen} onOpenChange={setIsMoveTableDialogOpen}>
-        <DialogContent className="border-border bg-card text-foreground">
-          <DialogHeader>
+        <DialogContent className={COMPACT_DIALOG_CONTENT_CLASS}>
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+              <MapPin size={18} />
+            </div>
             <DialogTitle>Mover Mesa {actionTable?.number}</DialogTitle>
+            <DialogDescription>Selecciona el nuevo sector donde ubicar la mesa.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="space-y-3 px-5 py-4">
             <Select value={nextAreaForMove} onValueChange={(value) => setNextAreaForMove(value as TableItem['area'])}>
-              <SelectTrigger>
+              <SelectTrigger className={FORM_CONTROL_CLASS}>
                 <SelectValue placeholder="Seleccionar sector" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className={SELECT_CONTENT_CLASS}>
                 {areaOptions.map((area) => (
                   <SelectItem key={area} value={area}>{area}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Button className="w-full" onClick={handleConfirmMoveTable}>
+          </div>
+          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsMoveTableDialogOpen(false)}
+              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleConfirmMoveTable}>
               Confirmar sector
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

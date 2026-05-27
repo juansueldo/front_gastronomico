@@ -27,6 +27,7 @@ import { HeadquartersPage } from '../../features/headquarters/pages/Headquarters
 import { DeliveryZonesPage } from '../../features/delivery-zones/pages/DeliveryZonesPage';
 import { UsersPage } from '../../features/users/pages/UsersPage';
 import { CustomersPage } from '../../features/customers/pages/CustomersPage';
+import { WaitersPage } from '../../features/waiters/pages/WaitersPage';
 
 type Role = 'admin' | 'supervisor' | 'agent';
 
@@ -91,6 +92,7 @@ export const protectedRouteConfig: ProtectedRouteConfig[] = [
   { path: '/notifications', Component: NotificationsPage, roles: ['admin', 'supervisor', 'agent'] },
   { path: '/orders', Component: ActiveOrdersPage, roles: ['admin', 'supervisor', 'agent'] },
   { path: '/customers', Component: CustomersPage, roles: ['admin', 'supervisor', 'agent'] },
+  { path: '/waiters', Component: WaitersPage, roles: ['admin', 'supervisor'] },
   { path: '/tables', Component: TablesPage, roles: ['admin', 'supervisor'] },
   { path: '/cash-register', Component: CashRegisterPage, roles: ['admin'] },
   { path: '/categories', Component: CategoriesPage, roles: ['admin', 'supervisor'] },

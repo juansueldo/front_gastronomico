@@ -91,10 +91,14 @@ type ChatMessage = {
 
 type CustomerOrderSummary = {
   id?: string | number;
+  customerId?: string | number;
+  customer_id?: string | number;
   orderNumber?: string | number;
   status?: string;
   total?: string | number;
   createdAt?: string;
+  Customer?: { id?: string | number };
+  customer?: { id?: string | number };
 };
 
 type PendingAttachment = {
@@ -124,7 +128,23 @@ const quickReplies = [
   { label: 'Enviar link', icon: Link, text: 'Te comparto el link del pedido.' },
   { label: 'Gracias', icon: Smile, text: 'Gracias por contactarnos.' },
 ];
-const activeOrderStatuses = ['pending', 'preparing', 'in_preparation', 'ready', 'delivery', 'in_delivery', 'en preparación', 'en preparacion'];
+const activeOrderStatuses = [
+  'pending',
+  'new',
+  'confirmed',
+  'processing',
+  'preparing',
+  'in_preparation',
+  'ready',
+  'delivery',
+  'in_delivery',
+  'nuevo',
+  'confirmado',
+  'en preparación',
+  'en preparacion',
+  'listo',
+  'en reparto',
+];
 
 function getOrderStatus(order: CustomerOrderSummary) {
   return String(order.status ?? '').trim();
@@ -140,6 +160,17 @@ function getOrderNumber(order: CustomerOrderSummary) {
 
 function getOrderTotal(order: CustomerOrderSummary) {
   return order.total ?? (order as Record<string, unknown>).total_amount ?? (order as Record<string, unknown>).totalAmount ?? 0;
+}
+
+function getOrderCustomerId(order: CustomerOrderSummary) {
+  return order.customerId ?? order.customer_id ?? order.Customer?.id ?? order.customer?.id;
+}
+
+function belongsToCustomer(order: CustomerOrderSummary, customerId?: string | number) {
+  const orderCustomerId = getOrderCustomerId(order);
+  if (orderCustomerId === undefined || orderCustomerId === null) return true;
+  if (customerId === undefined || customerId === null) return false;
+  return String(orderCustomerId) === String(customerId);
 }
 
 function getInitials(name: string) {
@@ -438,6 +469,7 @@ export function ConversationList() {
   const [hasLoadedConversations, setHasLoadedConversations] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
   const [conversationToDelete, setConversationToDelete] = useState<ConversationItem | null>(null);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
@@ -496,6 +528,12 @@ export function ConversationList() {
   const unreadTotal = conversations.reduce((total, conversation) => total + (conversation.unreadCount > 0 ? 1 : 0), 0);
   const assignedTotal = conversations.filter((conversation) => conversation.status === 'assigned').length;
   const activeOrder = customerOrders.find(isActiveOrder);
+  const createOrderInitialCustomer = useMemo(() => (
+    customerLookup
+      ?? (selectedConversation?.phone
+        ? { name: selectedConversation.name, phone: selectedConversation.phone }
+        : null)
+  ), [customerLookup, selectedConversation?.name, selectedConversation?.phone]);
 
   const scrollToConversationEnd = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const viewport = messagesViewportRef.current;
@@ -615,6 +653,8 @@ export function ConversationList() {
   }, [loadMessages, scheduleScrollToConversationEnd, selectedConversation?.id]);
 
   useEffect(() => {
+    let cancelled = false;
+
     const loadCustomerContext = async () => {
       const phone = selectedConversation?.phone?.trim();
       setCustomerLookup(null);
@@ -624,11 +664,15 @@ export function ConversationList() {
 
       try {
         const customer = await findCustomerByPhone(phone);
+        if (cancelled) return;
         setCustomerLookup(customer);
 
         if (customer?.id) {
           const orders = await listCustomerOrders(customer.id);
-          setCustomerOrders(Array.isArray(orders) ? orders as CustomerOrderSummary[] : []);
+          if (cancelled) return;
+          const customerScopedOrders = (Array.isArray(orders) ? orders as CustomerOrderSummary[] : [])
+            .filter((order) => belongsToCustomer(order, customer.id));
+          setCustomerOrders(customerScopedOrders);
         }
       } catch {
         // La ficha del cliente no debe bloquear el chat.
@@ -636,6 +680,10 @@ export function ConversationList() {
     };
 
     void loadCustomerContext();
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedConversation?.phone, selectedConversation?.id]);
 
   useEffect(() => {
@@ -1142,12 +1190,16 @@ export function ConversationList() {
   };
 
   const handleCreateChat = async () => {
+    if (isCreatingChat) {
+      return;
+    }
+
     if (!newChatName.trim() || !newChatPhone.trim()) {
       toast.error('Completa nombre y telefono');
       return;
     }
 
-    setIsSending(true);
+    setIsCreatingChat(true);
     try {
       const result = await createContact({
         name: newChatName.trim(),
@@ -1177,7 +1229,7 @@ export function ConversationList() {
     } catch (error) {
       toast.error(getApiErrorMessage(error, 'No se pudo iniciar el chat'));
     } finally {
-      setIsSending(false);
+      setIsCreatingChat(false);
     }
   };
 
@@ -1301,9 +1353,29 @@ export function ConversationList() {
                   </Avatar>
                   <div className="min-w-0">
                     <h2 className="truncate text-base font-semibold">{selectedConversation.name}</h2>
-                    <p className="text-xs text-[var(--app-muted)]">
-                      Pedido #1042 · <span className="font-medium text-[var(--primary)]">En preparacion</span>
-                    </p>
+                    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs">
+                      {activeOrder ? (
+                        <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md border border-[var(--app-line)] bg-[var(--app-surface)] px-2 py-1 text-[var(--app-muted)]">
+                          <PackageCheck className="h-3.5 w-3.5 shrink-0 text-[var(--primary)]" />
+                          <span className="truncate">
+                            Pedido #{getOrderNumber(activeOrder)} · <span className="font-medium text-[var(--primary)]">{getOrderStatus(activeOrder) || 'Activo'}</span>
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex min-w-0 items-center gap-1.5 text-[var(--app-muted)]">
+                          <PackageCheck className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">Sin pedido activo</span>
+                        </span>
+                      )}
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-7 shrink-0 bg-orange-500 px-2 text-xs font-semibold text-white hover:bg-orange-600"
+                        onClick={() => setIsCreateOrderOpen(true)}
+                      >
+                        Crear pedido
+                      </Button>
+                    </div>
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
@@ -1331,24 +1403,6 @@ export function ConversationList() {
                   </Button>
                 </div>
               </header>
-
-              <div className="shrink-0 border-b border-[var(--app-line)] bg-[var(--app-panel)] px-4 py-3">
-                <div className="flex flex-col gap-3 rounded-lg border border-[var(--app-line)] bg-[var(--app-surface)] p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[var(--primary)]/15 text-[var(--primary)]">
-                      <PackageCheck className="h-5 w-5" />
-                    </div>
-                    <p className="truncate">
-                      {activeOrder
-                        ? `Pedido #${getOrderNumber(activeOrder)} · Total $${getOrderTotal(activeOrder)}`
-                        : 'Sin pedido activo'}
-                    </p>
-                  </div>
-                  <Button className="w-full shrink-0 sm:w-auto" onClick={() => setIsCreateOrderOpen(true)}>
-                    Crear pedido
-                  </Button>
-                </div>
-              </div>
 
               <div className="relative min-h-0 flex-1">
                 <div
@@ -1677,9 +1731,17 @@ export function ConversationList() {
         onCreated={() => {
           setIsCreateOrderOpen(false);
           setIsOrderDialogMinimized(false);
+          if (customerLookup?.id) {
+            void listCustomerOrders(customerLookup.id).then((orders) => {
+              const customerScopedOrders = (Array.isArray(orders) ? orders as CustomerOrderSummary[] : [])
+                .filter((order) => belongsToCustomer(order, customerLookup.id));
+              setCustomerOrders(customerScopedOrders);
+            }).catch(() => undefined);
+          }
         }}
         availableProducts={availableProducts}
         availableCategories={availableCategories}
+        initialCustomer={createOrderInitialCustomer}
       />
 
       <Dialog open={isNewChatOpen} onOpenChange={setIsNewChatOpen}>
@@ -1706,11 +1768,14 @@ export function ConversationList() {
               type="button"
               variant="outline"
               onClick={() => setIsNewChatOpen(false)}
+              disabled={isCreatingChat}
               className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
             >
               Cancelar
             </Button>
-            <Button type="button" onClick={handleCreateChat} disabled={isSending}>Iniciar chat</Button>
+            <Button type="button" onClick={handleCreateChat} disabled={isCreatingChat}>
+              {isCreatingChat ? 'Guardando...' : 'Iniciar chat'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
