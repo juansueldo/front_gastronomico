@@ -10,6 +10,7 @@ import type {
   MessagingAccountDto,
   MessagingConversationDto,
   MessagingMessageDto,
+  ReactMessageRequest,
   SendConversationMessageRequest,
   SendDirectMessageRequest,
 } from '../types/messaging.dto';
@@ -103,6 +104,14 @@ export async function markConversationAsRead(conversationId: string | number): P
   return mapMessagingConversationDtoToModel(data as MessagingConversationDto);
 }
 
+export async function reactMessagingMessage(messageId: string | number, payload: ReactMessageRequest) {
+  const data = await apiClient.post(`${API_VERSION}/messaging/messages/${messageId}/reactions`, payload);
+  const candidate = data as { message?: MessagingMessageDto };
+  return {
+    message: candidate.message ? mapMessagingMessageDtoToModel(candidate.message) : undefined,
+  };
+}
+
 export async function deleteMessagingConversation(conversationId: string | number): Promise<void> {
   await apiClient.delete(`${API_VERSION}/messaging/conversations/${conversationId}`);
 }
@@ -112,6 +121,7 @@ export type {
   MessagingConversation,
   MessagingMessage,
   PaginatedMessagingResult,
+  ReactMessageRequest,
   SendConversationMessageRequest,
   SendDirectMessageRequest,
 };

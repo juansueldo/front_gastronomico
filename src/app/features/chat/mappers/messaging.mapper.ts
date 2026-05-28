@@ -59,6 +59,10 @@ export function mapMessagingConversationDtoToModel(item: MessagingConversationDt
 export function mapMessagingMessageDtoToModel(item: MessagingMessageDto): MessagingMessage {
   const rawPayload = item.rawPayload ?? {};
   const mediaSize = Number(item.mediaSize ?? item.media_size ?? rawPayload.mediaSize ?? rawPayload.media_size ?? rawPayload.size);
+  const rawReactions = item.reactions ?? rawPayload.reactions;
+  const reactions = rawReactions && typeof rawReactions === 'object' && !Array.isArray(rawReactions)
+    ? Object.fromEntries(Object.entries(rawReactions).map(([key, value]) => [key, String(value)]))
+    : undefined;
 
   return {
     id: String(item.id ?? `message-${Date.now()}-${Math.random()}`),
@@ -76,6 +80,7 @@ export function mapMessagingMessageDtoToModel(item: MessagingMessageDto): Messag
     deliveredAt: item.deliveredAt,
     readAt: item.readAt,
     providerMessageId: item.providerMessageId,
+    reactions,
   };
 }
 

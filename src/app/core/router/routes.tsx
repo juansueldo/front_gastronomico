@@ -109,6 +109,7 @@ export const router = createBrowserRouter([
   { path: '/unauthorized', Component: UnauthorizedPage },
   { path: '/404', Component: NotFoundPage },
   { path: '/login', Component: withPublicPage(<LoginPage />) },
+  { path: '/demo', Component: withPublicPage(<LoginPage demo />) },
   { path: '/register', Component: withPublicPage(<RegisterPage />) },
   { path: '/tienda/:slug', Component: PublicStorefrontPage },
   ...protectedRouteConfig.map((route) => ({

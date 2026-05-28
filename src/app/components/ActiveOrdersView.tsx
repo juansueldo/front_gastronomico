@@ -5,6 +5,8 @@ import { Input } from '../shared/ui/components/input';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '../shared/ui/components/dialog';
@@ -19,11 +21,24 @@ import { toast } from 'sonner';
 import {
   ArrowUpDown,
   CalendarDays,
+  ChefHat,
   RotateCw,
+  CreditCard,
   Search,
   SlidersHorizontal,
-  ClipboardList
+  ClipboardList,
+  MoreVertical,
+  Printer,
+  ReceiptText,
 } from 'lucide-react';
+import { Checkbox } from '../shared/ui/components/checkbox';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../shared/ui/components/dropdown-menu';
 import {
   ApiError,
 } from '../core/http/errors';
@@ -55,6 +70,7 @@ import {
 import { CreateOrderDialog } from './orders/CreateOrderDialog';
 
 type OrderVisualPriority = 'default' | 'on-time' | 'delayed' | 'old';
+type PrintMode = 'comanda' | 'factura';
 
 interface ActiveOrderItem {
   id: string;
@@ -80,6 +96,11 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
   currency: 'ARS',
   maximumFractionDigits: 0,
 });
+
+const DIALOG_CONTENT_CLASS = 'w-[calc(100vw-2rem)] max-w-[720px] gap-0 overflow-hidden p-0';
+const FORM_CONTROL_CLASS =
+  'h-10 rounded-md border-[var(--app-line)] bg-[var(--app-panel-subtle)] text-[var(--app-strong)] placeholder:text-[var(--app-muted)] focus:border-[var(--primary)] focus-visible:border-[var(--primary)] focus-visible:ring-[var(--primary)]/25';
+const SELECT_CONTENT_CLASS = 'border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]';
 
 const GOOGLE_MAPS_API_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 
@@ -147,6 +168,9 @@ export function ActiveOrdersView() {
   const [orders, setOrders] = useState<ActiveOrderItem[]>([]);
   const [detailOrder, setDetailOrder] = useState<ActiveOrderItem | null>(null);
   const [statusOrder, setStatusOrder] = useState<ActiveOrderItem | null>(null);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
+  const [chargeOrders, setChargeOrders] = useState<ActiveOrderItem[]>([]);
+  const [isChargingOrders, setIsChargingOrders] = useState(false);
 
   // ← NUEVO: un solo boolean para abrir/cerrar CreateOrderDialog
   const [isCreateOrderDialogOpen, setIsCreateOrderDialogOpen] = useState(false);
@@ -546,6 +570,33 @@ export function ActiveOrdersView() {
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
   };
 
+  const toggleOrderSelection = (orderId: string) => {
+    setSelectedOrderIds((current) => (
+      current.includes(orderId)
+        ? current.filter((id) => id !== orderId)
+        : [...current, orderId]
+    ));
+  };
+
+  const clearOrderSelection = () => setSelectedOrderIds([]);
+
+  const selectedOrders = useMemo(
+    () => orders.filter((order) => selectedOrderIds.includes(order.id)),
+    [orders, selectedOrderIds],
+  );
+
+  const selectedOrdersTotal = selectedOrders.reduce((total, order) => total + parseMoneyValue(order.total), 0);
+
+  const openChargeDialog = (ordersToCharge: ActiveOrderItem[]) => {
+    if (ordersToCharge.length === 0) {
+      toast.error('Seleccioná al menos un pedido para cobrar');
+      return;
+    }
+
+    setChargeOrders(ordersToCharge);
+    setFinalizePaymentMethod('efectivo');
+  };
+
   const handleChangeStatus = async (nextStatus: string) => {
     if (!statusOrder) return;
 
@@ -575,41 +626,112 @@ export function ActiveOrdersView() {
     toast.success(`Estado actualizado a "${normalizedNextStatus}"`);
   };
 
-  const handleFinalizeOrder = async (order: ActiveOrderItem) => {
-    const readyStatusLabel = getOrderStatusLabel('ready');
-    if (getOrderStatusLabel(order.status) !== readyStatusLabel) {
-      toast.error('La orden debe estar lista para servir antes de cobrarla');
+  const handleFinalizeOrders = async () => {
+    if (isChargingOrders || chargeOrders.length === 0) {
       return;
     }
 
-    const amount = parseMoneyValue(order.total);
+    const amount = chargeOrders.reduce((total, order) => total + parseMoneyValue(order.total), 0);
     if (amount <= 0) { toast.error('No se pudo calcular el importe de la orden'); return; }
 
     try {
+      setIsChargingOrders(true);
       await createCashMovement({
         type: 'venta',
-        concept: `Orden ${order.id}`,
+        concept: chargeOrders.length === 1
+          ? `Orden ${chargeOrders[0].id}`
+          : `Pedidos ${chargeOrders.map((order) => order.id).join(', ')}`,
         amount,
         paymentMethod: finalizePaymentMethod,
-        headquarterId: order.headquarterId,
+        headquarterId: chargeOrders[0]?.headquarterId,
       });
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : 'No se pudo registrar la venta en caja');
+      setIsChargingOrders(false);
       return;
     }
 
     try {
-      await finalizeOrder(order.id);
+      await Promise.all(chargeOrders.map((order) => finalizeOrder(order.id)));
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : 'No se pudo completar la orden');
+      setIsChargingOrders(false);
       return;
     }
 
-    setOrders((prev) => prev.filter((o) => o.id !== order.id));
+    const chargedIds = new Set(chargeOrders.map((order) => order.id));
+    setOrders((prev) => prev.filter((order) => !chargedIds.has(order.id)));
+    setSelectedOrderIds((prev) => prev.filter((orderId) => !chargedIds.has(orderId)));
     setDetailOrder(null);
-    setStatusOrder((prev) => prev?.id === order.id ? null : prev);
+    setStatusOrder((prev) => prev && chargedIds.has(prev.id) ? null : prev);
+    setChargeOrders([]);
+    setIsChargingOrders(false);
     void loadOrders();
-    toast.success(`Orden ${order.id} finalizada`);
+    toast.success(chargeOrders.length === 1 ? `Orden ${chargeOrders[0].id} cobrada` : `${chargeOrders.length} pedidos cobrados`);
+  };
+
+  const buildPrintableHtml = (order: ActiveOrderItem, mode: PrintMode) => {
+    const title = mode === 'comanda'
+      ? `Comanda ${order.type === 'delivery' ? 'delivery' : 'cocina'}`
+      : 'Factura';
+    const itemsHtml = order.items.length > 0
+      ? order.items.map((item) => `<li>${item}</li>`).join('')
+      : '<li>Sin items cargados</li>';
+
+    return `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>${title} ${order.id}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+            h1 { font-size: 22px; margin: 0 0 8px; }
+            h2 { font-size: 15px; margin: 20px 0 8px; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; }
+            p { margin: 4px 0; }
+            ul { margin: 8px 0 0; padding-left: 20px; }
+            .muted { color: #6b7280; font-size: 12px; }
+            .total { margin-top: 18px; font-size: 18px; font-weight: 700; text-align: right; }
+            .box { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; margin-top: 12px; }
+            @media print { body { margin: 12px; } }
+          </style>
+        </head>
+        <body>
+          <h1>${title}</h1>
+          <p class="muted">Pedido ${order.id}</p>
+          <div class="box">
+            <p><strong>Cliente / mesa:</strong> ${order.customerName}</p>
+            <p><strong>Tipo:</strong> ${order.type === 'delivery' ? 'Delivery' : 'Salón'}</p>
+            <p><strong>Estado:</strong> ${order.status}</p>
+            <p><strong>Hora:</strong> ${getOrderDateInfo(order).time}</p>
+            ${order.address ? `<p><strong>Dirección:</strong> ${order.address}</p>` : ''}
+          </div>
+          <h2>Items</h2>
+          <ul>${itemsHtml}</ul>
+          ${order.notes ? `<h2>Observaciones</h2><p>${order.notes}</p>` : ''}
+          ${mode === 'factura' ? `<p class="total">Total: ${order.total}</p>` : ''}
+        </body>
+      </html>
+    `;
+  };
+
+  const printOrder = (order: ActiveOrderItem, mode: PrintMode) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const printWindow = window.open('', '_blank', 'width=420,height=720');
+    if (!printWindow) {
+      toast.error('No se pudo abrir la ventana de impresión');
+      return;
+    }
+
+    printWindow.document.write(buildPrintableHtml(order, mode));
+    printWindow.document.close();
+    printWindow.focus();
+    window.setTimeout(() => {
+      printWindow.print();
+    }, 150);
   };
 
   // ── Prioridad visual ──────────────────────────────────────────────────────────
@@ -748,6 +870,19 @@ export function ActiveOrdersView() {
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const paginatedOrders = filteredOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const paginatedOrderIds = paginatedOrders.map((order) => order.id);
+  const arePageOrdersSelected = paginatedOrderIds.length > 0
+    && paginatedOrderIds.every((orderId) => selectedOrderIds.includes(orderId));
+
+  const togglePageSelection = () => {
+    setSelectedOrderIds((current) => {
+      if (arePageOrdersSelected) {
+        return current.filter((orderId) => !paginatedOrderIds.includes(orderId));
+      }
+
+      return Array.from(new Set([...current, ...paginatedOrderIds]));
+    });
+  };
 
   useEffect(() => {
     setPage(1);
@@ -882,6 +1017,42 @@ export function ActiveOrdersView() {
             </div>
           </div>
 
+          <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card/60 p-3 text-sm text-foreground sm:flex-row sm:items-center sm:justify-between">
+            <label className="flex items-center gap-2">
+              <Checkbox
+                checked={arePageOrdersSelected}
+                onCheckedChange={togglePageSelection}
+                aria-label="Seleccionar pedidos de esta página"
+              />
+              <span>Seleccionar página</span>
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-muted-foreground">
+                {selectedOrders.length} seleccionados · {currencyFormatter.format(selectedOrdersTotal)}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="rounded-xl border-border bg-card/70"
+                onClick={clearOrderSelection}
+                disabled={selectedOrders.length === 0}
+              >
+                Limpiar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="rounded-xl"
+                onClick={() => openChargeDialog(selectedOrders)}
+                disabled={selectedOrders.length === 0}
+              >
+                <CreditCard className="h-4 w-4" />
+                Cobrar selección
+              </Button>
+            </div>
+          </div>
+
           <div className="space-y-3">
             {paginatedOrders.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border bg-card/60 p-8 text-center text-sm text-muted-foreground">
@@ -892,6 +1063,7 @@ export function ActiveOrdersView() {
                 const orderDateInfo = getOrderDateInfo(order);
                 const isPriority = getOrderVisualPriority(order) === 'default';
                 const priorityStyle = isPriority ? 'border-orange-500/80' : getOrderCardClass(order).replace('bg-card', 'bg-card/70');
+                const isSelected = selectedOrderIds.includes(order.id);
                 return (
                   <article
                     key={order.id}
@@ -902,22 +1074,70 @@ export function ActiveOrdersView() {
                     onMouseDown={() => handleLongPressStart(order)}
                     onMouseUp={handleLongPressEnd}
                     onMouseLeave={handleLongPressEnd}
-                    className={`cursor-pointer rounded-2xl border bg-card/60 p-3 backdrop-blur-sm transition hover:bg-card sm:p-4 ${priorityStyle}`}
+                    className={`cursor-pointer rounded-2xl border bg-card/60 p-3 backdrop-blur-sm transition hover:bg-card sm:p-4 ${priorityStyle} ${isSelected ? 'ring-2 ring-primary/60' : ''}`}
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0 space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex min-w-0 gap-3">
+                        <div
+                          className="pt-1"
+                          onClick={(event) => event.stopPropagation()}
+                          onMouseDown={(event) => event.stopPropagation()}
+                          onTouchStart={(event) => event.stopPropagation()}
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleOrderSelection(order.id)}
+                            aria-label={`Seleccionar pedido ${order.id}`}
+                          />
+                        </div>
+                        <div className="min-w-0 space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
                           <span className="text-lg font-semibold text-foreground md:text-2xl">{order.id}</span>
                           <Badge variant="secondary" className={`${getStatusBadgeClass(getPriorityLabel(order))} text-xs`}>
                             {getPriorityLabel(order)}
                           </Badge>
+                          </div>
+                          <p className="break-words text-base text-foreground sm:text-lg">{order.customerName}</p>
+                          <p className="break-words text-sm text-muted-foreground">{order.detail}</p>
+                          <p className="text-sm text-muted-foreground">{order.status}</p>
                         </div>
-                        <p className="break-words text-base text-foreground sm:text-lg">{order.customerName}</p>
-                        <p className="break-words text-sm text-muted-foreground">{order.detail}</p>
-                        <p className="text-sm text-muted-foreground">{order.status}</p>
                       </div>
 
                       <div className="flex flex-row flex-wrap items-center justify-between gap-2 sm:flex-col sm:items-end">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              className="h-9 w-9 rounded-xl border-border bg-card/70"
+                              onClick={(event) => event.stopPropagation()}
+                              onMouseDown={(event) => event.stopPropagation()}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent
+                            align="end"
+                            className="w-56 border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]"
+                            onClick={(event) => event.stopPropagation()}
+                            onMouseDown={(event) => event.stopPropagation()}
+                          >
+                            <DropdownMenuItem onClick={() => printOrder(order, 'comanda')}>
+                              <ChefHat className="mr-2 h-4 w-4" />
+                              Imprimir comanda
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => printOrder(order, 'factura')}>
+                              <ReceiptText className="mr-2 h-4 w-4" />
+                              Imprimir factura
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => openChargeDialog([order])}>
+                              <CreditCard className="mr-2 h-4 w-4" />
+                              Cobrar pedido
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         <Badge
                           variant="secondary"
                           className={order.type === 'delivery' ? 'bg-blue-500/20 text-blue-700 dark:text-blue-100' : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-100'}
@@ -974,76 +1194,148 @@ export function ActiveOrdersView() {
 
       {/* ── Dialog detalle de orden ── */}
       <Dialog open={!!detailOrder} onOpenChange={() => setDetailOrder(null)}>
-        <DialogContent className="bg-card card text-foreground">
-          <DialogHeader>
+        <DialogContent className={DIALOG_CONTENT_CLASS}>
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+              <ClipboardList size={18} />
+            </div>
             <DialogTitle>Detalle del pedido {detailOrder?.id}</DialogTitle>
+            <DialogDescription>Revisa la orden, imprime documentos o envíala a cobro.</DialogDescription>
           </DialogHeader>
           {detailOrder && (
-            <div className="space-y-3 text-sm">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-muted-foreground">Tipo</span>
-                <Badge variant="secondary" className={detailOrder.type === 'delivery' ? 'bg-label-info text-white text-xs' : 'bg-label-success text-white text-xs'}>
-                  {detailOrder.type === 'delivery' ? 'Delivery' : 'Salón'}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-muted-foreground">Cliente / mesa</span>
-                <span>{detailOrder.customerName}</span>
-              </div>
-              {detailOrder.type === 'delivery' && detailOrder.address && (
-                <div className="flex items-start justify-between gap-2">
-                  <span className="text-muted-foreground">Dirección</span>
-                  <span className="text-right">{detailOrder.address}</span>
+            <>
+              <div className="space-y-3 px-5 py-4 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground">Tipo</span>
+                  <Badge variant="secondary" className={detailOrder.type === 'delivery' ? 'bg-label-info text-white text-xs' : 'bg-label-success text-white text-xs'}>
+                    {detailOrder.type === 'delivery' ? 'Delivery' : 'Salón'}
+                  </Badge>
                 </div>
-              )}
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-muted-foreground">Estado</span>
-                <span>{detailOrder.status}</span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-muted-foreground">Hora</span>
-                <span>{detailOrder.createdAt}</span>
-              </div>
-              <div>
-                <p className="mb-1 text-muted-foreground">Items</p>
-                <ul className="space-y-1">
-                  {detailOrder.items.map((item) => (
-                    <li key={item} className="text-foreground">• {item}</li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <p className="mb-1 text-muted-foreground">Detalle</p>
-                <p>{detailOrder.detail}</p>
-              </div>
-              {detailOrder.notes && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground">Cliente / mesa</span>
+                  <span>{detailOrder.customerName}</span>
+                </div>
+                {detailOrder.type === 'delivery' && detailOrder.address && (
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-muted-foreground">Dirección</span>
+                    <span className="text-right">{detailOrder.address}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground">Estado</span>
+                  <span>{detailOrder.status}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground">Hora</span>
+                  <span>{detailOrder.createdAt}</span>
+                </div>
+                <div className="rounded-lg border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3">
+                  <p className="mb-2 text-muted-foreground">Items</p>
+                  <ul className="space-y-1">
+                    {detailOrder.items.map((item) => (
+                      <li key={item} className="text-foreground">• {item}</li>
+                    ))}
+                  </ul>
+                </div>
                 <div>
-                  <p className="mb-1 text-muted-foreground">Observaciones</p>
-                  <p>{detailOrder.notes}</p>
+                  <p className="mb-1 text-muted-foreground">Detalle</p>
+                  <p>{detailOrder.detail}</p>
                 </div>
-              )}
-              <div className="flex items-center justify-between border-t border-border pt-2">
-                <span className="text-muted-foreground">Total</span>
-                <span className="font-medium">{detailOrder.total}</span>
+                {detailOrder.notes && (
+                  <div>
+                    <p className="mb-1 text-muted-foreground">Observaciones</p>
+                    <p>{detailOrder.notes}</p>
+                  </div>
+                )}
+                <div className="flex items-center justify-between border-t border-border pt-2">
+                  <span className="text-muted-foreground">Total</span>
+                  <span className="font-medium">{detailOrder.total}</span>
+                </div>
               </div>
-              <div className="space-y-2 border-t border-border pt-2">
-                <p className="text-muted-foreground">Finalizar orden</p>
-                <Select value={finalizePaymentMethod} onValueChange={(v) => setFinalizePaymentMethod(v as PaymentMethod)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Método de pago" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="efectivo">Efectivo</SelectItem>
-                    <SelectItem value="transferencia">Transferencia</SelectItem>
-                    <SelectItem value="tarjeta">Tarjeta</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button className="w-full" onClick={() => handleFinalizeOrder(detailOrder)}>
-                  Finalizar orden
+              <DialogFooter className="flex-col gap-2 border-t border-[var(--app-line)] px-5 py-4 sm:flex-row">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)] sm:w-auto"
+                  onClick={() => printOrder(detailOrder, 'comanda')}
+                >
+                  <Printer className="h-4 w-4" />
+                  Comanda
                 </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)] sm:w-auto"
+                  onClick={() => printOrder(detailOrder, 'factura')}
+                >
+                  <ReceiptText className="h-4 w-4" />
+                  Factura
+                </Button>
+                <Button className="w-full gap-2 sm:w-auto" onClick={() => openChargeDialog([detailOrder])}>
+                  <CreditCard className="h-4 w-4" />
+                  Cobrar
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={chargeOrders.length > 0} onOpenChange={(open) => !open && !isChargingOrders && setChargeOrders([])}>
+        <DialogContent className={DIALOG_CONTENT_CLASS}>
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+              <CreditCard size={18} />
+            </div>
+            <DialogTitle>Cobrar {chargeOrders.length === 1 ? 'pedido' : 'pedidos'}</DialogTitle>
+            <DialogDescription>Selecciona el método de pago y confirma la venta.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 px-5 py-4">
+            <div className="rounded-lg border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3">
+              <p className="mb-2 text-sm font-semibold text-[var(--app-strong)]">
+                {chargeOrders.length} {chargeOrders.length === 1 ? 'pedido seleccionado' : 'pedidos seleccionados'}
+              </p>
+              <div className="max-h-44 space-y-2 overflow-y-auto pr-1 text-sm">
+                {chargeOrders.map((order) => (
+                  <div key={order.id} className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate text-[var(--app-muted)]">{order.id} · {order.customerName}</span>
+                    <span className="shrink-0 font-medium text-[var(--app-strong)]">{order.total}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 flex items-center justify-between border-t border-[var(--app-line)] pt-3">
+                <span className="text-sm text-[var(--app-muted)]">Total a cobrar</span>
+                <span className="text-lg font-semibold text-[var(--app-strong)]">
+                  {currencyFormatter.format(chargeOrders.reduce((total, order) => total + parseMoneyValue(order.total), 0))}
+                </span>
               </div>
             </div>
-          )}
+            <Select value={finalizePaymentMethod} onValueChange={(v) => setFinalizePaymentMethod(v as PaymentMethod)}>
+              <SelectTrigger className={FORM_CONTROL_CLASS}>
+                <SelectValue placeholder="Método de pago" />
+              </SelectTrigger>
+              <SelectContent className={SELECT_CONTENT_CLASS}>
+                <SelectItem value="efectivo">Efectivo</SelectItem>
+                <SelectItem value="transferencia">Transferencia</SelectItem>
+                <SelectItem value="tarjeta">Tarjeta</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setChargeOrders([])}
+              disabled={isChargingOrders}
+              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+            >
+              Cancelar
+            </Button>
+            <Button className="gap-2" onClick={() => { void handleFinalizeOrders(); }} disabled={isChargingOrders}>
+              <CreditCard className="h-4 w-4" />
+              {isChargingOrders ? 'Cobrando...' : 'Confirmar cobro'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

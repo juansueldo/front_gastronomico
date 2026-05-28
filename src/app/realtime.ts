@@ -223,6 +223,13 @@ function buildMessagingMessageDetail(payload: Record<string, unknown>): AppNewMe
         ? message.rawPayload['filename']
         : undefined,
     messageType: typeof message.type === 'string' ? message.type : undefined,
+    reactions:
+      message.rawPayload && typeof message.rawPayload === 'object'
+        ? (message.rawPayload as Record<string, unknown>).reactions as AppNewMessageDetail['reactions']
+        : undefined,
+    status: typeof message.status === 'string' ? message.status : undefined,
+    deliveredAt: typeof message.deliveredAt === 'string' ? message.deliveredAt : undefined,
+    readAt: typeof message.readAt === 'string' ? message.readAt : undefined,
     sender: direction === 'outbound' ? 'agent' : 'contact',
     contactName: typeof customer.name === 'string' ? customer.name : undefined,
     channel: normalizeChannel(conversation.channel),
@@ -381,6 +388,22 @@ function registerEventHandlers(socket: Socket) {
   });
 
   socket.on('messaging_message_sent', (data) => {
+    const payload = data?.data ?? data ?? {};
+    const message = buildMessagingMessageDetail(payload);
+    if (message) {
+      dispatchAppNewMessage(message);
+    }
+  });
+
+  socket.on('messaging_message_status_changed', (data) => {
+    const payload = data?.data ?? data ?? {};
+    const message = buildMessagingMessageDetail(payload);
+    if (message) {
+      dispatchAppNewMessage(message);
+    }
+  });
+
+  socket.on('messaging_message_reaction_changed', (data) => {
     const payload = data?.data ?? data ?? {};
     const message = buildMessagingMessageDetail(payload);
     if (message) {

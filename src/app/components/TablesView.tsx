@@ -55,7 +55,12 @@ import {
   createCashMovement,
   type PaymentMethod,
 } from '../features/cash-register';
-import { createOrder as createBackendOrder, fetchActiveOrders, type CreateOrderRequest } from '../features/orders/services/orders.service';
+import {
+  createOrder as createBackendOrder,
+  fetchActiveOrders,
+  finalizeOrder,
+  type CreateOrderRequest,
+} from '../features/orders/services/orders.service';
 import { listHeadquarters, type Headquarter } from '../features/headquarters';
 import { getLoggedUser } from '../core/storage/authStorage';
 import { getStorageItem, removeStorageItem, setStorageItem } from '../shared/storage';
@@ -104,6 +109,14 @@ const getOrderTotal = (order: any) => {
   return Number.isFinite(total) ? total : 0;
 };
 
+const getOrderId = (order: any) => String(order?.id ?? order?.order_number ?? '').trim();
+
+const getOrderCustomerId = (order: any) => {
+  const value = order?.customerId ?? order?.customer_id ?? order?.Customer?.id;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+};
+
 const getOrderCreatedTime = (order: any) => {
   const rawDate = order?.createdAt ?? order?.order_date ?? order?.created_at;
   const parsedDate = rawDate ? new Date(rawDate) : null;
@@ -139,6 +152,8 @@ interface TableItem {
   status: 'libre' | 'ocupada' | 'por-cerrar' | 'reservada';
   openedAt?: string;
   totalAmount?: number;
+  customerId?: number;
+  activeOrderIds?: string[];
   activeOrderCount?: number;
   activeOrderItems?: string[];
   capacity?: number;
@@ -385,6 +400,9 @@ export function TablesView() {
 
       const activeOrderItems = tableOrders.flatMap(getOrderItemsSummary);
       const totalAmount = tableOrders.reduce((total, order) => total + getOrderTotal(order), 0);
+      const customerId = tableOrders
+        .map(getOrderCustomerId)
+        .find((id): id is number => Number.isInteger(id));
       const openedAt = tableOrders
         .map(getOrderCreatedTime)
         .find(Boolean);
@@ -395,6 +413,8 @@ export function TablesView() {
         guests: table.guests > 0 ? table.guests : 1,
         openedAt: openedAt || table.openedAt || getCurrentTime(),
         totalAmount,
+        customerId,
+        activeOrderIds: tableOrders.map(getOrderId).filter(Boolean),
         activeOrderCount: tableOrders.length,
         activeOrderItems,
       };
@@ -534,6 +554,31 @@ export function TablesView() {
     });
   };
 
+  const resetTableConsumption = (table: TableItem): TableItem => ({
+    ...table,
+    status: 'libre',
+    guests: 0,
+    openedAt: undefined,
+    totalAmount: undefined,
+    customerId: undefined,
+    activeOrderIds: [],
+    activeOrderCount: 0,
+    activeOrderItems: [],
+  });
+
+  const finalizeActiveTableOrders = async (table: TableItem) => {
+    const orderIds = Array.from(new Set(table.activeOrderIds ?? []));
+    if (orderIds.length === 0) {
+      return;
+    }
+
+    const results = await Promise.allSettled(orderIds.map((orderId) => finalizeOrder(orderId)));
+    const rejected = results.find((result) => result.status === 'rejected');
+    if (rejected) {
+      throw rejected.reason;
+    }
+  };
+
   const handleOpenDetail = (table: TableItem) => {
     if (suppressNextClick.current) {
       suppressNextClick.current = false;
@@ -658,8 +703,9 @@ export function TablesView() {
       storeId: Number.isInteger(storeId) && storeId > 0 ? storeId : undefined,
       headquarterId,
       userId,
-      customerName: `Mesa ${actionTable.number}`,
-      customerPhone: String(actionTable.number).padStart(10, '0'),
+      customerId: actionTable.customerId,
+      customerName: actionTable.customerId ? undefined : `Mesa ${actionTable.number}`,
+      customerPhone: actionTable.customerId ? undefined : String(actionTable.number).padStart(10, '0'),
       type: 'dine-in',
       items: selectedItems.map((item) => ({ productId: item.product.id, quantity: item.quantity })),
       tableId: Number.isInteger(resolvedTableId) && resolvedTableId > 0 ? resolvedTableId : undefined,
@@ -668,7 +714,11 @@ export function TablesView() {
 
     try {
       setIsAddingTableProducts(true);
-      await createBackendOrder(payload);
+      const createdOrder = await createBackendOrder(payload);
+      const createdOrderId = getOrderId(createdOrder);
+      const addedItems = selectedItems.map((item) => (
+        item.quantity > 1 ? `${item.product.name} x${item.quantity}` : item.product.name
+      ));
 
       updateTable(actionTable.id, (table) => ({
         ...table,
@@ -676,6 +726,14 @@ export function TablesView() {
         guests: table.guests > 0 ? table.guests : 1,
         openedAt: table.openedAt ?? getCurrentTime(),
         totalAmount: getTableTotalAmount(table) + totalToAdd,
+        customerId: table.customerId ?? getOrderCustomerId(createdOrder),
+        activeOrderIds: createdOrderId
+          ? Array.from(new Set([...(table.activeOrderIds ?? []), createdOrderId]))
+          : table.activeOrderIds,
+        activeOrderCount: createdOrderId
+          ? Array.from(new Set([...(table.activeOrderIds ?? []), createdOrderId])).length
+          : table.activeOrderCount,
+        activeOrderItems: [...(table.activeOrderItems ?? []), ...addedItems],
       }));
 
       setTableProductQuantities({});
@@ -714,26 +772,22 @@ export function TablesView() {
         paymentMethod,
         headquarterId: selectedHeadquarterId,
       });
+      await finalizeActiveTableOrders(actionTable);
     } catch (error) {
       if (error instanceof ApiError) {
         toast.error(error.message);
       } else {
-        toast.error('No se pudo registrar la venta en caja');
+        toast.error('No se pudo completar el cobro de la mesa');
       }
       return;
     }
 
-    updateTable(actionTable.id, (table) => ({
-      ...table,
-      status: 'libre',
-      guests: 0,
-      openedAt: undefined,
-      totalAmount: undefined,
-    }));
+    updateTable(actionTable.id, resetTableConsumption);
 
     toast.success(`Mesa ${actionTable.number} cobrada (${paymentMethodLabels[paymentMethod]})`);
     setActionTable(null);
     setDetailTable(null);
+    void loadTables();
   };
 
   const handleMoveTable = () => {
@@ -1004,19 +1058,23 @@ export function TablesView() {
     setDragOverTableId(null);
   };
 
-  const handleCloseTable = () => {
+  const handleCloseTable = async () => {
     if (!actionTable) {
       return;
     }
 
-    updateTable(actionTable.id, (table) => ({
-      ...table,
-      status: 'libre',
-      guests: 0,
-      openedAt: undefined,
-      totalAmount: undefined,
-    }));
+    try {
+      await finalizeActiveTableOrders(actionTable);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : 'No se pudieron cerrar los pedidos activos de la mesa');
+      return;
+    }
+
+    updateTable(actionTable.id, resetTableConsumption);
     toast.success(`Mesa ${actionTable.number} cerrada`);
+    setActionTable(null);
+    setDetailTable(null);
+    void loadTables();
   };
 
   const getStatusCount = (status: 'todas' | TableItem['status']) => {

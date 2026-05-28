@@ -60,6 +60,7 @@ export type MessagingMessageDto = {
   deliveredAt?: string;
   readAt?: string;
   providerMessageId?: string;
+  reactions?: Record<string, string> | string[] | null;
 };
 
 export interface SendConversationMessageRequest {
@@ -79,4 +80,8 @@ export interface SendDirectMessageRequest {
   phone?: string;
   customerId?: string | number;
   media?: SendConversationMessageRequest['media'];
+}
+
+export interface ReactMessageRequest {
+  reaction: string;
 }

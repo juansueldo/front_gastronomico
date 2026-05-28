@@ -34,6 +34,9 @@ export interface AppNewMessageDetail {
   reactions?: string[] | Record<string, number>;
   reactionEmoji?: string;
   reactionTargetMessageId?: string;
+  status?: string;
+  deliveredAt?: string;
+  readAt?: string;
   channel?: ChannelType;
   timestamp: string;
 }

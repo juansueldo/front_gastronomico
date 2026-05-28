@@ -1,5 +1,9 @@
 import { LoginView } from '../../../components/LoginView';
 
-export function LoginPage() {
-  return <LoginView />;
+type LoginPageProps = {
+  demo?: boolean;
+};
+
+export function LoginPage({ demo = false }: LoginPageProps) {
+  return <LoginView showDemoAccess={demo} />;
 }

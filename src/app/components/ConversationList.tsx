@@ -1,4 +1,4 @@
-import { type ClipboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ChangeEvent, type ClipboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Bell,
@@ -6,6 +6,8 @@ import {
   Bold,
   ChevronDown,
   Code,
+  Download,
+  FileText,
   Filter,
   Italic,
   Link,
@@ -16,6 +18,8 @@ import {
   Mic,
   PackageCheck,
   Paperclip,
+  Pause,
+  Play,
   Quote,
   Phone,
   Plus,
@@ -44,6 +48,7 @@ import {
   createContact,
   fetchMessages,
   listContacts,
+  reactMessage,
   sendMessage,
   type ContactItem,
 } from '../features/chat/services/chat.service';
@@ -87,6 +92,10 @@ type ChatMessage = {
   mediaUrl?: string;
   mediaMime?: string;
   mediaFilename?: string;
+  mediaSize?: number | null;
+  reactions?: Record<string, string>;
+  deliveredAt?: string;
+  readAt?: string;
 };
 
 type CustomerOrderSummary = {
@@ -306,6 +315,10 @@ function mapMessagePayload(message: Record<string, unknown>, fallbackConversatio
     mediaUrl: typeof message.mediaUrl === 'string' ? message.mediaUrl : typeof message.media_url === 'string' ? message.media_url : undefined,
     mediaMime: typeof message.mediaMime === 'string' ? message.mediaMime : typeof message.media_mime === 'string' ? message.media_mime : undefined,
     mediaFilename: typeof message.mediaFilename === 'string' ? message.mediaFilename : typeof message.media_filename === 'string' ? message.media_filename : undefined,
+    mediaSize: Number.isFinite(Number(message.mediaSize ?? message.media_size)) ? Number(message.mediaSize ?? message.media_size) : null,
+    reactions: message.reactions && typeof message.reactions === 'object' && !Array.isArray(message.reactions)
+      ? Object.fromEntries(Object.entries(message.reactions).map(([key, value]) => [key, String(value)]))
+      : undefined,
   };
 }
 
@@ -333,6 +346,9 @@ function mergeMessageByIdentity(messages: ChatMessage[], incoming: ChatMessage) 
       mediaUrl: incoming.mediaUrl ?? message.mediaUrl,
       mediaMime: incoming.mediaMime ?? message.mediaMime,
       mediaFilename: incoming.mediaFilename ?? message.mediaFilename,
+      reactions: incoming.reactions ?? message.reactions,
+      deliveredAt: incoming.deliveredAt ?? message.deliveredAt,
+      readAt: incoming.readAt ?? message.readAt,
       status: incoming.status ?? message.status,
     };
   });
@@ -347,6 +363,134 @@ function getMediaKind(message: ChatMessage) {
   if (source.includes('audio')) return 'audio';
   if (source.includes('document') || source.includes('pdf') || source.includes('application')) return 'document';
   return message.mediaUrl ? 'document' : null;
+}
+
+function getMessageTypeFromMime(mime: string) {
+  const normalizedMime = mime.split(';')[0].trim().toLowerCase();
+  if (normalizedMime.startsWith('image/')) return 'image';
+  if (normalizedMime.startsWith('video/')) return 'video';
+  if (normalizedMime.startsWith('audio/')) return 'audio';
+  if (normalizedMime === 'application/pdf' || normalizedMime.startsWith('application/')) return 'document';
+  return 'document';
+}
+
+function getAttachmentPreviewLabel(attachment: PendingAttachment) {
+  const type = getMessageTypeFromMime(attachment.mime);
+  if (type === 'image') return 'Imagen';
+  if (type === 'video') return 'Video';
+  if (type === 'audio') return 'Audio';
+  return 'Documento';
+}
+
+function normalizeReactions(value: AppNewMessageDetail['reactions']): Record<string, string> | undefined {
+  if (!value) return undefined;
+  if (Array.isArray(value)) {
+    return Object.fromEntries(value.map((emoji, index) => [`reaction-${index}`, String(emoji)]));
+  }
+  return Object.fromEntries(Object.entries(value).map(([key, reaction]) => [key, String(reaction)]));
+}
+
+function getAckLabel(status?: string) {
+  if (status === 'read') return '✓✓';
+  if (status === 'delivered') return '✓✓';
+  if (status === 'sent') return '✓';
+  if (status === 'failed') return '!';
+  return '…';
+}
+
+function getAckClass(status?: string) {
+  if (status === 'read') return 'text-sky-500';
+  if (status === 'failed') return 'text-rose-500';
+  return 'text-[var(--app-muted)]';
+}
+
+function formatFileSize(value?: number | null) {
+  if (!value || !Number.isFinite(value)) return '';
+  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} kB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function normalizeAudioMime(mime: string) {
+  return String(mime || '').split(';')[0].trim() || 'audio/ogg';
+}
+
+function PdfAttachmentCard({ message, outbound }: { message: ChatMessage; outbound: boolean }) {
+  const sizeLabel = formatFileSize(message.mediaSize);
+  return (
+    <a
+      href={message.mediaUrl ?? '#'}
+      target="_blank"
+      rel="noreferrer"
+      className={`flex min-w-[260px] max-w-full items-center gap-3 rounded-md px-3 py-3 text-left no-underline shadow-sm ${
+        outbound ? 'bg-emerald-800 text-white' : 'bg-[var(--app-soft)] text-[var(--app-strong)]'
+      }`}
+    >
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-red-600 text-white">
+        <FileText className="h-5 w-5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold">{message.mediaFilename || 'documento.pdf'}</span>
+        <span className={`block truncate text-xs ${outbound ? 'text-emerald-100' : 'text-[var(--app-muted)]'}`}>
+          PDF{sizeLabel ? ` · ${sizeLabel}` : ''}
+        </span>
+      </span>
+      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border ${outbound ? 'border-emerald-300/50 text-emerald-100' : 'border-[var(--app-line)] text-[var(--app-muted)]'}`}>
+        <Download className="h-4 w-4" />
+      </span>
+    </a>
+  );
+}
+
+function AudioMessagePlayer({ message, outbound }: { message: ChatMessage; outbound: boolean }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+
+  const togglePlayback = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      void audio.play();
+    } else {
+      audio.pause();
+    }
+  };
+
+  return (
+    <div className={`flex min-w-[270px] max-w-full items-center gap-3 rounded-2xl px-3 py-2 ${outbound ? 'bg-emerald-100 text-slate-900 dark:bg-emerald-100 dark:text-slate-900' : 'bg-[var(--app-soft)] text-[var(--app-strong)]'}`}>
+      <audio
+        ref={audioRef}
+        src={message.mediaUrl}
+        preload="metadata"
+        onLoadedMetadata={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
+        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => setIsPlaying(false)}
+      />
+      <button
+        type="button"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-black/5"
+        onClick={togglePlayback}
+        title={isPlaying ? 'Pausar audio' : 'Reproducir audio'}
+      >
+        {isPlaying ? <Pause className="h-6 w-6 fill-current" /> : <Play className="h-7 w-7 fill-current" />}
+      </button>
+      <div className="min-w-0 flex-1">
+        <div className="relative h-6">
+          <div className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-slate-300" />
+          <div className="absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-slate-500" style={{ width: `${progress}%` }} />
+          <div className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-slate-500" style={{ left: `calc(${progress}% - 6px)` }} />
+        </div>
+        <div className="flex justify-between text-xs text-slate-600">
+          <span>{formatRecordingTime(Math.floor(currentTime))}</span>
+          <span>{duration ? formatRecordingTime(Math.floor(duration)) : '--:--'}</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function getApiErrorMessage(error: unknown, fallback: string) {
@@ -473,6 +617,7 @@ export function ConversationList() {
   const [conversationToDelete, setConversationToDelete] = useState<ConversationItem | null>(null);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
+  const [isRecordingPaused, setIsRecordingPaused] = useState(false);
   const [recordingElapsed, setRecordingElapsed] = useState(0);
   const [recordingWaveform, setRecordingWaveform] = useState<number[]>(() => Array.from({ length: 42 }, () => 10));
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
@@ -495,6 +640,7 @@ export function ConversationList() {
   const shouldStickToBottomRef = useRef(true);
   const editorRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const localAudioUrlsRef = useRef<string[]>([]);
   const pendingAttachmentUrlsRef = useRef<string[]>([]);
@@ -743,6 +889,7 @@ export function ConversationList() {
       });
 
       if (payload.conversationId === selectedConversationId) {
+        const incomingReactions = normalizeReactions(payload.reactions);
         setMessages((current) => mergeMessageByIdentity(
           current,
           {
@@ -751,11 +898,14 @@ export function ConversationList() {
             body: payload.content,
             direction: payload.sender === 'agent' ? 'outbound' : 'inbound',
             createdAt: timestamp,
-            status: payload.sender === 'agent' ? 'sent' : 'received',
+            status: payload.status ?? (payload.sender === 'agent' ? 'sent' : 'received'),
             messageType: payload.messageType,
             mediaUrl: payload.mediaUrl,
             mediaMime: payload.mediaMime,
             mediaFilename: payload.mediaFilename,
+            reactions: incomingReactions,
+            deliveredAt: payload.deliveredAt,
+            readAt: payload.readAt,
           },
         ));
       }
@@ -885,12 +1035,12 @@ export function ConversationList() {
 
     if (pendingAttachments.length > 0) {
       const mediaMessages: ChatMessage[] = pendingAttachments.map((attachment, index) => ({
-        id: `local-image-${Date.now()}-${index}`,
+        id: `local-media-${Date.now()}-${index}`,
         body: index === 0 ? body : '',
         direction: 'outbound',
         createdAt: new Date(),
         status: 'pending',
-        messageType: 'image',
+        messageType: getMessageTypeFromMime(attachment.mime),
         mediaUrl: attachment.url,
         mediaMime: attachment.mime,
         mediaFilename: attachment.name,
@@ -906,7 +1056,7 @@ export function ConversationList() {
       if (editorRef.current) editorRef.current.innerHTML = '';
       setConversations((current) => current.map((conversation) => (
         conversation.id === selectedConversation.id
-          ? { ...conversation, lastMessage: body || 'Imagen', lastMessageAt: new Date() }
+          ? { ...conversation, lastMessage: body || getAttachmentPreviewLabel(pendingAttachments[0]), lastMessageAt: new Date() }
           : conversation
       )));
 
@@ -937,7 +1087,7 @@ export function ConversationList() {
               : message
           )));
         } catch (error) {
-          toast.error(getApiErrorMessage(error, 'No se pudo enviar la imagen'));
+          toast.error(getApiErrorMessage(error, 'No se pudo enviar el adjunto'));
           setMessages((current) => current.map((message) => (
             message.id === localMessage.id ? { ...message, status: 'failed' } : message
           )));
@@ -994,6 +1144,7 @@ export function ConversationList() {
     cancelRecordingRef.current = !shouldSend;
     mediaRecorderRef.current?.stop();
     setIsRecordingAudio(false);
+    setIsRecordingPaused(false);
     if (recordingTimerRef.current) {
       window.clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = null;
@@ -1006,6 +1157,33 @@ export function ConversationList() {
     recordingAudioContextRef.current = null;
   };
 
+  const toggleRecordingPause = () => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return;
+
+    if (recorder.state === 'recording') {
+      recorder.pause();
+      setIsRecordingPaused(true);
+      if (recordingTimerRef.current) {
+        window.clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      if (recordingAnimationRef.current) {
+        window.cancelAnimationFrame(recordingAnimationRef.current);
+        recordingAnimationRef.current = null;
+      }
+      return;
+    }
+
+    if (recorder.state === 'paused') {
+      recorder.resume();
+      setIsRecordingPaused(false);
+      recordingTimerRef.current = window.setInterval(() => {
+        setRecordingElapsed((current) => current + 1);
+      }, 1000);
+    }
+  };
+
   const handleStartRecording = async () => {
     if (!selectedConversation) return;
 
@@ -1016,7 +1194,12 @@ export function ConversationList() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      const preferredAudioMime = [
+        'audio/ogg;codecs=opus',
+        'audio/webm;codecs=opus',
+        'audio/webm',
+      ].find((mimeType) => MediaRecorder.isTypeSupported(mimeType));
+      const recorder = new MediaRecorder(stream, preferredAudioMime ? { mimeType: preferredAudioMime } : undefined);
       const AudioContextCtor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       const audioContext = AudioContextCtor ? new AudioContextCtor() : null;
       audioChunksRef.current = [];
@@ -1063,7 +1246,9 @@ export function ConversationList() {
           return;
         }
 
-        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        const audioMime = recorder.mimeType || preferredAudioMime || 'audio/webm';
+        const cleanAudioMime = normalizeAudioMime(audioMime);
+        const blob = new Blob(audioChunksRef.current, { type: cleanAudioMime });
         audioChunksRef.current = [];
         if (!blob.size) return;
 
@@ -1077,8 +1262,8 @@ export function ConversationList() {
           status: 'pending',
           messageType: 'audio',
           mediaUrl: audioUrl,
-          mediaMime: blob.type || 'audio/webm',
-          mediaFilename: 'audio.webm',
+          mediaMime: cleanAudioMime,
+          mediaFilename: cleanAudioMime.includes('ogg') ? 'audio.ogg' : 'audio.webm',
         };
 
         setMessages((current) => [...current, audioMessage]);
@@ -1094,8 +1279,8 @@ export function ConversationList() {
             content: '',
             media: {
               data: await blobToDataUrl(blob),
-              mediaMime: blob.type || 'audio/webm',
-              mediaFilename: 'audio.webm',
+              mediaMime: cleanAudioMime,
+              mediaFilename: cleanAudioMime.includes('ogg') ? 'audio.ogg' : 'audio.webm',
             },
           });
           const sentMessage = sent?.message as MessagingMessage | undefined;
@@ -1104,6 +1289,7 @@ export function ConversationList() {
               ? {
                 ...message,
                 id: sentMessage?.id ?? message.id,
+                providerMessageId: sentMessage?.providerMessageId ?? message.providerMessageId,
                 status: sentMessage?.status ?? 'sent',
                 mediaUrl: sentMessage?.mediaUrl ?? message.mediaUrl,
                 createdAt: parseDate(sentMessage?.createdAt ?? sentMessage?.sentAt),
@@ -1120,6 +1306,7 @@ export function ConversationList() {
 
       recorder.start();
       setIsRecordingAudio(true);
+      setIsRecordingPaused(false);
       setRecordingElapsed(0);
       recordingTimerRef.current = window.setInterval(() => {
         setRecordingElapsed((current) => current + 1);
@@ -1130,11 +1317,15 @@ export function ConversationList() {
     }
   };
 
-  const handlePasteAttachment = (event: ClipboardEvent<HTMLDivElement>) => {
-    const files = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith('image/'));
+  const isSupportedAttachment = (file: File) => (
+    file.type.startsWith('image/')
+    || file.type.startsWith('video/')
+    || file.type === 'application/pdf'
+  );
+
+  const addPendingFiles = (files: File[]) => {
     if (files.length === 0) return;
 
-    event.preventDefault();
     const nextAttachments = files.map((file) => {
       const url = URL.createObjectURL(file);
       pendingAttachmentUrlsRef.current.push(url);
@@ -1144,11 +1335,25 @@ export function ConversationList() {
         file,
         url,
         mime: file.type,
-        name: file.name || 'imagen-pegada.png',
+        name: file.name || `adjunto-${Date.now()}`,
       };
     });
 
     setPendingAttachments((current) => [...current, ...nextAttachments]);
+  };
+
+  const handlePasteAttachment = (event: ClipboardEvent<HTMLDivElement>) => {
+    const files = Array.from(event.clipboardData.files).filter(isSupportedAttachment);
+    if (files.length === 0) return;
+
+    event.preventDefault();
+    addPendingFiles(files);
+  };
+
+  const handleFileAttachmentChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []).filter(isSupportedAttachment);
+    addPendingFiles(files);
+    event.target.value = '';
   };
 
   const removePendingAttachment = (attachmentId: string) => {
@@ -1160,6 +1365,46 @@ export function ConversationList() {
       }
       return current.filter((item) => item.id !== attachmentId);
     });
+  };
+
+  const handleReactMessage = async (message: ChatMessage, reaction: string) => {
+    const previousReaction = message.reactions?.me;
+    const nextReaction = previousReaction === reaction ? '' : reaction;
+    setMessages((current) => current.map((currentMessage) => (
+      currentMessage.id === message.id
+        ? {
+          ...currentMessage,
+          reactions: {
+            ...(currentMessage.reactions ?? {}),
+            me: nextReaction,
+          },
+        }
+        : currentMessage
+    )));
+
+    try {
+      const result = await reactMessage(message.id, nextReaction);
+      const updatedMessage = result.message;
+      if (updatedMessage?.reactions) {
+        setMessages((current) => current.map((currentMessage) => (
+          currentMessage.id === message.id || currentMessage.providerMessageId === message.providerMessageId
+            ? { ...currentMessage, reactions: updatedMessage.reactions }
+            : currentMessage
+        )));
+      }
+    } catch (error) {
+      setMessages((current) => current.map((currentMessage) => (
+        currentMessage.id === message.id
+          ? {
+            ...currentMessage,
+            reactions: previousReaction
+              ? { ...(currentMessage.reactions ?? {}), me: previousReaction }
+              : Object.fromEntries(Object.entries(currentMessage.reactions ?? {}).filter(([key]) => key !== 'me')),
+          }
+          : currentMessage
+      )));
+      toast.error(getApiErrorMessage(error, 'No se pudo reaccionar al mensaje'));
+    }
   };
 
   const applyEditorCommand = (command: string, value?: string) => {
@@ -1422,14 +1667,28 @@ export function ConversationList() {
                   ) : messages.map((message) => {
                     const outbound = message.direction === 'outbound';
                     const mediaKind = getMediaKind(message);
+                    const visibleReactions = Object.values(message.reactions ?? {}).filter(Boolean);
                     return (
-                      <div key={message.id} className={`mb-3 flex ${outbound ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[78%] rounded-xl px-4 py-3 shadow-sm ${
+                      <div key={message.id} className={`mb-5 flex ${outbound ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`group relative max-w-[78%] rounded-xl px-4 py-3 shadow-sm ${
                           outbound
                             ? 'rounded-tr-sm bg-emerald-100 text-slate-950 dark:bg-emerald-950/70 dark:text-white'
                             : 'rounded-tl-sm border border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]'
                         }`}
                         >
+                          <div className={`absolute -top-7 z-10 hidden gap-1 rounded-full border border-[var(--app-line)] bg-[var(--app-panel)] p-1 shadow-lg group-hover:flex ${outbound ? 'right-0' : 'left-0'}`}>
+                            {['👍', '❤️', '😂', '😮', '😢'].map((reaction) => (
+                              <button
+                                key={reaction}
+                                type="button"
+                                className="flex h-6 w-6 items-center justify-center rounded-full text-sm transition hover:bg-[var(--app-soft)]"
+                                onClick={() => void handleReactMessage(message, reaction)}
+                                title={`Reaccionar ${reaction}`}
+                              >
+                                {reaction}
+                              </button>
+                            ))}
+                          </div>
                           {message.mediaUrl ? (
                             <div className={message.body ? 'mb-2' : ''}>
                               {mediaKind === 'image' ? (
@@ -1437,7 +1696,9 @@ export function ConversationList() {
                               ) : mediaKind === 'video' ? (
                                 <video src={message.mediaUrl} controls className="max-h-72 w-full rounded-lg" />
                               ) : mediaKind === 'audio' ? (
-                                <audio src={message.mediaUrl} controls className="w-64 max-w-full" />
+                                <AudioMessagePlayer message={message} outbound={outbound} />
+                              ) : message.mediaMime === 'application/pdf' || message.mediaFilename?.toLowerCase().endsWith('.pdf') ? (
+                                <PdfAttachmentCard message={message} outbound={outbound} />
                               ) : (
                                 <a href={message.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg border border-[var(--app-line)] bg-[var(--app-soft)] p-3 text-sm underline">
                                   <Paperclip className="h-4 w-4" />
@@ -1453,8 +1714,15 @@ export function ConversationList() {
                           ) : null}
                           <div className="mt-2 flex items-center justify-end gap-1 text-[11px] opacity-70">
                             <span>{formatMessageTime(message.createdAt)}</span>
-                            {outbound ? <span className="text-sky-500">✓✓</span> : null}
+                            {outbound ? <span className={getAckClass(message.status)}>{getAckLabel(message.status)}</span> : null}
                           </div>
+                          {visibleReactions.length > 0 ? (
+                            <div className={`absolute -bottom-3 flex rounded-full border border-[var(--app-line)] bg-[var(--app-panel)] px-1.5 py-0.5 text-xs shadow ${outbound ? 'left-2' : 'right-2'}`}>
+                              {visibleReactions.slice(0, 4).map((reaction, index) => (
+                                <span key={`${reaction}-${index}`}>{reaction}</span>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     );
@@ -1496,7 +1764,16 @@ export function ConversationList() {
                   <div className="mb-3 flex gap-2 overflow-x-auto rounded-2xl border border-[var(--app-line)] bg-[var(--app-panel)] p-2">
                     {pendingAttachments.map((attachment) => (
                       <div key={attachment.id} className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/20">
-                        <img src={attachment.url} alt={attachment.name} className="h-full w-full object-cover" />
+                        {getMessageTypeFromMime(attachment.mime) === 'image' ? (
+                          <img src={attachment.url} alt={attachment.name} className="h-full w-full object-cover" />
+                        ) : getMessageTypeFromMime(attachment.mime) === 'video' ? (
+                          <video src={attachment.url} className="h-full w-full object-cover" muted />
+                        ) : (
+                          <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-[10px] text-[var(--app-strong)]">
+                            <Paperclip className="h-5 w-5 text-[var(--primary)]" />
+                            <span className="line-clamp-2 break-all">{attachment.name}</span>
+                          </div>
+                        )}
                         <button
                           type="button"
                           onClick={() => removePendingAttachment(attachment.id)}
@@ -1510,6 +1787,14 @@ export function ConversationList() {
                   </div>
                 ) : null}
 
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  accept="image/*,video/*,application/pdf"
+                  multiple
+                  onChange={handleFileAttachmentChange}
+                />
                 <div className="relative flex items-end gap-2 rounded-[28px] border border-[var(--app-line)] bg-[var(--app-panel)] px-3 py-1 text-[var(--app-strong)] shadow-sm">
                   {isSelectionToolbarVisible ? (
                     <div className="absolute bottom-[calc(100%+10px)] left-12 z-20 flex items-center gap-1 rounded-xl border border-[var(--app-line)] bg-[var(--app-panel)] p-2 text-[var(--app-strong)] shadow-xl">
@@ -1539,6 +1824,16 @@ export function ConversationList() {
                         <span className="min-w-[48px] text-lg font-semibold text-[var(--app-strong)]">
                           {formatRecordingTime(recordingElapsed)}
                         </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-9 shrink-0 rounded-full border border-[var(--app-line)] bg-[var(--app-surface)] text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+                          onClick={toggleRecordingPause}
+                          title={isRecordingPaused ? 'Reanudar audio' : 'Pausar audio'}
+                        >
+                          {isRecordingPaused ? <Play className="h-4 w-4 fill-current" /> : <Pause className="h-4 w-4" />}
+                        </Button>
                         <div className="flex h-9 min-w-0 flex-1 items-center gap-1 overflow-hidden">
                           {recordingWaveform.map((height, index) => (
                             <span
@@ -1548,15 +1843,21 @@ export function ConversationList() {
                             />
                           ))}
                         </div>
-                        <span className="flex items-center gap-1 text-rose-300">
-                          <span className="h-4 w-1.5 rounded-full bg-current" />
-                          <span className="h-4 w-1.5 rounded-full bg-current" />
+                        <span className={`text-xs font-semibold ${isRecordingPaused ? 'text-[var(--app-muted)]' : 'text-rose-400'}`}>
+                          {isRecordingPaused ? 'Pausado' : 'Grabando'}
                         </span>
                       </div>
                     </>
                   ) : (
                     <>
-                      <Button variant="ghost" size="icon" className="mb-1 size-10 shrink-0 rounded-full text-[var(--app-strong)] hover:bg-[var(--app-soft)]">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="mb-1 size-10 shrink-0 rounded-full text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+                        onClick={() => fileInputRef.current?.click()}
+                        title="Adjuntar imagen, video o PDF"
+                      >
                         <Paperclip className="h-5 w-5" />
                       </Button>
                       <Button variant="ghost" size="icon" className="mb-1 size-10 shrink-0 rounded-full text-[var(--app-strong)] hover:bg-[var(--app-soft)]">

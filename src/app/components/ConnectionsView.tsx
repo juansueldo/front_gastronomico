@@ -1,11 +1,11 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Link2, LogIn, MessageCircle, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Link2, LogIn, MessageCircle, Pencil, Plus, QrCode, Trash2 } from 'lucide-react';
 import { Badge } from '../shared/ui/components/badge';
 import { Button } from '../shared/ui/components/button';
 import { Input } from '../shared/ui/components/input';
 import { Label } from '../shared/ui/components/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../shared/ui/components/select';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../shared/ui/components/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../shared/ui/components/dialog';
 import { toast } from 'sonner';
 import { Toaster } from '../shared/ui/components/sonner';
 import { getLoggedUser } from '../core/storage/authStorage';
@@ -32,6 +32,8 @@ interface NetworkOption {
   value: string;
   label: string;
 }
+
+const COMPACT_DIALOG_CONTENT_CLASS = 'w-[calc(100vw-2rem)] max-w-[620px] gap-0 overflow-hidden p-0';
 
 interface InstanceStatusItem {
   status: string;
@@ -675,43 +677,56 @@ export function ConnectionsView() {
             }
           }}
         >
-          <DialogContent className="bg-card text-white border-orange-700 max-w-md">
-            <DialogHeader>
+          <DialogContent className={COMPACT_DIALOG_CONTENT_CLASS}>
+            <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+              <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+                <QrCode size={18} />
+              </div>
               <DialogTitle>Escanea el QR de WhatsApp</DialogTitle>
+              <DialogDescription>Usa WhatsApp en tu teléfono para vincular esta instancia.</DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-3">
-              <p className="text-sm text-gray-300">
-                Instancia: <span className="font-medium text-white">{qrConnectionName || 'Sin nombre'}</span>
-              </p>
-              <p className="text-sm text-gray-300">
-                Estado: <span className="font-medium text-white uppercase">{qrStatus}</span>
-              </p>
+            <div className="space-y-4 px-5 py-4">
+              <div className="grid gap-2 rounded-lg border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3 text-sm sm:grid-cols-2">
+                <p className="text-[var(--app-muted)]">
+                  Instancia<br />
+                  <span className="font-medium text-[var(--app-strong)]">{qrConnectionName || 'Sin nombre'}</span>
+                </p>
+                <p className="text-[var(--app-muted)]">
+                  Estado<br />
+                  <span className="font-medium uppercase text-[var(--app-strong)]">{qrStatus}</span>
+                </p>
+              </div>
 
               {qrValue ? (
                 getQrImageSrc(qrValue) ? (
-                  <div className="rounded-md border border-orange-700 bg-white p-3">
+                  <div className="mx-auto flex w-full max-w-[min(100%,480px)] items-center justify-center rounded-xl border border-[var(--app-line)] bg-white p-4 shadow-sm">
                     <img
                       src={getQrImageSrc(qrValue) ?? ''}
                       alt="QR de WhatsApp"
-                      className="w-full h-auto"
+                      className="aspect-square max-h-[min(54vh,480px)] w-full object-contain"
                     />
                   </div>
                 ) : (
-                  <div className="rounded-md border border-orange-700 bg-body p-3">
-                    <p className="text-xs text-gray-300 mb-2">El backend devolvió un QR en formato texto:</p>
-                    <p className="text-xs break-all text-white">{qrValue}</p>
+                  <div className="max-h-[50vh] overflow-y-auto rounded-lg border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3">
+                    <p className="mb-2 text-xs text-[var(--app-muted)]">El backend devolvió un QR en formato texto:</p>
+                    <p className="break-all text-xs text-[var(--app-strong)]">{qrValue}</p>
                   </div>
                 )
               ) : (
-                <p className="text-sm text-gray-300">
+                <p className="rounded-lg border border-dashed border-[var(--app-line)] bg-[var(--app-panel-subtle)] px-3 py-8 text-center text-sm text-[var(--app-muted)]">
                   La conexión está iniciada. El QR aparecerá acá cuando el backend lo emita.
                 </p>
               )}
             </div>
 
-            <DialogFooter>
-              <Button type="button" onClick={() => setIsQrDialogOpen(false)}>
+            <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+                onClick={() => setIsQrDialogOpen(false)}
+              >
                 Cerrar
               </Button>
             </DialogFooter>

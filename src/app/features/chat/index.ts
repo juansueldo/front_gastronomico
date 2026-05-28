@@ -6,6 +6,7 @@ export {
   listConversationMessages,
   listMessagingConversations,
   markConversationAsRead,
+  reactMessagingMessage,
   restartWhatsappAccount,
   sendConversationMessage,
   sendDirectWhatsappMessage,
@@ -15,6 +16,7 @@ export type {
   MessagingConversation,
   MessagingMessage,
   PaginatedMessagingResult,
+  ReactMessageRequest,
   SendConversationMessageRequest,
   SendDirectMessageRequest,
 } from './services/messaging.service';

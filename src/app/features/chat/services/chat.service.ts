@@ -2,6 +2,7 @@ import {
   getCurrentMessagingAccount,
   listConversationMessages,
   listMessagingConversations,
+  reactMessagingMessage,
   sendConversationMessage,
   sendDirectWhatsappMessage,
   type MessagingConversation,
@@ -121,6 +122,7 @@ function mapMessagingMessageToLegacyMessage(message: MessagingMessage, conversat
     type: message.type === 'text' ? 1 : undefined,
     ack,
     status: message.status,
+    reactions: message.reactions,
   };
 }
 
@@ -172,6 +174,10 @@ export async function sendMessage(request: SendMessageRequest) {
   }
 
   return sendConversationMessage(request.contact_id ?? request.contactId, { body, media: request.media });
+}
+
+export async function reactMessage(messageId: string | number, reaction: string) {
+  return reactMessagingMessage(messageId, { reaction });
 }
 
 export async function updateContact(contactId: number | string, payload: Record<string, unknown>): Promise<ContactResponse> {

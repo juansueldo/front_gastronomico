@@ -54,6 +54,7 @@ export interface MessagingMessage {
   deliveredAt?: string;
   readAt?: string;
   providerMessageId?: string;
+  reactions?: Record<string, string>;
 }
 
 export interface PaginatedMessagingResult<T> {

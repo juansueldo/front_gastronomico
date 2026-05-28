@@ -10,7 +10,11 @@ import { isUserAuthenticated, saveAuthSession } from '../core/storage/authStorag
 import { login } from '../features/auth/services/auth.service';
 import { ApiError } from '../core/http/errors';
 
-export function LoginView() {
+type LoginViewProps = {
+  showDemoAccess?: boolean;
+};
+
+export function LoginView({ showDemoAccess = false }: LoginViewProps) {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -30,20 +34,20 @@ export function LoginView() {
     return null;
   }
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!username || !password) {
+  const performLogin = async (credentials: { username: string; password: string }, options?: { rememberMe?: boolean }) => {
+    if (!credentials.username || !credentials.password) {
       toast.error('Por favor completa todos los campos');
       return;
     }
+
     setIsLoading(true);
     try {
-      const data = await login({ username, password });
+      const data = await login(credentials);
       saveAuthSession({
-        username,
+        username: credentials.username,
         user: data.user,
         accessToken: data.accessToken ?? data.user.token,
-        rememberMe,
+        rememberMe: options?.rememberMe ?? rememberMe,
       });
       toast.success('Inicio de sesión exitoso');
       setTimeout(() => {
@@ -58,6 +62,19 @@ export function LoginView() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await performLogin({ username, password });
+  };
+
+  const handleDemoAccess = async () => {
+    const demoCredentials = { username: 'demo', password: '123456' };
+    setUsername(demoCredentials.username);
+    setPassword(demoCredentials.password);
+    setRememberMe(false);
+    await performLogin(demoCredentials, { rememberMe: false });
   };
 
   return (
@@ -123,9 +140,20 @@ export function LoginView() {
             />
             <label htmlFor="remember" className="text-sm text-gray-400">Recuérdame por 30 días</label>
           </div>
-          <Button type="submit" className="w-full bg-primary hover:bg-primary font-semibold text-base py-2 rounded-lg" disabled={isLoading}>
-            {isLoading ? 'Iniciando sesión...' : 'Iniciar sesión'}
-          </Button>
+          {showDemoAccess ? (
+            <Button
+              type="button"
+              className="w-full bg-primary hover:bg-primary font-semibold text-base py-2 rounded-lg"
+              disabled={isLoading}
+              onClick={() => { void handleDemoAccess(); }}
+            >
+              {isLoading ? 'Iniciando demo...' : 'Iniciar demo'}
+            </Button>
+          ) : (
+            <Button type="submit" className="w-full bg-primary hover:bg-primary font-semibold text-base py-2 rounded-lg" disabled={isLoading}>
+              {isLoading ? 'Iniciando sesión...' : 'Iniciar sesión'}
+            </Button>
+          )}
         </form>
         <div className="text-center mt-6">
           <span className="text-gray-400 text-sm">¿Nuevo en nuestra plataforma? </span>
