@@ -134,7 +134,7 @@ export function RegisterView() {
     <div className="flex h-screen items-center justify-center bg-body p-4">
       <Toaster />
       <div className="mx-auto w-full max-w-sm">
-        <div className="mb-4">
+        <div className="flex justify-center">
            <img
               src="/logos/comiio_logo.svg"
               alt="Comiio"
