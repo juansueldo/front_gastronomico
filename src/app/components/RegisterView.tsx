@@ -135,7 +135,17 @@ export function RegisterView() {
       <Toaster />
       <div className="mx-auto w-full max-w-sm">
         <div className="mb-4">
-          <img src="" alt="" className="mb-2 h-12" />
+           <img
+              src="/logos/comiio_logo.svg"
+              alt="Comiio"
+              className="h-20 mb-2 block dark:hidden"
+            />
+          
+            <img
+              src="/logos/comiio_logo_white.svg"
+              alt="Comiio"
+              className="h-20 mb-2 hidden dark:block"
+            />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5 bg-transparent">
