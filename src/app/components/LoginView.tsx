@@ -82,8 +82,8 @@ export function LoginView({ showDemoAccess = false }: LoginViewProps) {
       <Toaster />
       <div className="w-full max-w-sm mx-auto">
         {/* Logo */}
-        <div>
-          <img src="" alt="" className="h-12 mb-2" />
+        <div className="flex justify-center ">
+          <img src="/logos/comiio_logo.svg" alt="" className="h-20 mb-2" />
         </div>
         <div className="mb-6">
           <p className="text-gray-200 text-base">Por favor, inicie sesión en su cuenta para continuar</p>

@@ -28,11 +28,21 @@ export interface StoreSubscription {
   endDate?: string;
   payment?: number;
   statusId?: number;
+  provider?: string | null;
+  providerSubscriptionId?: string | null;
+  providerStatus?: string | null;
+  initPoint?: string | null;
+  payerEmail?: string | null;
   Plan?: PlanOption;
   Status?: {
     id?: number;
     name?: string;
   };
+}
+
+export interface MercadoPagoPreapprovalResponse {
+  subscription: StoreSubscription;
+  initPoint?: string | null;
 }
 
 type PlanListResponse = {
@@ -51,7 +61,20 @@ export async function listPlans(): Promise<PlanOption[]> {
 }
 
 export async function createSubscription(planId: number, billingCycleId?: number): Promise<StoreSubscription> {
-  return apiClient.post<StoreSubscription>(`${API_VERSION}/subscription`, {
+  const data = await apiClient.post<StoreSubscription | MercadoPagoPreapprovalResponse>(`${API_VERSION}/subscription`, {
+    planId,
+    ...(billingCycleId ? { billingCycleId } : {}),
+  });
+
+  if ('subscription' in data) return data.subscription;
+  return data;
+}
+
+export async function createMercadoPagoPreapproval(
+  planId: number,
+  billingCycleId?: number,
+): Promise<MercadoPagoPreapprovalResponse> {
+  return apiClient.post<MercadoPagoPreapprovalResponse>(`${API_VERSION}/subscription/mercadopago/preapproval`, {
     planId,
     ...(billingCycleId ? { billingCycleId } : {}),
   });

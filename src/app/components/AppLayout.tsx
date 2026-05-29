@@ -45,6 +45,7 @@ import {
 import { clearAuthSession, getLoggedUser, updateLoggedUser, AUTH_CHANGED_EVENT, type AuthUser } from '../core/storage/authStorage';
 import { getThemePreference, setThemePreference, THEME_CHANGED_EVENT, type ThemePreference } from '../theme';
 import {
+  createMercadoPagoPreapproval,
   createSubscription,
   listStoreSubscriptions,
   listPlans,
@@ -184,6 +185,18 @@ const isStoreProfileConfigured = (user: AuthUser | null) => {
   return Boolean(storeName && storeName !== 'Mi tienda' && slug && profileImageUrl);
 };
 
+const isPaidSubscription = (subscription: AuthUser['subscription'] | null | undefined) => (
+  Boolean(subscription)
+  && Number(subscription?.payment ?? 0) === 1
+  && Number(subscription?.statusId ?? subscription?.Status?.id ?? 0) === 1
+);
+
+const isPaidPlan = (plan: PlanOption) => {
+  if (plan.isFree) return false;
+  const price = plan.PlanPrices?.[0]?.price;
+  return Number(price ?? 0) > 0 || !plan.isFree;
+};
+
 export function AppLayout({ children }: AppLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -282,10 +295,16 @@ export function AppLayout({ children }: AppLayoutProps) {
       return;
     }
 
-    if (loggedUser.hasSubscription === true || loggedUser.subscription) {
+    if ((loggedUser.hasSubscription === true || loggedUser.subscription) && isPaidSubscription(loggedUser.subscription)) {
       if (!isStoreProfileConfigured(loggedUser)) {
         setOnboardingStep('store');
       }
+      setHasCheckedSubscription(true);
+      return;
+    }
+
+    if (loggedUser.subscription && !isPaidSubscription(loggedUser.subscription)) {
+      setOnboardingStep('plans');
       setHasCheckedSubscription(true);
       return;
     }
@@ -295,7 +314,10 @@ export function AppLayout({ children }: AppLayoutProps) {
     const checkSubscription = async () => {
       try {
         const subscriptions = await listStoreSubscriptions();
-        const activeSubscription = subscriptions.find((subscription) => Number(subscription.statusId ?? subscription.Status?.id ?? 1) === 1) ?? null;
+        const activeSubscription = subscriptions.find((subscription) => (
+          Number(subscription.statusId ?? subscription.Status?.id ?? 0) === 1
+          && Number(subscription.payment ?? 0) === 1
+        )) ?? null;
 
         updateLoggedUser({
           subscription: activeSubscription,
@@ -421,9 +443,21 @@ export function AppLayout({ children }: AppLayoutProps) {
 
     setIsCreatingSubscription(true);
     try {
+      if (isPaidPlan(plan)) {
+        const { subscription, initPoint } = await createMercadoPagoPreapproval(plan.id, plan.billingCycleId);
+        updateLoggedUser({ subscription, hasSubscription: false });
+        setLoggedUser((prev) => (prev ? { ...prev, subscription, hasSubscription: false } : prev));
+        if (initPoint) {
+          window.location.href = initPoint;
+          return;
+        }
+        toast.info('La suscripción quedó pendiente de confirmación de pago');
+        return;
+      }
+
       const subscription = await createSubscription(plan.id, plan.billingCycleId);
-      updateLoggedUser({ subscription, hasSubscription: true });
-      setLoggedUser((prev) => (prev ? { ...prev, subscription, hasSubscription: true } : prev));
+      updateLoggedUser({ subscription, hasSubscription: isPaidSubscription(subscription) });
+      setLoggedUser((prev) => (prev ? { ...prev, subscription, hasSubscription: isPaidSubscription(subscription) } : prev));
       toast.success('Suscripcion creada correctamente');
       setOnboardingStep('store');
     } catch (error) {

@@ -1,5 +1,5 @@
-export { createSubscription, listPlans, listStoreSubscriptions } from '../../../api/billing';
-export type { PlanOption, StoreSubscription } from '../../../api/billing';
+export { createMercadoPagoPreapproval, createSubscription, listPlans, listStoreSubscriptions } from '../../../api/billing';
+export type { MercadoPagoPreapprovalResponse, PlanOption, StoreSubscription } from '../../../api/billing';
 export { updateStoreProfile } from '../../../api/store';
 export { updateStoreProfileImage } from '../../../api/store';
 export type {
