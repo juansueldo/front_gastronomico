@@ -126,7 +126,7 @@ export function CalendarView() {
   const selectedDateEvents = getEventsForDate(selectedDate);
 
   return (
-    <div className="h-full bg-body overflow-y-auto">
+    <div className="h-full overflow-y-auto">
       <div className="p-4 md:p-6 max-w-7xl mx-auto pb-20">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">

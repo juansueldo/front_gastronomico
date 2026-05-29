@@ -458,7 +458,7 @@ export function DeliveryZonesManager() {
   const draftCount = draft.length;
 
   return (
-    <div className="h-full overflow-y-auto bg-body p-3 sm:p-4 md:p-6 lg:overflow-hidden">
+    <div className="h-full overflow-y-auto p-3 sm:p-4 md:p-6 lg:overflow-hidden">
       <div className="grid min-h-full gap-4 lg:h-full lg:grid-cols-[300px_1fr]">
         <aside className="flex min-h-0 flex-col rounded-2xl border border-border bg-card/70 p-3 lg:h-full">
           <div className="mb-3 flex items-center gap-2">

@@ -119,7 +119,7 @@ export function NotificationsView() {
   };
 
   return (
-    <div className="h-full bg-body overflow-y-auto">
+    <div className="h-full overflow-y-auto">
       <Toaster />
       <div className="p-4 md:p-6 space-y-6">
         <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">

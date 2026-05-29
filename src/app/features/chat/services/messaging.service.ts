@@ -67,6 +67,18 @@ export async function listMessagingConversations(params: {
   return mapPaginatedMessagingResult<MessagingConversationDto, MessagingConversation>(data, mapMessagingConversationDtoToModel);
 }
 
+export async function createMessagingConversation(payload: {
+  phone?: string;
+  customerId?: string | number;
+  name?: string;
+}): Promise<{ conversation?: MessagingConversation }> {
+  const data = await apiClient.post(`${API_VERSION}/messaging/conversations`, payload);
+  const candidate = data as { conversation?: MessagingConversationDto };
+  return {
+    conversation: candidate.conversation ? mapMessagingConversationDtoToModel(candidate.conversation) : undefined,
+  };
+}
+
 export async function listConversationMessages(
   conversationId: string | number,
   params: { page?: number; limit?: number } = {},

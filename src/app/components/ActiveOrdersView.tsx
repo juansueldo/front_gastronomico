@@ -889,12 +889,8 @@ export function ActiveOrdersView() {
   }, [searchValue, statusFilter, channelFilter, dateFilter, sortBy]);
 
   return (
-    <div className="h-full overflow-y-auto bg-body">
+    <div className="h-full overflow-y-auto">
       <div className="relative px-3 py-4 sm:p-4 md:p-6">
-        <div className="pointer-events-none absolute inset-0 opacity-70">
-          <div className="absolute -top-28 left-1/4 h-80 w-80 rounded-full bg-orange-500/10 blur-3xl" />
-          <div className="absolute right-0 top-1/3 h-72 w-72 rounded-full bg-blue-500/10 blur-3xl" />
-        </div>
 
         <div className="relative space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3">

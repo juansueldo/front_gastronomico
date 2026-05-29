@@ -242,7 +242,7 @@ export function ProductsView() {
   ], [categories, recipesByProductId]);
 
   return (
-    <div className="h-full bg-body overflow-y-auto">
+    <div className="h-full overflow-y-auto">
       <div className="p-4 md:p-6 space-y-6">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h1 className="text-xl md:text-2xl font-semibold text-white">Productos</h1>

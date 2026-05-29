@@ -1,5 +1,6 @@
 import {
   getCurrentMessagingAccount,
+  createMessagingConversation,
   listConversationMessages,
   listMessagingConversations,
   reactMessagingMessage,
@@ -146,9 +147,9 @@ export async function listContacts(): Promise<ContactItem[]> {
 }
 
 export async function createContact(payload: CreateContactRequest): Promise<ContactResponse> {
-  const result = await sendDirectWhatsappMessage({
+  const result = await createMessagingConversation({
     phone: payload.phone,
-    body: payload.message?.trim() || `Hola ${payload.name}`.trim(),
+    name: payload.name,
   });
   const conversationId = result.conversation?.id;
 

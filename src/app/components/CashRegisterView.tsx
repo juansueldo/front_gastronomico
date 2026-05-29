@@ -388,11 +388,13 @@ export function CashRegisterView() {
   };
 
   return (
-    <div className="h-full bg-body overflow-y-auto">
+    <div className="h-full overflow-y-auto">
       <div className="space-y-5 p-4 pb-24 md:space-y-6 md:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <h1 className="text-xl md:text-2xl font-semibold text-white">Caja</h1>
+            <h1 className="flex items-center gap-2 text-xl font-semibold text-white sm:gap-3 sm:text-2xl md:text-3xl">
+              <WalletCards className="h-7 w-7 text-orange-400 sm:h-8 sm:w-8" />
+              Caja</h1>
             <p className="mt-1 text-sm leading-5 text-gray-400">
               {selectedHeadquarterName ? `Sede: ${selectedHeadquarterName}. ` : ''}
               {movementFilterMode === 'current-shift'

@@ -281,7 +281,7 @@ export function CustomersPage() {
   ], [handleOpenCustomerChat, handleOpenHistory]);
 
   return (
-    <div className="min-h-full bg-body p-4 md:p-6">
+    <div className="min-h-full p-4 md:p-6">
       <div className="mb-6 flex flex-col gap-2">
         <h1 className="flex items-center gap-2 text-2xl font-semibold text-[var(--app-strong)]">
           <UserRound className="h-6 w-6 text-[var(--primary)]" />

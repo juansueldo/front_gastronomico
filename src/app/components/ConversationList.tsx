@@ -259,6 +259,15 @@ function getConversationField(payload: Record<string, unknown>, key: string) {
   return payload[key] ?? payload[key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)];
 }
 
+function normalizeDisplayPhone(value: unknown) {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.toLowerCase().includes('@lid')) return undefined;
+  const withoutSuffix = trimmed.replace(/@(c\.us|s\.whatsapp\.net)$/i, '');
+  const digits = withoutSuffix.replace(/\D/g, '');
+  return digits || undefined;
+}
+
 function mapConversationUpdatePayload(payload: Record<string, unknown>, fallback?: ConversationItem): ConversationItem | null {
   const conversation = getRecordValue(payload.conversation) ?? payload;
   const id = conversation.id !== undefined ? String(conversation.id) : fallback?.id;
@@ -270,15 +279,16 @@ function mapConversationUpdatePayload(payload: Record<string, unknown>, fallback
   const lastMessagePreview = getConversationField(conversation, 'lastMessagePreview');
   const unreadCount = getConversationField(conversation, 'unreadCount');
   const customerName = typeof customer.name === 'string' ? customer.name : undefined;
-  const customerPhone = typeof customer.phone === 'string' ? customer.phone : undefined;
+  const customerPhone = normalizeDisplayPhone(customer.phone);
   const contactIdentifier = typeof contact.identifier === 'string' ? contact.identifier : undefined;
+  const contactPhone = normalizeDisplayPhone(contactIdentifier);
   const channel = typeof conversation.channel === 'string' ? conversation.channel : undefined;
   const profileImageUrl = getRecordValue(customer.metadata)?.whatsappProfileImageUrl;
 
   return {
     id,
-    name: customerName || fallback?.name || customerPhone || contactIdentifier || `Conversacion ${id}`,
-    phone: customerPhone || fallback?.phone || contactIdentifier,
+    name: customerName || fallback?.name || customerPhone || contactPhone || `Conversacion ${id}`,
+    phone: customerPhone || fallback?.phone || contactPhone,
     avatarUrl: typeof profileImageUrl === 'string' ? profileImageUrl : fallback?.avatarUrl ?? null,
     lastMessage: typeof lastMessagePreview === 'string' && lastMessagePreview.trim()
       ? lastMessagePreview
@@ -860,7 +870,7 @@ export function ConversationList() {
   }, []);
 
   useEffect(() => {
-    const handleNewMessage = (event: Event) => {
+  const handleNewMessage = (event: Event) => {
       const payload = (event as CustomEvent<AppNewMessageDetail>).detail;
       const timestamp = parseDate(payload.timestamp);
 
@@ -908,12 +918,17 @@ export function ConversationList() {
             readAt: payload.readAt,
           },
         ));
+        void markConversationAsRead(payload.conversationId).catch(() => undefined);
+        setConversations((current) => current.map((conversation) => (
+          conversation.id === payload.conversationId ? { ...conversation, unreadCount: 0 } : conversation
+        )));
+        scheduleScrollToConversationEnd('smooth');
       }
     };
 
     window.addEventListener(APP_NEW_MESSAGE_EVENT, handleNewMessage);
     return () => window.removeEventListener(APP_NEW_MESSAGE_EVENT, handleNewMessage);
-  }, [selectedConversationId]);
+  }, [scheduleScrollToConversationEnd, selectedConversationId]);
 
   useEffect(() => {
     const handleConversationsChanged = (event: Event) => {
@@ -1449,7 +1464,6 @@ export function ConversationList() {
       const result = await createContact({
         name: newChatName.trim(),
         phone: newChatPhone.trim(),
-        message: `Hola ${newChatName.trim()}`,
       });
       const conversationId = String(result.contactId ?? result.id ?? result.conversation?.id ?? '');
       if (!conversationId) throw new Error('El backend no devolvio la conversacion creada');
@@ -1458,8 +1472,10 @@ export function ConversationList() {
         id: conversationId,
         name: newChatName.trim(),
         phone: newChatPhone.trim(),
-        lastMessage: `Hola ${newChatName.trim()}`,
-        lastMessageAt: new Date(),
+        lastMessage: 'Sin mensajes',
+        lastMessageAt: result.conversation?.lastMessageAt
+          ? parseDate(result.conversation.lastMessageAt)
+          : new Date(0),
         unreadCount: 0,
         status: 'assigned',
         channel: 'whatsapp',
@@ -1479,7 +1495,7 @@ export function ConversationList() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-body p-3 text-[var(--app-strong)] md:p-5">
+    <div className="flex h-full min-h-0 flex-col p-3 text-[var(--app-strong)] md:p-5">
       <Toaster />
 
       <section className="grid h-[calc(100dvh-110px)] min-h-0 flex-none overflow-hidden rounded-lg border border-[var(--app-line)] bg-[var(--app-surface)] shadow-sm md:h-[calc(100dvh-130px)] 2xl:grid-cols-[390px_minmax(0,1fr)]">

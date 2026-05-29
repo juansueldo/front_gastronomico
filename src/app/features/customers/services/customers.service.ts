@@ -14,6 +14,10 @@ function extractCustomerRows(payload: unknown): CustomerDto[] {
   return Array.isArray(rows) ? rows as CustomerDto[] : [];
 }
 
+function isTechnicalTableCustomer(customer: Customer) {
+  return /^mesa\s+\d+$/i.test(customer.name.trim());
+}
+
 export async function findCustomerByPhone(phone: string): Promise<CustomerLookupResult | null> {
   try {
     const payload = await apiClient.get(`${API_VERSION}/customer/search`, {
@@ -43,11 +47,11 @@ export async function listCustomers(params: ListCustomersParams = {}): Promise<C
   if (data && typeof data === 'object' && !Array.isArray(data)) {
     const candidate = data as Record<string, unknown>;
     const total = Number(candidate.recordsFiltered ?? candidate.count ?? candidate.total ?? candidate.recordsTotal);
-    const rows = extractCustomerRows(data).map(mapCustomerDtoToModel);
+    const rows = extractCustomerRows(data).map(mapCustomerDtoToModel).filter((customer) => !isTechnicalTableCustomer(customer));
     return { rows, total: Number.isFinite(total) ? total : rows.length };
   }
 
-  const rows = extractCustomerRows(data).map(mapCustomerDtoToModel);
+  const rows = extractCustomerRows(data).map(mapCustomerDtoToModel).filter((customer) => !isTechnicalTableCustomer(customer));
   return { rows, total: rows.length };
 }
 

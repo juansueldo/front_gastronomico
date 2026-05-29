@@ -417,13 +417,10 @@ export function KitchenOrdersView() {
   return (
     <div
       ref={kdsContainerRef}
-      className={`h-full overflow-y-auto bg-body p-4 md:p-6 ${isFullscreen ? 'kds-fullscreen' : ''}`}
+      className={`h-full overflow-y-auto p-4 md:p-6 ${isFullscreen ? 'kds-fullscreen' : ''}`}
     >
       <div className="relative">
-        <div className="pointer-events-none absolute inset-0 opacity-70">
-          <div className="absolute -top-24 left-1/4 h-72 w-72 rounded-full bg-orange-500/10 blur-3xl" />
-          <div className="absolute right-0 top-1/3 h-72 w-72 rounded-full bg-blue-500/10 blur-3xl" />
-        </div>
+        
 
         <div className="relative space-y-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
