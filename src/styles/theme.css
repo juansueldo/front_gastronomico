@@ -782,6 +782,15 @@
   .metric-card:has(.metric-icon.coral) {
     --metric-border: #ef5a3c;
   }
+  .metric-card:has(.metric-icon.blue) {
+    --metric-border: #3b82f6;
+  }
+  .metric-card:has(.metric-icon.purple) {
+    --metric-border: #a855f7;
+  }
+  .metric-card:has(.metric-icon.green) {
+    --metric-border: #22c55e;
+  }
 
   .metric-icon,
   .activity-icon {
@@ -813,7 +822,18 @@
     background: rgb(239 68 68 / 14%);
     color: #ef5a3c;
   }
-
+  .metric-icon.blue{
+    background: rgb(59 130 246 / 16%);
+    color: #3b82f6;
+  }
+  .metric-icon.purple {
+    background: rgb(168 85 247 / 16%);
+    color: #a855f7;
+  }
+  .metric-icon.green {
+    background: rgb(34 197 94 / 15%);
+    color: #22c55e;
+  }
   .activity-icon.green {
     background: rgb(34 197 94 / 15%);
     color: #22c55e;

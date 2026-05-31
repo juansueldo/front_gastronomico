@@ -238,7 +238,7 @@ function MetricCard({
         <p className="mt-1 truncate text-2xl font-semibold text-app-strong">{value}</p>
         <p className="mt-1 text-sm font-semibold text-emerald-500">{detail}</p>
       </div>
-      <Sparkline />
+  
     </section>
   );
 }
@@ -422,7 +422,7 @@ export function DashboardView() {
     <AppLayout>
       <div className="dashboard-page">
         <section className="dashboard-metrics">
-          <MetricCard title="Ventas de hoy" value={salesValue} detail={loading ? 'Actualizando...' : '0% vs ayer'} icon={ShoppingBag} tone="orange" />
+          <MetricCard title="Ventas de hoy" value={salesValue} detail={loading ? 'Actualizando...' : '0% vs ayer'} icon={ShoppingBag} tone="green" />
           <MetricCard title="Pedidos activos" value={activeOrders} detail="0 en preparacion" icon={ReceiptText} tone="orange" />
           <MetricCard title="Mesas ocupadas" value={tableValue} detail="0% de ocupacion" icon={Table2} tone="amber" />
           <MetricCard title="Ticket promedio" value={averageTicket} detail="0% vs ayer" icon={Ticket} tone="coral" />
