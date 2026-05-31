@@ -89,6 +89,7 @@ export interface PublicStoreDeliveryZone {
   name: string;
   active: boolean;
   headquarterId?: string;
+  deliveryFee: number;
   polygon: PublicStoreDeliveryZonePoint[];
 }
 
@@ -207,9 +208,11 @@ interface BackendDeliveryZone {
   status_id?: string | number;
   headquarterId?: string | number;
   headquarter_id?: string | number;
-  polygon?: Array<{ lat?: number; lng?: number }>;
-  points?: Array<{ lat?: number; lng?: number }>;
-  vertices?: Array<{ lat?: number; lng?: number }>;
+  deliveryFee?: number | string;
+  delivery_fee?: number | string;
+  polygon?: unknown[];
+  points?: unknown[];
+  vertices?: unknown[];
   geojson?: {
     type?: string;
     coordinates?: number[][][];
@@ -651,26 +654,36 @@ const normalizeGeoJsonZonePoints = (coordinates: number[][][] | undefined): Publ
     .filter((point): point is PublicStoreDeliveryZonePoint => point !== null);
 };
 
-const normalizeDeliveryZonePoints = (zone: BackendDeliveryZone): PublicStoreDeliveryZonePoint[] => {
-  const toPoint = (point: { lat?: number; lng?: number }) => {
-    if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng)) {
-      return null;
-    }
-    return { lat: Number(point.lat), lng: Number(point.lng) };
-  };
+const normalizeDeliveryZonePoint = (point: unknown): PublicStoreDeliveryZonePoint | null => {
+  if (Array.isArray(point) && point.length >= 2) {
+    const lng = Number(point[0]);
+    const lat = Number(point[1]);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  }
 
+  if (point && typeof point === 'object') {
+    const record = point as Record<string, unknown>;
+    const lat = Number(record.lat ?? record.latitude);
+    const lng = Number(record.lng ?? record.longitude);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  }
+
+  return null;
+};
+
+const normalizeDeliveryZonePoints = (zone: BackendDeliveryZone): PublicStoreDeliveryZonePoint[] => {
   const polygonPoints = Array.isArray(zone.polygon)
-    ? zone.polygon.map((point) => toPoint(point ?? {})).filter((point): point is PublicStoreDeliveryZonePoint => point !== null)
+    ? zone.polygon.map((point) => normalizeDeliveryZonePoint(point)).filter((point): point is PublicStoreDeliveryZonePoint => point !== null)
     : [];
   if (polygonPoints.length > 0) return polygonPoints;
 
   const points = Array.isArray(zone.points)
-    ? zone.points.map((point) => toPoint(point ?? {})).filter((point): point is PublicStoreDeliveryZonePoint => point !== null)
+    ? zone.points.map((point) => normalizeDeliveryZonePoint(point)).filter((point): point is PublicStoreDeliveryZonePoint => point !== null)
     : [];
   if (points.length > 0) return points;
 
   const vertices = Array.isArray(zone.vertices)
-    ? zone.vertices.map((point) => toPoint(point ?? {})).filter((point): point is PublicStoreDeliveryZonePoint => point !== null)
+    ? zone.vertices.map((point) => normalizeDeliveryZonePoint(point)).filter((point): point is PublicStoreDeliveryZonePoint => point !== null)
     : [];
   if (vertices.length > 0) return vertices;
 
@@ -700,12 +713,14 @@ const normalizePublicDeliveryZone = (input: BackendDeliveryZone | null | undefin
 
   const statusId = Number(zone.statusId ?? zone.status_id ?? (zone.active === false ? 2 : 1));
   const active = typeof zone.active === 'boolean' ? zone.active : statusId === 1;
+  const deliveryFee = Number(zone.deliveryFee ?? zone.delivery_fee ?? 0);
 
   return {
     id,
     name: String(zone.name ?? `Zona ${id}`).trim(),
     active,
     headquarterId: parseEntityId(zone.headquarterId, zone.headquarter_id) || undefined,
+    deliveryFee: Number.isFinite(deliveryFee) && deliveryFee >= 0 ? deliveryFee : 0,
     polygon,
   };
 };
@@ -809,6 +824,49 @@ export const fetchPublicStoreDeliveryZones = async (params: {
     .map((row) => normalizePublicDeliveryZone(row as BackendDeliveryZone))
     .filter((zone): zone is PublicStoreDeliveryZone => zone !== null)
     .filter((zone) => (params.activeOnly === false ? true : zone.active));
+};
+
+export const checkPublicStoreDeliveryZone = async (params: {
+  storeId?: string | number;
+  headquarterId?: string | number;
+  latitude: number;
+  longitude: number;
+}): Promise<PublicStoreDeliveryZone | null> => {
+  const baseUrl = ensureApiUrl();
+  const storeId = parseEntityId(params.storeId);
+  const latitude = Number(params.latitude);
+  const longitude = Number(params.longitude);
+  if (!storeId || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+
+  const response = await fetch(buildApiUrl(baseUrl, `${STOREFRONT_DELIVERY_ZONES_PATH.replace(/\/$/, '')}/check`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      storeId,
+      store_id: storeId,
+      headquarterId: parseEntityId(params.headquarterId) || undefined,
+      headquarter_id: parseEntityId(params.headquarterId) || undefined,
+      latitude,
+      longitude,
+    }),
+  });
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const record = data && typeof data === 'object' ? data as Record<string, unknown> : {};
+  const isValid = record.valid === true || record.inside === true || record.inZone === true || record.allowed === true;
+  if (!isValid) {
+    return null;
+  }
+
+  return normalizePublicDeliveryZone(
+    (record.zone ?? record.deliveryZone ?? record.matchedZone) as BackendDeliveryZone | null | undefined,
+  );
 };
 
 interface CreatePublicOrderInput {

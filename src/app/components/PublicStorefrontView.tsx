@@ -9,6 +9,7 @@ import { DeliveryZonesOverviewMap } from './DeliveryZonesOverviewMap';
 import { toast } from 'sonner';
 import {
   createPublicStoreOrder,
+  checkPublicStoreDeliveryZone,
   fetchPublicStoreDeliveryZones,
   fetchPublicStoreCatalog,
   fetchPublicStore,
@@ -119,6 +120,7 @@ const resolveAddressCoordinates = async (query: string): Promise<{ latitude: num
     longitude: geocodedAddress.longitude,
   };
 };
+
 type ProductModifierSelection = {
   removedIngredients: number[];
   extraIngredients: Record<number, number>;
@@ -249,6 +251,7 @@ export function PublicStorefrontView() {
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>('menu');
   const [orderSuccessSummary, setOrderSuccessSummary] = useState<OrderSuccessSummary | null>(null);
   const [deliveryZones, setDeliveryZones] = useState<PublicStoreDeliveryZone[]>([]);
+  const [matchedDeliveryZone, setMatchedDeliveryZone] = useState<PublicStoreDeliveryZone | null>(null);
   const [isDeliveryZonesDialogOpen, setIsDeliveryZonesDialogOpen] = useState(false);
   const [isLoadingDeliveryZones, setIsLoadingDeliveryZones] = useState(false);
   const [storeDefaultHeadquarterId, setStoreDefaultHeadquarterId] = useState('');
@@ -338,6 +341,11 @@ export function PublicStorefrontView() {
     }, 0) ?? 0;
     return accumulator + ((product.price + extraTotal) * product.quantity);
   }, 0);
+  const hasCompletedDeliveryAddress = orderType === 'delivery'
+    && Boolean(deliveryCoordinates)
+    && deliveryAddress.trim() === selectedDeliveryAddressLabel;
+  const deliveryFee = hasCompletedDeliveryAddress ? (matchedDeliveryZone?.deliveryFee ?? 0) : 0;
+  const orderTotal = cartTotal + deliveryFee;
 
   const pickupHeadquarter = headquarters.find((headquarter) => headquarter.id === selectedHeadquarterId);
   const fallbackHeadquarter = headquarters.find((headquarter) => headquarter.id === storeDefaultHeadquarterId) ?? headquarters[0];
@@ -635,6 +643,38 @@ export function PublicStorefrontView() {
   }, [selectedScheduleDay, selectedScheduleSlotId]);
 
   useEffect(() => {
+    if (!hasCompletedDeliveryAddress || !deliveryCoordinates || !store?.id) {
+      setMatchedDeliveryZone(null);
+      return undefined;
+    }
+
+    let isCurrent = true;
+    const timeoutId = window.setTimeout(() => {
+      void checkPublicStoreDeliveryZone({
+        storeId: store.id,
+        headquarterId: fallbackHeadquarter?.id,
+        latitude: deliveryCoordinates.latitude,
+        longitude: deliveryCoordinates.longitude,
+      })
+        .then((zone) => {
+          if (isCurrent) {
+            setMatchedDeliveryZone(zone);
+          }
+        })
+        .catch(() => {
+          if (isCurrent) {
+            setMatchedDeliveryZone(null);
+          }
+        });
+    }, 250);
+
+    return () => {
+      isCurrent = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [deliveryCoordinates, fallbackHeadquarter?.id, hasCompletedDeliveryAddress, store?.id]);
+
+  useEffect(() => {
     if (orderType !== 'delivery') {
       setAddressSuggestions([]);
       setShowAddressSuggestions(false);
@@ -658,9 +698,11 @@ export function PublicStorefrontView() {
     }
 
     setIsLoadingAddressSuggestions(true);
+    let activeController: AbortController | null = null;
     const timeoutId = window.setTimeout(() => {
       addressSuggestAbortRef.current?.abort();
       const abortController = new AbortController();
+      activeController = abortController;
       addressSuggestAbortRef.current = abortController;
 
       void searchAddressSuggestions(query, abortController.signal)
@@ -683,6 +725,7 @@ export function PublicStorefrontView() {
 
     return () => {
       window.clearTimeout(timeoutId);
+      activeController?.abort();
     };
   }, [deliveryAddress, selectedDeliveryAddressLabel, deliveryCoordinates, orderType]);
 
@@ -717,6 +760,33 @@ export function PublicStorefrontView() {
       setCheckoutStep('menu');
     }
   }, [cartItemsCount, checkoutStep]);
+
+  const loadActiveDeliveryZones = async () => {
+    if (!store?.id || !offersDelivery) {
+      setDeliveryZones([]);
+      return;
+    }
+
+    setIsLoadingDeliveryZones(true);
+    try {
+      const zones = await fetchPublicStoreDeliveryZones({
+        storeId: store.id,
+        activeOnly: true,
+      });
+      setDeliveryZones(zones);
+    } catch (error) {
+      setDeliveryZones([]);
+      toast.error(error instanceof Error ? error.message : 'No se pudieron cargar las zonas de entrega');
+    } finally {
+      setIsLoadingDeliveryZones(false);
+    }
+  };
+
+  useEffect(() => {
+    if (store?.id && offersDelivery) {
+      void loadActiveDeliveryZones();
+    }
+  }, [store?.id, offersDelivery]);
 
   if (storeLoadState === 'not-found') {
     return (
@@ -893,27 +963,6 @@ export function PublicStorefrontView() {
     setCartModifierSelections({});
   };
 
-  const loadActiveDeliveryZones = async () => {
-    if (!store?.id || !offersDelivery) {
-      setDeliveryZones([]);
-      return;
-    }
-
-    setIsLoadingDeliveryZones(true);
-    try {
-      const zones = await fetchPublicStoreDeliveryZones({
-        storeId: store.id,
-        activeOnly: true,
-      });
-      setDeliveryZones(zones);
-    } catch (error) {
-      setDeliveryZones([]);
-      toast.error(error instanceof Error ? error.message : 'No se pudieron cargar las zonas de entrega');
-    } finally {
-      setIsLoadingDeliveryZones(false);
-    }
-  };
-
   const handleContinueCheckout = () => {
     if (!hasPublicOrderingMethod) {
       toast.error('La tienda no tiene métodos de compra disponibles por el momento');
@@ -1043,6 +1092,8 @@ export function PublicStorefrontView() {
           setDeliveryCoordinates(resolvedDeliveryCoordinates);
         }
       }
+      const checkoutDeliveryFee = orderType === 'delivery' ? deliveryFee : 0;
+      const checkoutTotal = cartTotal + checkoutDeliveryFee;
 
       const productIds = cartItems.flatMap((product) => (
         Array.from({ length: product.quantity }, () => product.id)
@@ -1073,7 +1124,7 @@ export function PublicStorefrontView() {
         deliveryLatitude: orderType === 'delivery' ? resolvedDeliveryCoordinates?.latitude : undefined,
         deliveryLongitude: orderType === 'delivery' ? resolvedDeliveryCoordinates?.longitude : undefined,
         notes: mergedNotes || undefined,
-        total: cartTotal,
+        total: checkoutTotal,
         productIds,
         orderItems,
         items,
@@ -1089,7 +1140,7 @@ export function PublicStorefrontView() {
       const paymentLabel = paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo';
       setOrderSuccessSummary({
         customerName: trimmedName,
-        total: cartTotal,
+        total: checkoutTotal,
         itemsCount: cartItemsCount,
         paymentLabel,
         orderType,
@@ -1131,6 +1182,26 @@ export function PublicStorefrontView() {
   const logoText = (store?.name ?? slug ?? 'T')
     .slice(0, 2)
     .toUpperCase();
+
+  const handleSelectDeliveryAddressSuggestion = (suggestion: AddressSuggestion) => {
+    const latitude = Number(suggestion.latitude);
+    const longitude = Number(suggestion.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      toast.error('La direccion seleccionada no tiene coordenadas validas');
+      return;
+    }
+
+    addressSuggestAbortRef.current?.abort();
+    setAddressSuggestions([]);
+    setShowAddressSuggestions(false);
+    setIsLoadingAddressSuggestions(false);
+    setMatchedDeliveryZone(null);
+    setDeliveryAddress(suggestion.label);
+    setSelectedDeliveryAddressLabel(suggestion.label);
+    window.setTimeout(() => {
+      setDeliveryCoordinates({ latitude, longitude });
+    }, 0);
+  };
 
   const renderCategoryIcon = (categoryName: string, iconValue?: string) => {
     if (iconValue) {
@@ -1579,6 +1650,7 @@ export function PublicStorefrontView() {
                                 if (nextAddress.trim() !== selectedDeliveryAddressLabel) {
                                   setSelectedDeliveryAddressLabel('');
                                   setDeliveryCoordinates(null);
+                                  setMatchedDeliveryZone(null);
                                 }
                               }}
                               onFocus={() => {
@@ -1599,17 +1671,7 @@ export function PublicStorefrontView() {
                                     type="button"
                                     className="w-full rounded-md px-2 py-2 text-left text-xs text-[#1f2937] transition hover:bg-[#f3f4f6]"
                                     onMouseDown={(event) => event.preventDefault()}
-                                    onClick={() => {
-                                      addressSuggestAbortRef.current?.abort();
-                                      setDeliveryAddress(suggestion.label);
-                                      setSelectedDeliveryAddressLabel(suggestion.label);
-                                      setDeliveryCoordinates({
-                                        latitude: suggestion.latitude,
-                                        longitude: suggestion.longitude,
-                                      });
-                                      setAddressSuggestions([]);
-                                      setShowAddressSuggestions(false);
-                                    }}
+                                    onClick={() => handleSelectDeliveryAddressSuggestion(suggestion)}
                                   >
                                     {suggestion.label}
                                   </button>
@@ -1822,16 +1884,23 @@ export function PublicStorefrontView() {
                         <span className="font-semibold">Subtotal</span>
                         <span>{currencyFormatter.format(cartTotal)}</span>
                       </p>
-                      <p className="flex items-center justify-between">
-                        <span className="font-semibold">Costo de envio</span>
-                        <span>-</span>
-                      </p>
+                      {matchedDeliveryZone ? (
+                        <p className="flex items-center justify-between">
+                          <span className="font-semibold">Costo de envio</span>
+                          <span>{deliveryFee > 0 ? currencyFormatter.format(deliveryFee) : 'Gratis'}</span>
+                        </p>
+                      ) : null}
                     </div>
                     <div className="mt-4 border-t border-white/15 pt-3">
                       <p className="flex items-center justify-between text-3xl font-black text-white">
                         <span>Total</span>
-                        <span className="text-[#ff9f7d]">{currencyFormatter.format(cartTotal)}</span>
+                        <span className="text-[#ff9f7d]">{currencyFormatter.format(orderTotal)}</span>
                       </p>
+                      {orderType === 'delivery' && matchedDeliveryZone ? (
+                        <p className="mt-2 text-sm text-[#d5dbe4]">
+                          Zona: {matchedDeliveryZone.name}
+                        </p>
+                      ) : null}
                       {orderType === 'pickup' && (pickupHeadquarter || fallbackHeadquarter) ? (
                         <p className="mt-2 text-sm text-[#d5dbe4]">
                           Retiro en: {(pickupHeadquarter ?? fallbackHeadquarter)?.name}
@@ -1859,7 +1928,7 @@ export function PublicStorefrontView() {
             >
               Continuar
             </button>
-            <p className="text-2md font-black !text-[#ffffff]">{currencyFormatter.format(cartTotal)}</p>
+            <p className="text-2md font-black !text-[#ffffff]">{currencyFormatter.format(orderTotal)}</p>
           </div>
         </div>
       ) : null}

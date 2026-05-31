@@ -69,7 +69,7 @@ export function mapUserDtoToModel(item: UserDto): AppUser {
   const firstname = String(item.firstname ?? item.firstnamee ?? '').trim();
   const lastname = String(item.lastname ?? item.lastName ?? '').trim();
   const email = String(item.email ?? '').trim();
-  const status = String(item.status ?? '').trim();
+  const status = String(item.presenceStatus ?? item.presence_status ?? item.status ?? '').trim();
 
   return {
     id: id || `user-${Date.now()}-${Math.random()}`,
@@ -82,6 +82,8 @@ export function mapUserDtoToModel(item: UserDto): AppUser {
     headquarterId: extractNestedNumber(item, ['headquarterId', 'headquarter_id'], ['headquarter', 'Headquarter']),
     headquarterName: extractHeadquarterName(item),
     status: status || undefined,
+    presenceStatus: status || undefined,
+    lastPresenceAt: item.lastPresenceAt ?? item.last_presence_at,
     active: typeof item.active === 'boolean' ? item.active : undefined,
     profile_image_url: item.profile_image_url,
     profileImageUrl: item.profileImageUrl ?? item.profile_image_url,

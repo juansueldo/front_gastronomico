@@ -9,6 +9,8 @@ export interface AppUser {
   headquarterId?: number;
   headquarterName?: string;
   status?: string;
+  presenceStatus?: string;
+  lastPresenceAt?: string;
   active?: boolean;
   profile_image_url?: string;
   profileImageUrl?: string;

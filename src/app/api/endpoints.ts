@@ -13,6 +13,7 @@ type QueryParams = Record<string, string | number | boolean>;
 // --- AUTH ---
 export const endpoints = {
   login: (credentials: Payload) => apiClient.post(`${API_VERSION}/auth/login`, credentials, { config: { isPublic: true } }),
+  logout: () => apiClient.post(`${API_VERSION}/auth/logout`, {}),
   register: (data: Payload) => apiClient.post(`${API_VERSION}/auth/register`, data, { config: { isPublic: true } }),
   validateToken: () => apiClient.get(`${API_VERSION}/auth/validate`, { config: { cache: 'short' } }),
 
@@ -81,6 +82,7 @@ export const endpoints = {
     getUser: (id: string) => apiClient.get(`${API_VERSION}/user/${id}`),
     createUser: (data: Payload) => apiClient.post(`${API_VERSION}/user`, data),
     updateUser: (id: string, data: Payload) => apiClient.put(`${API_VERSION}/user/${id}`, { id, ...data }),
+    updateUserPresence: (data: Payload) => apiClient.patch(`${API_VERSION}/user/me/presence`, data),
     deleteUser: (id: string) => apiClient.delete(`${API_VERSION}/user/${id}`),
 
     // -- ORDERS --

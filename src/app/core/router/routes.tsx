@@ -25,6 +25,7 @@ import { IntegrationsPage } from '../../features/integrations/pages/Integrations
 import { PublicStorefrontPage } from '../../features/storefront/pages/PublicStorefrontPage';
 import { HeadquartersPage } from '../../features/headquarters/pages/HeadquartersPage';
 import { DeliveryZonesPage } from '../../features/delivery-zones/pages/DeliveryZonesPage';
+import { DeliveryLogisticsPage } from '../../features/delivery-logistics/pages/DeliveryLogisticsPage';
 import { UsersPage } from '../../features/users/pages/UsersPage';
 import { CustomersPage } from '../../features/customers/pages/CustomersPage';
 import { WaitersPage } from '../../features/waiters/pages/WaitersPage';
@@ -102,6 +103,7 @@ export const protectedRouteConfig: ProtectedRouteConfig[] = [
   { path: '/integrations', Component: IntegrationsPage, roles: ['admin'] },
   { path: '/headquarters', Component: HeadquartersPage, roles: ['admin', 'supervisor'] },
   { path: '/delivery-zones', Component: DeliveryZonesPage, roles: ['admin', 'supervisor'] },
+  { path: '/delivery-logistics', Component: DeliveryLogisticsPage, roles: ['admin', 'supervisor'] },
   { path: '/users', Component: UsersPage, roles: ['admin'] },
 ];
 

@@ -28,6 +28,11 @@ const DEFAULT_MAP_CENTER: LatLngExpression = [-34.603722, -58.381592];
 const ZONE_COLORS = ['#22c55e', '#ff5a0a', '#3b82f6', '#f59e0b', '#a855f7', '#ef4444'];
 const LIGHT_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 const DARK_TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+const currencyFormatter = new Intl.NumberFormat('es-AR', {
+  style: 'currency',
+  currency: 'ARS',
+  maximumFractionDigits: 0,
+});
 
 type MapMode = 'view' | 'draw' | 'edit';
 
@@ -157,6 +162,8 @@ function ZoneMap({ zones, zone, mode, draft, onDraftChange, darkMode }: ZoneMapP
                 <strong>{item.name ?? 'Zona sin nombre'}</strong>
                 <br />
                 {item.active === false ? 'Inactiva' : 'Activa'} · {item.polygon.length} vértices
+                <br />
+                Envío: {formatDeliveryFee(item.deliveryFee ?? 0)}
               </div>
             </Popup>
           </Polygon>
@@ -200,6 +207,12 @@ function ZoneMap({ zones, zone, mode, draft, onDraftChange, darkMode }: ZoneMapP
 }
 
 const getZoneStatusKey = (zone: DeliveryZone) => (zone.active ? 'active' : 'inactive');
+const formatDeliveryFee = (deliveryFee: number) => (deliveryFee > 0 ? currencyFormatter.format(deliveryFee) : 'Gratis');
+const parseDeliveryFeeInput = (value: string) => {
+  const normalizedValue = value.trim().replace(',', '.');
+  const parsedValue = normalizedValue === '' ? 0 : Number(normalizedValue);
+  return Number.isFinite(parsedValue) && parsedValue >= 0 ? parsedValue : null;
+};
 
 function MapThemeToggle({
   darkMap,
@@ -246,8 +259,10 @@ export function DeliveryZonesManager() {
   const [draft, setDraft] = useState<DeliveryZonePoint[]>([]);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newZoneName, setNewZoneName] = useState('');
+  const [newZoneDeliveryFee, setNewZoneDeliveryFee] = useState('0');
   const [newZoneHeadquarterId, setNewZoneHeadquarterId] = useState('');
   const [selectedHeadquarterId, setSelectedHeadquarterId] = useState('');
+  const [selectedZoneDeliveryFee, setSelectedZoneDeliveryFee] = useState('0');
   const [darkMap, setDarkMap] = useState(true);
   const [searchValue, setSearchValue] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
@@ -312,6 +327,7 @@ export function DeliveryZonesManager() {
   const selectZone = (zone: DeliveryZone) => {
     setSelectedZone(zone);
     setSelectedHeadquarterId(String(zone.headquarterId ?? ''));
+    setSelectedZoneDeliveryFee(String(zone.deliveryFee ?? 0));
     setMode('view');
     setDraft([]);
     setShowNewForm(false);
@@ -323,6 +339,7 @@ export function DeliveryZonesManager() {
     setMode('view');
     setDraft([]);
     setNewZoneName('');
+    setNewZoneDeliveryFee('0');
     setSelectedHeadquarterId('');
   };
 
@@ -330,13 +347,16 @@ export function DeliveryZonesManager() {
     setShowNewForm(false);
     setDraft([]);
     setNewZoneName('');
+    setNewZoneDeliveryFee('0');
   };
 
   const handleCreate = async () => {
     const name = newZoneName.trim();
     const parsedHeadquarterId = Number(newZoneHeadquarterId);
+    const parsedDeliveryFee = parseDeliveryFeeInput(newZoneDeliveryFee);
 
     if (!name) { toast.error('Ingresá un nombre para la zona'); return; }
+    if (parsedDeliveryFee === null) { toast.error('Ingresá un costo de envío válido'); return; }
     if (!Number.isInteger(parsedHeadquarterId) || parsedHeadquarterId <= 0) {
       toast.error('Seleccioná una sede válida para la zona');
       return;
@@ -349,6 +369,7 @@ export function DeliveryZonesManager() {
         name,
         polygon: draft,
         headquarterId: parsedHeadquarterId,
+        deliveryFee: parsedDeliveryFee,
         zoneid: `ZONE_${Date.now()}`,
       });
       if (!created) throw new Error('No se pudo crear la zona');
@@ -356,6 +377,7 @@ export function DeliveryZonesManager() {
       const createdWithHeadquarter = {
         ...created,
         headquarterId: created.headquarterId ?? parsedHeadquarterId,
+        deliveryFee: created.deliveryFee ?? parsedDeliveryFee,
       };
 
       await loadZones();
@@ -365,6 +387,7 @@ export function DeliveryZonesManager() {
       setMode('view');
       setDraft([]);
       setNewZoneName('');
+      setNewZoneDeliveryFee('0');
       toast.success('Zona creada');
     } catch {
       toast.error('No se pudo crear la zona');
@@ -377,6 +400,7 @@ export function DeliveryZonesManager() {
     if (!selectedZone) return;
     setDraft([...selectedZone.polygon]);
     setSelectedHeadquarterId(String(selectedZone.headquarterId ?? ''));
+    setSelectedZoneDeliveryFee(String(selectedZone.deliveryFee ?? 0));
     setMode('edit');
   };
 
@@ -385,12 +409,18 @@ export function DeliveryZonesManager() {
     setDraft([]);
     if (selectedZone) {
       setSelectedHeadquarterId(String(selectedZone.headquarterId ?? ''));
+      setSelectedZoneDeliveryFee(String(selectedZone.deliveryFee ?? 0));
     }
   };
 
   const saveEdit = async () => {
     if (!selectedZone) return;
     const parsedHeadquarterId = Number(selectedHeadquarterId);
+    const parsedDeliveryFee = parseDeliveryFeeInput(selectedZoneDeliveryFee);
+    if (parsedDeliveryFee === null) {
+      toast.error('Ingresá un costo de envío válido');
+      return;
+    }
     if (!Number.isInteger(parsedHeadquarterId) || parsedHeadquarterId <= 0) {
       toast.error('Seleccioná una sede válida para la zona');
       return;
@@ -402,11 +432,12 @@ export function DeliveryZonesManager() {
       const updated = await updateDeliveryZone(selectedZone.id!, {
         polygon: draft,
         headquarterId: parsedHeadquarterId,
+        deliveryFee: parsedDeliveryFee,
       });
 
       const nextZone = updated
-        ? { ...selectedZone, ...updated, polygon: draft, headquarterId: updated.headquarterId ?? parsedHeadquarterId }
-        : { ...selectedZone, polygon: draft, headquarterId: parsedHeadquarterId };
+        ? { ...selectedZone, ...updated, polygon: draft, headquarterId: updated.headquarterId ?? parsedHeadquarterId, deliveryFee: updated.deliveryFee ?? parsedDeliveryFee }
+        : { ...selectedZone, polygon: draft, headquarterId: parsedHeadquarterId, deliveryFee: parsedDeliveryFee };
 
       await loadZones();
       setSelectedZone(nextZone);
@@ -519,6 +550,9 @@ export function DeliveryZonesManager() {
                   <p className="mt-1 text-xs text-muted-foreground">
                     {zone.polygon.length} vértices · {zoneHeadquarterName(zone)}
                   </p>
+                  <p className="mt-1 text-xs font-medium text-foreground">
+                    Envío: {formatDeliveryFee(zone.deliveryFee ?? 0)}
+                  </p>
                 </button>
               ))
             )}
@@ -612,6 +646,13 @@ export function DeliveryZonesManager() {
                   placeholder="Nombre de la zona"
                   className="h-10 min-w-[180px] flex-1 border-border bg-background text-foreground"
                 />
+                <Input
+                  value={newZoneDeliveryFee}
+                  onChange={(event) => setNewZoneDeliveryFee(event.target.value)}
+                  inputMode="decimal"
+                  placeholder="Costo de envío"
+                  className="h-10 min-w-[150px] border-border bg-background text-foreground"
+                />
                 <Select
                   value={newZoneHeadquarterId}
                   onValueChange={setNewZoneHeadquarterId}
@@ -681,6 +722,13 @@ export function DeliveryZonesManager() {
                     ))}
                   </SelectContent>
                 </Select>
+                <Input
+                  value={selectedZoneDeliveryFee}
+                  onChange={(event) => setSelectedZoneDeliveryFee(event.target.value)}
+                  inputMode="decimal"
+                  placeholder="Costo de envío"
+                  className="h-10 min-w-[150px] border-border bg-background text-foreground"
+                />
                 <button
                   type="button"
                   onClick={saveEdit}
@@ -708,8 +756,9 @@ export function DeliveryZonesManager() {
             ) : null}
 
             {selectedZone && mode === 'view' && !showNewForm ? (
-              <div className="text-xs text-muted-foreground">
-                Sede asignada: <span className="font-medium text-foreground">{zoneHeadquarterName(selectedZone)}</span>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <span>Sede asignada: <span className="font-medium text-foreground">{zoneHeadquarterName(selectedZone)}</span></span>
+                <span>Envío: <span className="font-medium text-foreground">{formatDeliveryFee(selectedZone.deliveryFee ?? 0)}</span></span>
               </div>
             ) : null}
           </div>

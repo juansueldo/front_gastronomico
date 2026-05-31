@@ -37,6 +37,10 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
   return endpoints.login(credentials);
 }
 
+export async function logout(): Promise<void> {
+  await endpoints.logout();
+}
+
 /**
  * Registra un nuevo usuario
  */

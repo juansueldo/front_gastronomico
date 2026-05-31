@@ -143,6 +143,15 @@ export function UsersView() {
     void loadHeadquarters();
   }, []);
 
+  useEffect(() => {
+    const handlePresenceChanged = () => {
+      setReloadKey((key) => key + 1);
+    };
+
+    window.addEventListener('app:user-presence-changed', handlePresenceChanged);
+    return () => window.removeEventListener('app:user-presence-changed', handlePresenceChanged);
+  }, []);
+
   const availableRoleOptions = useMemo(() => {
     const candidateRoles = [
       ...roleOptions,

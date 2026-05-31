@@ -1,6 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { useEffect, useState } from 'react';
-import { expireAuthSession, getAuthSession, getStoreIdFromToken } from './core/storage/authStorage';
+import { expireAuthSession, getAuthSession, getStoreIdFromToken, updateLoggedUser } from './core/storage/authStorage';
 import {
   APP_CONVERSATIONS_CHANGED_EVENT,
   dispatchAppNewMessage,
@@ -27,7 +27,7 @@ export interface AppWhatsappInstanceDetail {
 type SenderType = 'contact' | 'agent';
 type ChannelType = 'whatsapp' | 'facebook' | 'instagram' | 'email';
 
-const ALL_CHANNELS = ['products', 'orders', 'tables', 'waiters', 'segments', 'subscriptions', 'messaging'] as const;
+const ALL_CHANNELS = ['products', 'orders', 'tables', 'waiters', 'segments', 'subscriptions', 'messaging', 'presence'] as const;
 type Channel = (typeof ALL_CHANNELS)[number];
 
 // ─── Singleton global ────────────────────────────────────────────────────────
@@ -174,8 +174,9 @@ function buildMessagingMessageDetail(payload: Record<string, unknown>): AppNewMe
   const conversation = payload.conversation && typeof payload.conversation === 'object'
     ? payload.conversation as Record<string, unknown>
     : {};
-  const customer = conversation.Customer && typeof conversation.Customer === 'object'
-    ? conversation.Customer as Record<string, unknown>
+  const customerCandidate = conversation.Customer ?? conversation.customer;
+  const customer = customerCandidate && typeof customerCandidate === 'object'
+    ? customerCandidate as Record<string, unknown>
     : {};
   const conversationId = String(message.conversationId ?? conversation.id ?? '');
 
@@ -272,6 +273,50 @@ function handleWhatsappEvent(eventType: string, payload: Record<string, unknown>
   return true;
 }
 
+const presenceLabels: Record<string, string> = {
+  active: 'activo',
+  away: 'ausente',
+  busy: 'ocupado',
+  offline: 'desconectado',
+};
+
+function handlePresenceEvent(eventType: string, rawPayload: unknown) {
+  const payload = rawPayload && typeof rawPayload === 'object' ? rawPayload as Record<string, unknown> : {};
+  const user = payload.user && typeof payload.user === 'object' ? payload.user as Record<string, unknown> : payload;
+  const userId = Number(user.id ?? payload.userId);
+  const nextStatus = getStringValue(user.presenceStatus ?? user.status ?? payload.newStatus, 'offline');
+  const currentUserId = Number(getAuthSession()?.user?.id);
+
+  if (currentUserId && userId === currentUserId) {
+    updateLoggedUser({
+      status: nextStatus as any,
+      presenceStatus: nextStatus,
+      lastPresenceAt: typeof user.lastPresenceAt === 'string' ? user.lastPresenceAt : undefined,
+    });
+    return;
+  }
+
+  const displayName = [
+    getStringValue(user.firstname, ''),
+    getStringValue(user.lastname, ''),
+  ].join(' ').trim() || getStringValue(user.username, 'Un usuario');
+
+  const title = eventType === 'user_login'
+    ? 'Usuario conectado'
+    : eventType === 'user_logout'
+      ? 'Usuario desconectado'
+      : 'Estado actualizado';
+
+  const body = eventType === 'user_login'
+    ? `${displayName} inició sesión`
+    : eventType === 'user_logout'
+      ? `${displayName} cerró sesión`
+      : `${displayName} está ${presenceLabels[nextStatus] ?? nextStatus}`;
+
+  dispatchAppNotification({ title, body, data: payload });
+  window.dispatchEvent(new CustomEvent('app:user-presence-changed', { detail: payload }));
+}
+
 function registerEventHandlers(socket: Socket) {
   // ── Confirmaciones del servidor ──
   socket.on('connected', (data) => {
@@ -340,6 +385,18 @@ function registerEventHandlers(socket: Socket) {
     console.log('[WS] subscription_updated', data);
   });
 
+  socket.on('user_presence_changed', (data) => {
+    handlePresenceEvent('user_presence_changed', data?.data ?? data);
+  });
+
+  socket.on('user_login', (data) => {
+    handlePresenceEvent('user_login', data?.data ?? data);
+  });
+
+  socket.on('user_logout', (data) => {
+    handlePresenceEvent('user_logout', data?.data ?? data);
+  });
+
   // ── Mensajes / WhatsApp ──
   socket.on('message.created', (data) => {
     const payload = data?.data ?? data ?? {};
@@ -375,6 +432,7 @@ function registerEventHandlers(socket: Socket) {
     const message = buildMessagingMessageDetail(payload);
     if (message) {
       dispatchAppNewMessage(message);
+      window.dispatchEvent(new CustomEvent(APP_CONVERSATIONS_CHANGED_EVENT, { detail: payload }));
       dispatchAppNotification({
         title: `Nuevo mensaje de ${message.contactName ?? 'WhatsApp'}`,
         body: message.content || (message.mediaFilename ? `Adjunto: ${message.mediaFilename}` : 'Adjunto recibido'),
@@ -392,6 +450,7 @@ function registerEventHandlers(socket: Socket) {
     const message = buildMessagingMessageDetail(payload);
     if (message) {
       dispatchAppNewMessage(message);
+      window.dispatchEvent(new CustomEvent(APP_CONVERSATIONS_CHANGED_EVENT, { detail: payload }));
     }
   });
 

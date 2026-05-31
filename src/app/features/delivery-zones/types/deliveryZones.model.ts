@@ -12,6 +12,7 @@ export interface DeliveryZone {
   headquarterId?: number;
   updatedAt?: string;
   zoneid?: string;
+  deliveryFee: number;
   storeId?: number;
   statusId?: number;
 }
@@ -28,6 +29,7 @@ export interface CreateDeliveryZoneRequest {
   headquarterId?: number;
   metadata?: Record<string, unknown>;
   zoneid?: string;
+  deliveryFee?: number;
   storeId?: number;
 }
 
@@ -37,6 +39,7 @@ export interface UpdateDeliveryZoneRequest {
   headquarterId?: number;
   metadata?: Record<string, unknown>;
   zoneid?: string;
+  deliveryFee?: number;
 }
 
 export interface CheckDeliveryZoneRequest {

@@ -17,6 +17,7 @@ export interface ContactItem {
   avatarUrl?: string | null;
   avatar_url?: string | null;
   label?: number;
+  unread_count?: number;
   last_message?: string | null;
   last_message_date?: string | null;
   instance_id?: number | string;
@@ -76,7 +77,12 @@ function mapConversationStatusToLegacyLabel(status?: string): number {
 }
 
 function normalizePhone(value?: string) {
-  return String(value ?? '').replace(/@c\.us$/i, '').trim();
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed || /@(lid|g\.us)$/i.test(trimmed)) return '';
+
+  const withoutSuffix = trimmed.replace(/@(c\.us|s\.whatsapp\.net)$/i, '');
+  const digits = withoutSuffix.replace(/\D/g, '');
+  return digits || withoutSuffix;
 }
 
 function mapConversationToContact(conversation: MessagingConversation): ContactItem {
@@ -91,6 +97,7 @@ function mapConversationToContact(conversation: MessagingConversation): ContactI
     avatarUrl: conversation.customer?.profileImageUrl ?? null,
     avatar_url: conversation.customer?.profileImageUrl ?? null,
     label: mapConversationStatusToLegacyLabel(conversation.status),
+    unread_count: conversation.unreadCount,
     last_message: conversation.lastMessagePreview ?? 'Sin mensajes',
     last_message_date: conversation.lastMessageAt ?? null,
     instance_description: conversation.channel ?? 'whatsapp',

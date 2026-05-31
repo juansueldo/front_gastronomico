@@ -24,6 +24,10 @@ export type UserDto = {
   headquarterName?: unknown;
   headquarter_name?: unknown;
   status?: string;
+  presenceStatus?: string;
+  presence_status?: string;
+  lastPresenceAt?: string;
+  last_presence_at?: string;
   active?: boolean;
   profile_image_url?: string;
   profileImageUrl?: string;
@@ -57,3 +61,5 @@ export interface UpdateUserProfileImageResponse {
   profile_image_url?: string;
   profileImageUrl?: string;
 }
+
+export type UserPresenceStatus = 'active' | 'away' | 'busy' | 'offline';

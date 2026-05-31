@@ -4,7 +4,13 @@ import { router } from './core/router/routes';
 import { toast } from 'sonner';
 import { Toaster } from './shared/ui/components/sonner';
 import { APP_NOTIFICATION_EVENT, type AppNotificationDetail } from './pushNotifications';
-import { AUTH_CHANGED_EVENT, AUTH_EXPIRED_EVENT, isUserAuthenticated } from './core/storage/authStorage';
+import {
+  AUTH_CHANGED_EVENT,
+  AUTH_EXPIRED_EVENT,
+  expireCurrentTabAuthSession,
+  isAuthStorageEventForReplacedSession,
+  isUserAuthenticated,
+} from './core/storage/authStorage';
 import { createNotification } from './api';
 import { startRealtimeChannel, stopRealtimeChannel } from './realtime';
 
@@ -50,15 +56,23 @@ export default function App() {
       void router.navigate('/login', { replace: true });
     };
 
+    const handleStorage = (event: StorageEvent) => {
+      if (isAuthStorageEventForReplacedSession(event)) {
+        expireCurrentTabAuthSession();
+      }
+    };
+
     window.addEventListener(APP_NOTIFICATION_EVENT, handleNotification);
     window.addEventListener(AUTH_CHANGED_EVENT, syncRealtimeChannel);
     window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    window.addEventListener('storage', handleStorage);
     syncRealtimeChannel();
 
     return () => {
       window.removeEventListener(APP_NOTIFICATION_EVENT, handleNotification);
       window.removeEventListener(AUTH_CHANGED_EVENT, syncRealtimeChannel);
       window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+      window.removeEventListener('storage', handleStorage);
       stopRealtimeChannel();
     };
   }, []);

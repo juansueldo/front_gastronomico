@@ -46,6 +46,9 @@ export interface AuthUser {
   email?: string;
   role?: string;
   status?: 'active' | 'away' | 'busy' | 'offline';
+  presenceStatus?: 'active' | 'away' | 'busy' | 'offline';
+  lastPresenceAt?: string;
+  sessionVersion?: number;
   [key: string]: unknown;
 }
 
@@ -60,6 +63,8 @@ export function getStoreIdFromToken(token: string): number | null {
 }
 export const AUTH_CHANGED_EVENT = 'app:auth-changed';
 export const AUTH_EXPIRED_EVENT = 'app:auth-expired';
+const ACTIVE_BROWSER_SESSION_KEY = 'auth_active_browser_session_id';
+const CURRENT_BROWSER_SESSION_KEY = 'auth_current_browser_session_id';
 
 interface SaveAuthSessionInput {
   username: string;
@@ -115,6 +120,29 @@ function getWebStorage() {
     local: window.localStorage,
     session: window.sessionStorage,
   };
+}
+
+function createBrowserSessionId() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function getCurrentBrowserSessionId() {
+  return getWebStorage()?.session.getItem(CURRENT_BROWSER_SESSION_KEY) ?? null;
+}
+
+function getActiveBrowserSessionId() {
+  return getWebStorage()?.local.getItem(ACTIVE_BROWSER_SESSION_KEY) ?? null;
+}
+
+function isCurrentBrowserSessionActive() {
+  const activeSessionId = getActiveBrowserSessionId();
+  const currentSessionId = getCurrentBrowserSessionId();
+
+  return !activeSessionId || (Boolean(currentSessionId) && activeSessionId === currentSessionId);
 }
 
 function emitAuthChanged() {
@@ -201,12 +229,30 @@ function readSessionFromStorage(storage: Storage): AuthSession | null {
   };
 }
 
+function readLocalSessionFromStorage(storage: Storage): AuthSession | null {
+  if (!isCurrentBrowserSessionActive()) {
+    return null;
+  }
+
+  return readSessionFromStorage(storage);
+}
+
 function removeAuthKeys(storage: Storage) {
   storage.removeItem(AUTH_KEYS.isAuthenticated);
   storage.removeItem(AUTH_KEYS.userEmail);
   storage.removeItem(AUTH_KEYS.accessToken);
   storage.removeItem(AUTH_KEYS.loggedUser);
   storage.removeItem(AUTH_KEYS.expiresAt);
+}
+
+function removeCurrentTabAuthKeys() {
+  const webStorage = getWebStorage();
+  if (!webStorage) {
+    return;
+  }
+
+  removeAuthKeys(webStorage.session);
+  webStorage.session.removeItem(CURRENT_BROWSER_SESSION_KEY);
 }
 
 function writeSessionToStorage(storage: Storage, session: AuthSession) {
@@ -283,14 +329,32 @@ export function clearAuthSession() {
     return;
   }
 
-  removeAuthKeys(webStorage.local);
+  const shouldClearSharedSession = isCurrentBrowserSessionActive();
+  if (shouldClearSharedSession) {
+    removeAuthKeys(webStorage.local);
+  }
   removeAuthKeys(webStorage.session);
+  if (shouldClearSharedSession) {
+    webStorage.local.removeItem(ACTIVE_BROWSER_SESSION_KEY);
+  }
+  webStorage.session.removeItem(CURRENT_BROWSER_SESSION_KEY);
   void saveCapacitorSession(null);
   emitAuthChanged();
 }
 
 export function expireAuthSession() {
-  clearAuthSession();
+  if (!isCurrentBrowserSessionActive()) {
+    removeCurrentTabAuthKeys();
+    emitAuthChanged();
+  } else {
+    clearAuthSession();
+  }
+  emitAuthExpired();
+}
+
+export function expireCurrentTabAuthSession() {
+  removeCurrentTabAuthKeys();
+  emitAuthChanged();
   emitAuthExpired();
 }
 
@@ -305,6 +369,9 @@ export function saveAuthSession({ username, user, accessToken, rememberMe = fals
   removeAuthKeys(webStorage.local);
   removeAuthKeys(webStorage.session);
   void saveCapacitorSession(null);
+  const browserSessionId = createBrowserSessionId();
+  webStorage.session.setItem(CURRENT_BROWSER_SESSION_KEY, browserSessionId);
+  webStorage.local.setItem(ACTIVE_BROWSER_SESSION_KEY, browserSessionId);
 
   let userWithStoreId = user;
   if (accessToken && user && !('storeId' in user)) {
@@ -334,7 +401,7 @@ export function getAuthSession(): AuthSession | null {
     return null;
   }
 
-  const localSession = readSessionFromStorage(webStorage.local);
+  const localSession = readLocalSessionFromStorage(webStorage.local);
   if (localSession) {
     return localSession;
   }
@@ -385,4 +452,13 @@ export function updateLoggedUser(patch: Partial<AuthUser>) {
   writeSessionToStorage(targetStorage, updatedSession);
   void saveCapacitorSession(updatedSession);
   emitAuthChanged();
+}
+
+export function isAuthStorageEventForReplacedSession(event: StorageEvent) {
+  if (event.key !== ACTIVE_BROWSER_SESSION_KEY || !event.newValue) {
+    return false;
+  }
+
+  const currentSessionId = getCurrentBrowserSessionId();
+  return Boolean(currentSessionId) && event.newValue !== currentSessionId;
 }

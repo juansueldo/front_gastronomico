@@ -10,6 +10,12 @@ import { searchAddressSuggestions, type AddressSuggestion } from '../shared/serv
 
 const DEFAULT_CENTER: LatLngExpression = [-34.603722, -58.381592];
 const ZONE_COLORS = ['#ff5a2f', '#22c55e', '#3b82f6', '#f59e0b', '#e11d48', '#6366f1'];
+const currencyFormatter = new Intl.NumberFormat('es-AR', {
+  style: 'currency',
+  currency: 'ARS',
+  maximumFractionDigits: 0,
+});
+const formatDeliveryFee = (deliveryFee: number) => (deliveryFee > 0 ? currencyFormatter.format(deliveryFee) : 'Gratis');
 const HEADQUARTER_ICON = L.divIcon({
   className: 'public-store-headquarter-marker',
   html: `
@@ -145,7 +151,7 @@ export function DeliveryZonesOverviewMap({
     const zonesForAddress = zones.filter((zone) => pointInPolygon(suggestion, zone.polygon));
     setSearchMessage(
       zonesForAddress.length > 0
-        ? `Dirección dentro de zona: ${zonesForAddress.map((zone) => zone.name).join(', ')}`
+        ? `Dirección dentro de zona: ${zonesForAddress.map((zone) => `${zone.name} (${formatDeliveryFee(zone.deliveryFee)})`).join(', ')}`
         : 'La dirección está fuera de las zonas activas.',
     );
   };
@@ -232,7 +238,12 @@ export function DeliveryZonesOverviewMap({
                 weight: 2,
               }}
             >
-              <Popup>{zone.name}</Popup>
+              <Popup>
+                <div className="space-y-1">
+                  <p className="font-semibold">{zone.name}</p>
+                  <p>Envío: {formatDeliveryFee(zone.deliveryFee)}</p>
+                </div>
+              </Popup>
             </Polygon>
           );
         })}

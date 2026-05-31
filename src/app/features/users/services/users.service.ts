@@ -5,6 +5,7 @@ import type {
   CreateUserRequest,
   UpdateUserProfileImageResponse,
   UpdateUserRequest,
+  UserPresenceStatus,
   UserDto,
 } from '../types/users.dto';
 import type { AppUser, ListSortState, ListUsersParams, UserListResult } from '../types/users.model';
@@ -103,6 +104,18 @@ export function updateUser(id: string, data: UpdateUserRequest) {
   });
 }
 
+export async function updateCurrentUserPresence(status: UserPresenceStatus): Promise<AppUser> {
+  const response = await apiClient.patch(`${API_VERSION}/user/me/presence`, {
+    status,
+    presenceStatus: status,
+    presence_status: status,
+  });
+  const userPayload = response && typeof response === 'object'
+    ? ((response as Record<string, unknown>).user ?? response)
+    : response;
+  return mapUserDtoToModel(userPayload as UserDto);
+}
+
 export function deleteUser(id: string) {
   return apiClient.delete(`${API_VERSION}/user/${id}`);
 }
@@ -122,5 +135,6 @@ export type {
   ListUsersParams,
   UpdateUserProfileImageResponse,
   UpdateUserRequest,
+  UserPresenceStatus,
   UserListResult,
 };

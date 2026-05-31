@@ -2,6 +2,7 @@ import { ChangeEvent, ReactNode, useCallback, useEffect, useMemo, useState } fro
 import { useLocation, useNavigate } from 'react-router';
 import {
   Bell,
+  Bike,
   Boxes,
   BriefcaseBusiness,
   ChefHat,
@@ -53,6 +54,8 @@ import {
   updateStoreProfileImage,
   type PlanOption,
 } from '../features/settings/services/settings.service';
+import { logout as logoutRequest } from '../features/auth/services/auth.service';
+import { updateCurrentUserPresence, type UserPresenceStatus } from '../features/users';
 import {
   listNotifications,
   markNotificationAsRead,
@@ -83,6 +86,7 @@ const navCategories: Array<{ category: string; items: NavItem[] }> = [
       { path: '/kitchen', icon: ChefHat, label: 'Cocina', allowedRoles: ['admin', 'manager', 'supervisor'] },
       { path: '/waiters', icon: UserRoundCheck, label: 'Mozos', allowedRoles: ['admin', 'supervisor'] },
       { path: '/tables', icon: LayoutGrid, label: 'Mesas', allowedRoles: ['admin', 'manager', 'supervisor'] },
+      { path: '/delivery-logistics', icon: Bike, label: 'Delivery', allowedRoles: ['admin', 'manager', 'supervisor'] },
       { path: '/cash-register', icon: Wallet, label: 'Caja', allowedRoles: ['admin'] },
       { path: '/headquarters', icon: BriefcaseBusiness, label: 'Sedes', allowedRoles: ['admin', 'manager', 'supervisor'] },
       { path: '/delivery-zones', icon: Truck, label: 'Zonas de Entrega', allowedRoles: ['admin', 'manager', 'supervisor'] },
@@ -124,6 +128,13 @@ const statusLabels: Record<NonNullable<AuthUser['status']>, string> = {
   away: 'Ausente',
   busy: 'Ocupado',
   offline: 'Desconectado',
+};
+
+const statusIndicatorClasses: Record<NonNullable<AuthUser['status']>, string> = {
+  active: 'bg-emerald-500',
+  away: 'bg-amber-400',
+  busy: 'bg-rose-500',
+  offline: 'bg-slate-400',
 };
 
 function getInitials(user: AuthUser | null) {
@@ -268,7 +279,12 @@ export function AppLayout({ children }: AppLayoutProps) {
     });
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await logoutRequest();
+    } catch {
+      // Si el token ya expiró o el backend no responde, igual cerramos la sesión local.
+    }
     clearAuthSession();
     toast.success('Sesion cerrada correctamente');
     navigate('/login');
@@ -280,10 +296,31 @@ export function AppLayout({ children }: AppLayoutProps) {
     toast.success(`Tema ${themeLabels[nextTheme].toLowerCase()}`);
   };
 
-  const handleStatusChange = (nextStatus: NonNullable<AuthUser['status']>) => {
-    updateLoggedUser({ status: nextStatus });
-    setLoggedUser((prev) => (prev ? { ...prev, status: nextStatus } : prev));
-    toast.success(`Estado ${statusLabels[nextStatus].toLowerCase()}`);
+  const handleStatusChange = async (nextStatus: UserPresenceStatus) => {
+    const previousStatus = loggedUser?.status ?? 'active';
+    updateLoggedUser({ status: nextStatus, presenceStatus: nextStatus });
+    setLoggedUser((prev) => (prev ? { ...prev, status: nextStatus, presenceStatus: nextStatus } : prev));
+
+    try {
+      const updatedUser = await updateCurrentUserPresence(nextStatus);
+      const persistedStatus = (updatedUser.presenceStatus ?? nextStatus) as AuthUser['status'];
+      updateLoggedUser({
+        status: persistedStatus,
+        presenceStatus: persistedStatus,
+        lastPresenceAt: updatedUser.lastPresenceAt,
+      });
+      setLoggedUser((prev) => (prev ? {
+        ...prev,
+        status: persistedStatus,
+        presenceStatus: persistedStatus,
+        lastPresenceAt: updatedUser.lastPresenceAt,
+      } : prev));
+      toast.success(`Estado ${statusLabels[nextStatus].toLowerCase()}`);
+    } catch (error) {
+      updateLoggedUser({ status: previousStatus, presenceStatus: previousStatus });
+      setLoggedUser((prev) => (prev ? { ...prev, status: previousStatus, presenceStatus: previousStatus } : prev));
+      toast.error(error instanceof Error ? error.message : 'No se pudo actualizar el estado');
+    }
   };
 
   useEffect(() => {
@@ -520,6 +557,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const unreadCount = notifications.filter((item) => !item.read).length;
   const notificationCount = unreadCount || notifications.length;
   const userAvatarUrl = getUserAvatarUrl(loggedUser);
+  const currentUserStatus = (loggedUser?.status ?? loggedUser?.presenceStatus ?? 'active') as NonNullable<AuthUser['status']>;
 
   const renderUserMenu = (align: 'start' | 'end' = 'start', triggerClassName = 'legacy-user-trigger') => (
     <DropdownMenu>
@@ -530,7 +568,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               {userAvatarUrl ? <AvatarImage src={userAvatarUrl} alt="Foto de perfil" /> : null}
               <AvatarFallback className="bg-orange-500 text-white">{getInitials(loggedUser)}</AvatarFallback>
             </Avatar>
-            <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-[var(--app-sidebar)] bg-emerald-500" />
+            <span className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-[var(--app-sidebar)] ${statusIndicatorClasses[currentUserStatus] ?? statusIndicatorClasses.active}`} />
           </div>
           {!isSidebarCollapsed && (
             <span className="hidden min-w-0 flex-1 text-left lg:block">
@@ -558,8 +596,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         <DropdownMenuSeparator />
         <DropdownMenuLabel>Estado</DropdownMenuLabel>
         <DropdownMenuRadioGroup
-          value={loggedUser?.status ?? 'active'}
-          onValueChange={(value) => handleStatusChange(value as NonNullable<AuthUser['status']>)}
+          value={currentUserStatus}
+          onValueChange={(value) => void handleStatusChange(value as UserPresenceStatus)}
         >
           <DropdownMenuRadioItem value="active">Activo</DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="away">Ausente</DropdownMenuRadioItem>
@@ -567,7 +605,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           <DropdownMenuRadioItem value="offline">Desconectado</DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleLogout}><LogOut className="mr-2 h-4 w-4" /> Cerrar sesion</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => void handleLogout()}><LogOut className="mr-2 h-4 w-4" /> Cerrar sesion</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

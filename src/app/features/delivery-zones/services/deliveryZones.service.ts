@@ -68,6 +68,8 @@ export async function createDeliveryZone(payload: CreateDeliveryZoneRequest): Pr
       headquarterId: payload.headquarterId,
       headquarter_id: payload.headquarterId,
     },
+    deliveryFee: payload.deliveryFee ?? 0,
+    delivery_fee: payload.deliveryFee ?? 0,
     storeId: resolvedStoreId,
   });
 
@@ -80,6 +82,8 @@ export async function updateDeliveryZone(zoneId: string, payload: UpdateDelivery
     ...payload,
     headquarterId: payload.headquarterId,
     headquarter_id: payload.headquarterId,
+    deliveryFee: payload.deliveryFee,
+    delivery_fee: payload.deliveryFee,
     metadata: payload.headquarterId
       ? {
         ...(payload.metadata ?? {}),

@@ -238,6 +238,8 @@ function blobToDataUrl(blob: Blob) {
 }
 
 function mapContactToConversation(contact: ContactItem): ConversationItem {
+  const unreadCount = Number(contact.unread_count);
+
   return {
     id: String(contact.id),
     name: contact.name || contact.phone || `Conversacion ${contact.id}`,
@@ -245,10 +247,23 @@ function mapContactToConversation(contact: ContactItem): ConversationItem {
     avatarUrl: contact.avatar_url ?? contact.avatarUrl ?? null,
     lastMessage: contact.last_message || 'Sin mensajes',
     lastMessageAt: parseDate(contact.last_message_date),
-    unreadCount: Number(contact.label) === 1 ? 1 : 0,
+    unreadCount: Number.isFinite(unreadCount) ? unreadCount : Number(contact.label) === 1 ? 1 : 0,
     status: Number(contact.label) === 2 ? 'assigned' : undefined,
     channel: contact.network ?? contact.instance_description ?? 'whatsapp',
   };
+}
+
+function mergeLoadedConversations(
+  loaded: ConversationItem[],
+  current: ConversationItem[],
+  selectedConversationId: string | null,
+) {
+  if (!selectedConversationId || loaded.some((conversation) => conversation.id === selectedConversationId)) {
+    return loaded;
+  }
+
+  const selectedConversation = current.find((conversation) => conversation.id === selectedConversationId);
+  return selectedConversation ? [selectedConversation, ...loaded] : loaded;
 }
 
 function getRecordValue(value: unknown): Record<string, unknown> | null {
@@ -262,7 +277,7 @@ function getConversationField(payload: Record<string, unknown>, key: string) {
 function normalizeDisplayPhone(value: unknown) {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
-  if (!trimmed || trimmed.toLowerCase().includes('@lid')) return undefined;
+  if (!trimmed || /@(lid|g\.us)$/i.test(trimmed)) return undefined;
   const withoutSuffix = trimmed.replace(/@(c\.us|s\.whatsapp\.net)$/i, '');
   const digits = withoutSuffix.replace(/\D/g, '');
   return digits || undefined;
@@ -739,7 +754,7 @@ export function ConversationList() {
     try {
       const data = await listContacts();
       const mapped = data.map(mapContactToConversation);
-      setConversations(mapped);
+      setConversations((current) => mergeLoadedConversations(mapped, current, selectedConversationId));
       setSelectedConversationId((current) => current ?? mapped[0]?.id ?? null);
     } catch (error) {
       toast.error(getApiErrorMessage(error, 'No se pudieron cargar los chats'));
@@ -747,7 +762,7 @@ export function ConversationList() {
       setIsLoadingConversations(false);
       setHasLoadedConversations(true);
     }
-  }, []);
+  }, [selectedConversationId]);
 
   const loadMessages = useCallback(async (conversationId: string) => {
     setIsLoadingMessages(true);
@@ -924,11 +939,13 @@ export function ConversationList() {
         )));
         scheduleScrollToConversationEnd('smooth');
       }
+
+      void loadConversations();
     };
 
     window.addEventListener(APP_NEW_MESSAGE_EVENT, handleNewMessage);
     return () => window.removeEventListener(APP_NEW_MESSAGE_EVENT, handleNewMessage);
-  }, [scheduleScrollToConversationEnd, selectedConversationId]);
+  }, [loadConversations, scheduleScrollToConversationEnd, selectedConversationId]);
 
   useEffect(() => {
     const handleConversationsChanged = (event: Event) => {

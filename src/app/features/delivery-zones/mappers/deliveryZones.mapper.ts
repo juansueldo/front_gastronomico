@@ -34,6 +34,11 @@ const normalizePoints = (raw: DeliveryZoneDto): DeliveryZonePoint[] => {
   return normalizeGeoJsonPoints(raw.geojson?.coordinates ?? raw.geometry?.coordinates);
 };
 
+const normalizeDeliveryFee = (raw: DeliveryZoneDto): number => {
+  const parsed = Number(raw.deliveryFee ?? raw.delivery_fee ?? 0);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+};
+
 const extractRawZone = (raw: DeliveryZoneDto | null | undefined): DeliveryZoneDto | null => {
   if (!raw || typeof raw !== 'object') return null;
   return raw.zone ?? raw.deliveryZone ?? raw.item ?? raw;
@@ -72,6 +77,7 @@ export function mapDeliveryZoneDtoToModel(raw: DeliveryZoneDto | null | undefine
     headquarterId: Number.isInteger(resolvedHeadquarterId) && resolvedHeadquarterId > 0 ? resolvedHeadquarterId : undefined,
     updatedAt: zoneRaw.updatedAt ?? zoneRaw.updated_at,
     zoneid: zoneRaw.zoneid,
+    deliveryFee: normalizeDeliveryFee(zoneRaw),
     storeId: zoneRaw.storeId ?? zoneRaw.store_id,
     statusId: resolvedStatusId,
   };

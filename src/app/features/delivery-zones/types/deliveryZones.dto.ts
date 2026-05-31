@@ -26,6 +26,8 @@ export type DeliveryZoneDto = {
   vertices?: DeliveryZonePointDto[];
   updatedAt?: string;
   updated_at?: string;
+  deliveryFee?: number | string;
+  delivery_fee?: number | string;
   zone?: DeliveryZoneDto;
   deliveryZone?: DeliveryZoneDto;
   item?: DeliveryZoneDto;
