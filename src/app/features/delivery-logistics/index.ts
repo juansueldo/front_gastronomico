@@ -6,6 +6,7 @@ export {
   listDeliveryDrivers,
   markDeliveryRoutePrinted,
   updateDeliveryDriver,
+  updateDeliveryRouteLocation,
   updateDeliveryRouteStatus,
 } from './services/deliveryLogistics.service';
 

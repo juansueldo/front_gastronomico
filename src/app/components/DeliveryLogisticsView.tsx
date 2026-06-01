@@ -2,30 +2,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, Tooltip, ZoomControl, useMap } from 'react-leaflet';
 import type { LatLngBoundsExpression, LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Bike, CheckCircle2, MapPinned, Printer, RefreshCw, Route, Trash2, UserPlus } from 'lucide-react';
+import { Bike, CheckCircle2, Copy, LocateFixed, MapPinned, MessageCircle, Printer, RefreshCw, Route, UserRoundCheck } from 'lucide-react';
+import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Button } from '../shared/ui/components/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '../shared/ui/components/dialog';
-import { Input } from '../shared/ui/components/input';
-import { Label } from '../shared/ui/components/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../shared/ui/components/select';
 import {
   assignDeliveryRoute,
-  createDeliveryDriver,
-  deleteDeliveryDriver,
   fetchDeliveryBoard,
   markDeliveryRoutePrinted,
-  updateDeliveryDriver,
+  updateDeliveryRouteLocation,
   updateDeliveryRouteStatus,
   type DeliveryBoard,
-  type DeliveryDriver,
   type DeliveryOrder,
   type DeliveryRoute,
   type VehicleType,
@@ -38,10 +26,10 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
   currency: 'ARS',
   maximumFractionDigits: 0,
 });
-const COMPACT_DIALOG_CONTENT_CLASS = 'w-[calc(100vw-2rem)] max-w-[560px] gap-0 overflow-visible p-0';
 const FORM_CONTROL_CLASS =
   'h-10 rounded-md border-[var(--app-line)] bg-[var(--app-panel-subtle)] text-[var(--app-strong)] placeholder:text-[var(--app-muted)] focus:border-[var(--primary)] focus-visible:border-[var(--primary)] focus-visible:ring-[var(--primary)]/25';
 const SELECT_CONTENT_CLASS = 'border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]';
+const PUBLIC_FRONTEND_URL = ((import.meta as any).env?.VITE_PUBLIC_FRONTEND_URL || window.location.origin).replace(/\/$/, '');
 
 const vehicleLabels: Record<VehicleType, string> = {
   motorcycle: 'Moto',
@@ -90,6 +78,31 @@ function getOrderItems(order: DeliveryOrder) {
 function formatMoney(value: unknown) {
   const amount = Number(value ?? 0);
   return currencyFormatter.format(Number.isFinite(amount) ? amount : 0);
+}
+
+function getTrackingToken(order?: DeliveryOrder | null) {
+  return order?.trackingToken || order?.tracking_token || null;
+}
+
+function getTrackingUrl(order?: DeliveryOrder | null) {
+  const token = getTrackingToken(order);
+  return token ? `${PUBLIC_FRONTEND_URL}/tracking/${token}` : null;
+}
+
+function normalizePhoneForWhatsApp(phone?: string | null) {
+  return String(phone || '').replace(/[^\d]/g, '');
+}
+
+function getDistanceMeters(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
+  const earthRadius = 6371000;
+  const dLat = (b.latitude - a.latitude) * Math.PI / 180;
+  const dLng = (b.longitude - a.longitude) * Math.PI / 180;
+  const lat1 = a.latitude * Math.PI / 180;
+  const lat2 = b.latitude * Math.PI / 180;
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const value = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
+  return earthRadius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
 }
 
 function MapBounds({ orders, routes }: { orders: DeliveryOrder[]; routes: DeliveryRoute[] }) {
@@ -179,17 +192,15 @@ function buildPrintHtml(route: DeliveryRoute) {
 }
 
 export function DeliveryLogisticsView() {
+  const navigate = useNavigate();
   const [board, setBoard] = useState<DeliveryBoard>({ drivers: [], orders: [], routes: [] });
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [selectedDriverId, setSelectedDriverId] = useState('');
-  const [driverName, setDriverName] = useState('');
-  const [driverPhone, setDriverPhone] = useState('');
-  const [driverPlate, setDriverPlate] = useState('');
-  const [vehicleType, setVehicleType] = useState<VehicleType>('motorcycle');
-  const [isDriverDialogOpen, setIsDriverDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSavingDriver, setIsSavingDriver] = useState(false);
   const [isAssigning, setIsAssigning] = useState(false);
+  const [sharingRouteId, setSharingRouteId] = useState<string | null>(null);
+  const [locationStatus, setLocationStatus] = useState<Record<string, string>>({});
+  const [lastSentLocation, setLastSentLocation] = useState<Record<string, { latitude: number; longitude: number; sentAt: number }>>({});
 
   const unassignedOrders = useMemo(() => (
     board.orders.filter((order) => !order.DeliveryRouteOrder)
@@ -236,54 +247,6 @@ export function DeliveryLogisticsView() {
     setSelectedOrderIds((current) => (
       current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
     ));
-  };
-
-  const handleCreateDriver = async () => {
-    if (!driverName.trim()) {
-      toast.error('Ingresá el nombre del repartidor');
-      return;
-    }
-
-    setIsSavingDriver(true);
-    try {
-      await createDeliveryDriver({
-        name: driverName.trim(),
-        phone: driverPhone.trim(),
-        plate: driverPlate.trim(),
-        vehicleType,
-      });
-      setDriverName('');
-      setDriverPhone('');
-      setDriverPlate('');
-      setVehicleType('motorcycle');
-      setIsDriverDialogOpen(false);
-      toast.success('Repartidor creado');
-      await loadBoard();
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, 'No se pudo crear el repartidor'));
-    } finally {
-      setIsSavingDriver(false);
-    }
-  };
-
-  const handleToggleDriverStatus = async (driver: DeliveryDriver) => {
-    try {
-      await updateDeliveryDriver(driver.id, {
-        status: driver.status === 'inactive' ? 'active' : 'inactive',
-      });
-      await loadBoard();
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, 'No se pudo actualizar el repartidor'));
-    }
-  };
-
-  const handleDeleteDriver = async (driver: DeliveryDriver) => {
-    try {
-      await deleteDeliveryDriver(driver.id);
-      await loadBoard();
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, 'No se pudo eliminar el repartidor'));
-    }
   };
 
   const handleAssignRoute = async () => {
@@ -336,6 +299,116 @@ export function DeliveryLogisticsView() {
     }
   };
 
+  const handleCopyTrackingLink = async (order: DeliveryOrder) => {
+    const url = getTrackingUrl(order);
+    if (!url) {
+      toast.error('Este pedido todavía no tiene link de seguimiento');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link de seguimiento copiado');
+    } catch {
+      toast.error('No se pudo copiar el link');
+    }
+  };
+
+  const handleSendTrackingWhatsApp = (order: DeliveryOrder) => {
+    const url = getTrackingUrl(order);
+    if (!url) {
+      toast.error('Este pedido todavía no tiene link de seguimiento');
+      return;
+    }
+
+    const phone = normalizePhoneForWhatsApp(order.Customer?.phone);
+    if (!phone) {
+      toast.error('El cliente no tiene teléfono cargado');
+      return;
+    }
+
+    const text = encodeURIComponent(`Hola ${getCustomerName(order)}, podés seguir tu pedido ${getOrderLabel(order)} en tiempo real acá: ${url}`);
+    window.open(`https://wa.me/${phone}?text=${text}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const sendRouteLocation = async (route: DeliveryRoute, position: GeolocationPosition) => {
+    const routeId = String(route.id);
+    const nextLocation = {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+    };
+    const previous = lastSentLocation[routeId];
+    const now = Date.now();
+    const shouldSend = !previous
+      || now - previous.sentAt >= 5000
+      || getDistanceMeters(previous, nextLocation) >= 20;
+
+    if (!shouldSend) return;
+
+    try {
+      await updateDeliveryRouteLocation(route.id, {
+        ...nextLocation,
+        accuracy: position.coords.accuracy,
+      });
+      setLastSentLocation((current) => ({
+        ...current,
+        [routeId]: { ...nextLocation, sentAt: now },
+      }));
+      setLocationStatus((current) => ({
+        ...current,
+        [routeId]: `Última ubicación enviada ${new Date(now).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`,
+      }));
+    } catch (error) {
+      setLocationStatus((current) => ({
+        ...current,
+        [routeId]: getApiErrorMessage(error, 'No se pudo enviar la ubicación'),
+      }));
+    }
+  };
+
+  const handleShareRouteLocation = (route: DeliveryRoute) => {
+    if (sharingRouteId === String(route.id)) {
+      setSharingRouteId(null);
+      setLocationStatus((current) => ({ ...current, [String(route.id)]: 'Ubicación pausada' }));
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      toast.error('GPS no disponible en este dispositivo');
+      return;
+    }
+
+    setSharingRouteId(String(route.id));
+    setLocationStatus((current) => ({ ...current, [String(route.id)]: 'Solicitando permiso de ubicación...' }));
+  };
+
+  useEffect(() => {
+    if (!sharingRouteId) return undefined;
+
+    const route = board.routes.find((item) => String(item.id) === sharingRouteId);
+    if (!route) return undefined;
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        void sendRouteLocation(route, position);
+      },
+      (error) => {
+        setLocationStatus((current) => ({
+          ...current,
+          [sharingRouteId]: error.code === error.PERMISSION_DENIED
+            ? 'Permiso de ubicación denegado'
+            : 'No se pudo obtener la ubicación',
+        }));
+        setSharingRouteId(null);
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [board.routes, sharingRouteId, lastSentLocation]);
+
   return (
     <div className="flex min-h-0 flex-col gap-5 p-3 text-[var(--app-strong)] md:p-5">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -343,10 +416,21 @@ export function DeliveryLogisticsView() {
           <p className="text-sm font-semibold text-[var(--primary)]">Operaciones</p>
           <h1 className="mt-1 text-2xl font-bold tracking-normal text-slate-950 dark:text-white sm:text-3xl">Delivery y repartidores</h1>
         </div>
-        <Button type="button" variant="outline" className="gap-2 border-[var(--app-line)] bg-[var(--app-panel)]" onClick={() => void loadBoard()} disabled={isLoading}>
-          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          Actualizar
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2 border-[var(--app-line)] bg-[var(--app-panel)]"
+            onClick={() => navigate('/delivery-logistics/drivers')}
+          >
+            <UserRoundCheck className="h-4 w-4" />
+            Ver repartidores
+          </Button>
+          <Button type="button" variant="outline" className="gap-2 border-[var(--app-line)] bg-[var(--app-panel)]" onClick={() => void loadBoard()} disabled={isLoading}>
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Actualizar
+          </Button>
+        </div>
       </header>
 
       <section className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -354,18 +438,17 @@ export function DeliveryLogisticsView() {
           <section className="rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] p-4">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <UserPlus className="h-5 w-5 text-[var(--primary)]" />
+                <UserRoundCheck className="h-5 w-5 text-[var(--primary)]" />
                 <h2 className="font-semibold">Repartidores</h2>
               </div>
-              <Button type="button" size="sm" className="gap-2" onClick={() => setIsDriverDialogOpen(true)}>
-                <UserPlus className="h-4 w-4" />
-                Crear
+              <Button type="button" size="sm" variant="outline" className="gap-2 border-[var(--app-line)]" onClick={() => navigate('/delivery-logistics/drivers')}>
+                Administrar
               </Button>
             </div>
 
             <div className="space-y-2">
               {board.drivers.length === 0 ? (
-                <p className="rounded-md border border-dashed border-[var(--app-line)] p-3 text-sm text-[var(--app-muted)]">Todavía no hay repartidores.</p>
+                <p className="rounded-md border border-dashed border-[var(--app-line)] p-3 text-sm text-[var(--app-muted)]">Todavía no hay repartidores. Crealos desde la vista de administración.</p>
               ) : board.drivers.map((driver) => (
                 <div key={driver.id} className="rounded-md border border-[var(--app-line)] bg-[var(--app-surface)] p-3">
                   <div className="flex items-start justify-between gap-3">
@@ -382,14 +465,6 @@ export function DeliveryLogisticsView() {
                     >
                       {driver.status === 'active' ? 'Activo' : driver.status === 'busy' ? 'En reparto' : 'Inactivo'}
                     </span>
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    <Button type="button" variant="outline" size="sm" className="flex-1 border-[var(--app-line)]" onClick={() => void handleToggleDriverStatus(driver)}>
-                      {driver.status === 'inactive' ? 'Activar' : 'Pausar'}
-                    </Button>
-                    <Button type="button" variant="outline" size="icon" className="border-[var(--app-line)]" onClick={() => void handleDeleteDriver(driver)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
                   </div>
                 </div>
               ))}
@@ -547,19 +622,38 @@ export function DeliveryLogisticsView() {
                     </div>
                     <ol className="mt-3 space-y-2 text-sm">
                       {(route.DeliveryRouteOrders ?? []).slice().sort((a, b) => Number(a.sequence) - Number(b.sequence)).map((routeOrder) => (
-                        <li key={routeOrder.id} className="flex gap-2">
+                        <li key={routeOrder.id} className="flex gap-2 rounded-md border border-[var(--app-line)] bg-[var(--app-panel)] p-2">
                           <span className="font-semibold text-[var(--primary)]">{routeOrder.sequence}.</span>
-                          <span className="min-w-0">
+                          <span className="min-w-0 flex-1">
                             <span className="block truncate">{getOrderLabel(routeOrder.Order as DeliveryOrder)}</span>
                             <span className="block truncate text-xs text-[var(--app-muted)]">{routeOrder.Order?.delivery_address}</span>
+                            <span className="mt-2 flex flex-wrap gap-2">
+                              <Button type="button" variant="outline" size="sm" className="h-8 border-[var(--app-line)]" onClick={() => routeOrder.Order && void handleCopyTrackingLink(routeOrder.Order)}>
+                                <Copy className="mr-1 h-3.5 w-3.5" />
+                                Link
+                              </Button>
+                              <Button type="button" variant="outline" size="sm" className="h-8 border-[var(--app-line)]" onClick={() => routeOrder.Order && handleSendTrackingWhatsApp(routeOrder.Order)}>
+                                <MessageCircle className="mr-1 h-3.5 w-3.5" />
+                                WhatsApp
+                              </Button>
+                            </span>
                           </span>
                         </li>
                       ))}
                     </ol>
-                    <div className="mt-3 grid grid-cols-3 gap-2">
+                    {locationStatus[String(route.id)] ? (
+                      <p className="mt-3 rounded-md bg-[var(--app-soft)] p-2 text-xs font-semibold text-[var(--app-muted)]">
+                        {locationStatus[String(route.id)]}
+                      </p>
+                    ) : null}
+                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                       <Button type="button" variant="outline" size="sm" className="border-[var(--app-line)]" onClick={() => void handlePrintRoute(route)}>
                         <Printer className="mr-1 h-4 w-4" />
                         Imprimir
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="border-[var(--app-line)]" onClick={() => handleShareRouteLocation(route)}>
+                        <LocateFixed className="mr-1 h-4 w-4" />
+                        {sharingRouteId === String(route.id) ? 'Pausar GPS' : 'Compartir GPS'}
                       </Button>
                       <Button type="button" variant="outline" size="sm" className="border-[var(--app-line)]" onClick={() => void handleRouteStatus(route, 'in_transit')}>
                         En camino
@@ -576,90 +670,6 @@ export function DeliveryLogisticsView() {
         </main>
       </section>
 
-      <Dialog
-        open={isDriverDialogOpen}
-        onOpenChange={(open) => {
-          setIsDriverDialogOpen(open);
-          if (!open && !isSavingDriver) {
-            setDriverName('');
-            setDriverPhone('');
-            setDriverPlate('');
-            setVehicleType('motorcycle');
-          }
-        }}
-      >
-        <DialogContent className={COMPACT_DIALOG_CONTENT_CLASS}>
-          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
-            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
-              <Bike size={18} />
-            </div>
-            <DialogTitle>Nuevo repartidor</DialogTitle>
-            <DialogDescription>Creá un perfil para asignarle recorridos y comandas de moto.</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 px-5 py-4">
-            <div>
-              <Label>Nombre</Label>
-              <Input
-                value={driverName}
-                onChange={(event) => setDriverName(event.target.value)}
-                placeholder="Ej: Juan Pérez"
-                className={`mt-2 ${FORM_CONTROL_CLASS}`}
-              />
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <Label>Teléfono</Label>
-                <Input
-                  value={driverPhone}
-                  onChange={(event) => setDriverPhone(event.target.value)}
-                  placeholder="Ej: 11 2345-6789"
-                  className={`mt-2 ${FORM_CONTROL_CLASS}`}
-                />
-              </div>
-              <div>
-                <Label>Patente</Label>
-                <Input
-                  value={driverPlate}
-                  onChange={(event) => setDriverPlate(event.target.value)}
-                  placeholder="Ej: A123BCD"
-                  className={`mt-2 ${FORM_CONTROL_CLASS}`}
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label>Vehículo</Label>
-              <Select value={vehicleType} onValueChange={(value) => setVehicleType(value as VehicleType)}>
-                <SelectTrigger className={`mt-2 ${FORM_CONTROL_CLASS}`}>
-                  <SelectValue placeholder="Seleccionar vehículo" />
-                </SelectTrigger>
-                <SelectContent className={SELECT_CONTENT_CLASS}>
-                  {Object.entries(vehicleLabels).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsDriverDialogOpen(false)}
-              disabled={isSavingDriver}
-              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
-            >
-              Cancelar
-            </Button>
-            <Button type="button" onClick={() => void handleCreateDriver()} disabled={isSavingDriver}>
-              {isSavingDriver ? 'Guardando...' : 'Crear repartidor'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { ConversationListPage } from '../../features/chat/pages/ConversationList
 import { ChatPage } from '../../features/chat/pages/ChatPage';
 import { CalendarPage } from '../../features/calendar/pages/CalendarPage';
 import { SettingsPage } from '../../features/settings/pages/SettingsPage';
+import { PlanManagementPage } from '../../features/settings/pages/PlanManagementPage';
 import { AgentConfigPage } from '../../features/agent/pages/AgentConfigPage';
 import { ConnectionsPage } from '../../features/integrations/pages/ConnectionsPage';
 import { CampaignsPage } from '../../features/campaigns/pages/CampaignsPage';
@@ -23,9 +24,11 @@ import { InventoryPage } from '../../features/inventory/pages/InventoryPage';
 import { KitchenOrdersPage } from '../../features/kitchen/pages/KitchenOrdersPage';
 import { IntegrationsPage } from '../../features/integrations/pages/IntegrationsPage';
 import { PublicStorefrontPage } from '../../features/storefront/pages/PublicStorefrontPage';
+import { OrderTrackingPage } from '../../features/tracking/pages/OrderTrackingPage';
 import { HeadquartersPage } from '../../features/headquarters/pages/HeadquartersPage';
 import { DeliveryZonesPage } from '../../features/delivery-zones/pages/DeliveryZonesPage';
 import { DeliveryLogisticsPage } from '../../features/delivery-logistics/pages/DeliveryLogisticsPage';
+import { DeliveryDriversPage } from '../../features/delivery-logistics/pages/DeliveryDriversPage';
 import { UsersPage } from '../../features/users/pages/UsersPage';
 import { CustomersPage } from '../../features/customers/pages/CustomersPage';
 import { WaitersPage } from '../../features/waiters/pages/WaitersPage';
@@ -87,6 +90,7 @@ export const protectedRouteConfig: ProtectedRouteConfig[] = [
   { path: '/chat/:id', Component: ChatPage, roles: ['admin', 'supervisor', 'agent'], layout: false },
   { path: '/calendar', Component: CalendarPage, roles: ['admin', 'supervisor', 'agent'] },
   { path: '/settings', Component: SettingsPage, roles: ['admin', 'supervisor', 'agent'] },
+  { path: '/billing', Component: PlanManagementPage, roles: ['admin'] },
   { path: '/agent', Component: AgentConfigPage, roles: ['admin'] },
   { path: '/connections', Component: ConnectionsPage, roles: ['admin'] },
   { path: '/campaigns', Component: CampaignsPage, roles: ['admin', 'supervisor'] },
@@ -104,6 +108,7 @@ export const protectedRouteConfig: ProtectedRouteConfig[] = [
   { path: '/headquarters', Component: HeadquartersPage, roles: ['admin', 'supervisor'] },
   { path: '/delivery-zones', Component: DeliveryZonesPage, roles: ['admin', 'supervisor'] },
   { path: '/delivery-logistics', Component: DeliveryLogisticsPage, roles: ['admin', 'supervisor'] },
+  { path: '/delivery-logistics/drivers', Component: DeliveryDriversPage, roles: ['admin', 'supervisor'] },
   { path: '/users', Component: UsersPage, roles: ['admin'] },
 ];
 
@@ -114,6 +119,7 @@ export const router = createBrowserRouter([
   { path: '/demo', Component: withPublicPage(<LoginPage demo />) },
   { path: '/register', Component: withPublicPage(<RegisterPage />) },
   { path: '/tienda/:slug', Component: PublicStorefrontPage },
+  { path: '/tracking/:token', Component: OrderTrackingPage },
   ...protectedRouteConfig.map((route) => ({
     path: route.path,
     Component: withProtectedPage(route.Component, route.roles, route.layout ?? true),

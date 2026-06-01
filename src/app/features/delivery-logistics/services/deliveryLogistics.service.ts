@@ -25,6 +25,9 @@ export interface DeliveryOrder {
   delivery_latitude?: number | null;
   delivery_longitude?: number | null;
   delivery_fee?: number | null;
+  tracking_token?: string | null;
+  trackingToken?: string | null;
+  tracking_token_expires_at?: string | null;
   delivery_date?: string | null;
   order_date?: string | null;
   Customer?: {
@@ -72,6 +75,10 @@ export interface DeliveryRoute {
   scheduledAt?: string | null;
   startedAt?: string | null;
   completedAt?: string | null;
+  lastLatitude?: number | null;
+  lastLongitude?: number | null;
+  lastLocationAccuracy?: number | null;
+  lastLocationAt?: string | null;
   notes?: string | null;
   DeliveryDriver?: DeliveryDriver;
   DeliveryRouteOrders?: DeliveryRouteOrder[];
@@ -136,6 +143,14 @@ export async function assignDeliveryRoute(payload: {
 
 export async function updateDeliveryRouteStatus(routeId: string | number, status: RouteStatus): Promise<DeliveryRoute> {
   return apiClient.patch(`${API_VERSION}/delivery-logistics/routes/${routeId}/status`, { status }) as Promise<DeliveryRoute>;
+}
+
+export async function updateDeliveryRouteLocation(routeId: string | number, payload: {
+  latitude: number;
+  longitude: number;
+  accuracy?: number | null;
+}): Promise<DeliveryRoute> {
+  return apiClient.patch(`${API_VERSION}/delivery-logistics/routes/${routeId}/location`, payload) as Promise<DeliveryRoute>;
 }
 
 export async function markDeliveryRoutePrinted(routeId: string | number): Promise<DeliveryRoute> {

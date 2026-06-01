@@ -13,6 +13,7 @@ import {
   CircleHelp,
   CircleUserRound,
   ClipboardList,
+  CreditCard,
   Home,
   LayoutGrid,
   LogOut,
@@ -111,6 +112,7 @@ const navCategories: Array<{ category: string; items: NavItem[] }> = [
   {
     category: 'Configuracion',
     items: [
+      { path: '/billing', icon: CreditCard, label: 'Mi plan', allowedRoles: ['admin'] },
       { path: '/settings', icon: Settings, label: 'Configuracion', allowedRoles: ['admin', 'manager', 'user', 'supervisor', 'agent'] },
       { path: '/users', icon: Users, label: 'Usuarios', allowedRoles: ['admin'] },
     ],

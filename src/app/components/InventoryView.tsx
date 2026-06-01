@@ -583,10 +583,10 @@ export function InventoryView() {
         const directProduct = row.directProduct;
 
         return (
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-col items-stretch justify-end gap-2 sm:flex-row sm:items-center">
             <Button
               size="sm"
-              className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
+              className="w-full bg-transparent border-orange-600 text-white hover:bg-gray-700 sm:w-auto"
               onClick={() => {
                 if (row.type === 'ingredient' && row.ingredient) {
                   openIngredientAdjustDialog(row.ingredient);
@@ -603,7 +603,7 @@ export function InventoryView() {
             {row.type === 'direct' && directProduct ? (
               <Button
                 size="sm"
-                className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
+                className="w-full bg-transparent border-orange-600 text-white hover:bg-gray-700 sm:w-auto"
                 onClick={() => openConsumeDialog({ type: 'product', productId: directProduct.productId, productName: directProduct.productName })}
               >
                 Consumir
@@ -624,10 +624,10 @@ export function InventoryView() {
             <p className="text-sm text-gray-400">Controla stock de ingredientes y productos sin receta</p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
             <Button
               size="sm"
-              className="primary-action h-10 rounded-lg px-4"
+              className="primary-action h-10 w-full justify-center rounded-lg px-4 sm:w-auto"
               onClick={() => setIsCreateIngredientDialogOpen(true)}
             >
               <Plus className="h-4 w-4 mr-1" />
@@ -635,20 +635,22 @@ export function InventoryView() {
             </Button>
             <Button
               size="sm"
-              className="ghost-action h-10 rounded-lg px-4"
+              className="ghost-action h-10 w-full justify-center rounded-lg px-4 sm:w-auto"
               onClick={() => setIsConsumeOrderDialogOpen(true)}
             >
               <ShoppingCart className="h-4 w-4 mr-1" />
               Consumir pedido
             </Button>
-            <Badge variant="secondary" className="bg-label-secondary text-white">
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+            <Badge variant="secondary" className="min-h-10 justify-center bg-label-secondary px-3 text-white">
               <PackageCheck className="h-3.5 w-3.5 mr-1" />
               {ingredientRows.length + directProductRows.length} items
             </Badge>
-            <Badge variant="secondary" className={lowIngredientCount + lowDirectProductCount > 0 ? 'bg-label-danger text-white' : 'bg-label-success text-white'}>
+            <Badge variant="secondary" className={`min-h-10 justify-center px-3 ${lowIngredientCount + lowDirectProductCount > 0 ? 'bg-label-danger text-white' : 'bg-label-success text-white'}`}>
               <AlertTriangle className="h-3.5 w-3.5 mr-1" />
               {lowIngredientCount + lowDirectProductCount} bajos
             </Badge>
+            </div>
           </div>
         </div>
 
@@ -711,17 +713,17 @@ export function InventoryView() {
             />
 
           </div>
-          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+          <DialogFooter className="flex-col gap-2 border-t border-[var(--app-line)] px-5 py-4 sm:flex-row">
             <Button
               type="button"
               variant="outline"
               onClick={() => setIsAdjustDialogOpen(false)}
               disabled={isSavingStockAdjustment}
-              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+              className="w-full border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)] sm:w-auto"
             >
               Cancelar
             </Button>
-            <Button className="gap-2" onClick={() => { void saveStockAdjustment(); }} disabled={isSavingStockAdjustment}>
+            <Button className="w-full gap-2 sm:w-auto" onClick={() => { void saveStockAdjustment(); }} disabled={isSavingStockAdjustment}>
               <Wrench size={15} />
               {isSavingStockAdjustment ? 'Guardando...' : 'Guardar stock'}
             </Button>
@@ -786,17 +788,17 @@ export function InventoryView() {
             />
 
           </div>
-          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+          <DialogFooter className="flex-col gap-2 border-t border-[var(--app-line)] px-5 py-4 sm:flex-row">
             <Button
               type="button"
               variant="outline"
               onClick={() => setIsCreateIngredientDialogOpen(false)}
               disabled={isCreatingIngredient}
-              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+              className="w-full border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)] sm:w-auto"
             >
               Cancelar
             </Button>
-            <Button className="gap-2" onClick={() => { void handleCreateIngredient(); }} disabled={isCreatingIngredient}>
+            <Button className="w-full gap-2 sm:w-auto" onClick={() => { void handleCreateIngredient(); }} disabled={isCreatingIngredient}>
               <Plus size={15} />
               {isCreatingIngredient ? 'Guardando...' : 'Crear ingrediente'}
             </Button>
@@ -839,17 +841,17 @@ export function InventoryView() {
             />
 
           </div>
-          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+          <DialogFooter className="flex-col gap-2 border-t border-[var(--app-line)] px-5 py-4 sm:flex-row">
             <Button
               type="button"
               variant="outline"
               onClick={() => setIsConsumeDialogOpen(false)}
               disabled={isSavingConsumption}
-              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+              className="w-full border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)] sm:w-auto"
             >
               Cancelar
             </Button>
-            <Button className="gap-2" onClick={() => { void handleConsumeInventory(); }} disabled={isSavingConsumption}>
+            <Button className="w-full gap-2 sm:w-auto" onClick={() => { void handleConsumeInventory(); }} disabled={isSavingConsumption}>
               <PackageCheck size={15} />
               {isSavingConsumption ? 'Guardando...' : 'Confirmar consumo'}
             </Button>
@@ -899,7 +901,7 @@ export function InventoryView() {
                 />
                 <Button
                   variant="outline"
-                  className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+                  className="w-full border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)] md:w-auto"
                   onClick={() => removeConsumeOrderLine(line.id)}
                 >
                   Quitar
@@ -908,17 +910,17 @@ export function InventoryView() {
             ))}
 
           </div>
-          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+          <DialogFooter className="flex-col gap-2 border-t border-[var(--app-line)] px-5 py-4 sm:flex-row">
             <Button
               type="button"
               variant="outline"
-              className="border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+              className="w-full border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)] sm:w-auto"
               onClick={addConsumeOrderLine}
               disabled={isSavingOrderConsumption}
             >
               Agregar línea
             </Button>
-            <Button className="gap-2" onClick={() => { void handleConsumeOrder(); }} disabled={isSavingOrderConsumption}>
+            <Button className="w-full gap-2 sm:w-auto" onClick={() => { void handleConsumeOrder(); }} disabled={isSavingOrderConsumption}>
               <ShoppingCart size={15} />
               {isSavingOrderConsumption ? 'Guardando...' : 'Aplicar consumo'}
             </Button>

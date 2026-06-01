@@ -52,6 +52,7 @@
     - WS: `${VITE_API_URL}/realtime/ws`
     - SSE: `${VITE_API_URL}/realtime/sse`)
   - `VITE_GOOGLE_MAPS_API_KEY=...` (habilita Google Maps en pedidos de delivery y validación por Geocoding API)
+  - `VITE_PUBLIC_FRONTEND_URL=...` (URL publica usada para generar links de tracking de pedidos; si se omite, usa el origen actual)
 
   Accepted realtime payload examples:
 
