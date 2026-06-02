@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CircleMarker, MapContainer, Popup, TileLayer, ZoomControl, useMap } from 'react-leaflet';
+import { MapContainer, Marker, Popup, TileLayer, ZoomControl, useMap } from 'react-leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { divIcon } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Bike, Clock, MapPin, PackageCheck, RefreshCw, Store } from 'lucide-react';
 import { useParams } from 'react-router';
@@ -13,6 +14,41 @@ import {
 
 const DEFAULT_CENTER: LatLngExpression = [-34.603722, -58.381592];
 const ORDER_STEPS = ['pending', 'processing', 'ready', 'completed'];
+
+const houseIcon = divIcon({
+  className: 'comiio-map-icon',
+  iconSize: [38, 38],
+  iconAnchor: [19, 36],
+  popupAnchor: [0, -32],
+  html: `
+    <div style="display:flex;height:38px;width:38px;align-items:center;justify-content:center;border-radius:999px;background:#fff7ed;border:2px solid #ea580c;box-shadow:0 8px 18px rgba(15,23,42,.22)">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="m3 10.5 9-7 9 7"/>
+        <path d="M5 10v10h14V10"/>
+        <path d="M9 20v-6h6v6"/>
+      </svg>
+    </div>
+  `,
+});
+
+const deliveryIcon = divIcon({
+  className: 'comiio-map-icon',
+  iconSize: [42, 42],
+  iconAnchor: [21, 39],
+  popupAnchor: [0, -35],
+  html: `
+    <div style="display:flex;height:42px;width:42px;align-items:center;justify-content:center;border-radius:999px;background:#ecfdf5;border:2px solid #16a34a;box-shadow:0 8px 18px rgba(15,23,42,.24)">
+      <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="6.5" cy="17.5" r="2.5"/>
+        <circle cx="17.5" cy="17.5" r="2.5"/>
+        <path d="M9 17.5h4l2-6h3"/>
+        <path d="M6.5 17.5 9 11h3l3 6.5"/>
+        <path d="M12 8h2.5l1.5 3.5"/>
+        <path d="M4 13h3"/>
+      </svg>
+    </div>
+  `,
+});
 
 const vehicleLabels: Record<string, string> = {
   motorcycle: 'Moto',
@@ -166,14 +202,14 @@ export function OrderTrackingPage() {
               <ZoomControl position="bottomright" />
               <TrackingMapBounds destination={destinationPosition} driver={driverPosition} />
               {destinationPosition ? (
-                <CircleMarker center={destinationPosition} radius={9} pathOptions={{ color: '#ea580c', fillColor: '#fb923c', fillOpacity: 0.9 }}>
+                <Marker position={destinationPosition} icon={houseIcon}>
                   <Popup>Tu dirección de entrega</Popup>
-                </CircleMarker>
+                </Marker>
               ) : null}
               {driverPosition ? (
-                <CircleMarker center={driverPosition} radius={10} pathOptions={{ color: '#16a34a', fillColor: '#22c55e', fillOpacity: 0.9 }}>
+                <Marker position={driverPosition} icon={deliveryIcon}>
                   <Popup>{tracking.driver?.name || 'Repartidor'}</Popup>
-                </CircleMarker>
+                </Marker>
               ) : null}
             </MapContainer>
           </div>

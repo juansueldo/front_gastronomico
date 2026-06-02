@@ -5,6 +5,7 @@ export {
   fetchDeliveryBoard,
   listDeliveryDrivers,
   markDeliveryRoutePrinted,
+  regenerateDeliveryDriverInvite,
   updateDeliveryDriver,
   updateDeliveryRouteLocation,
   updateDeliveryRouteStatus,

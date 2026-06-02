@@ -187,6 +187,24 @@ const formatLocalDateTimeForPayload = (date: Date) => (
   `${formatDateForPayload(date)}T${formatTimeForPayload(date)}`
 );
 
+const buildManualScheduleDate = (date: string, time: string) => {
+  if (!date || !time) return null;
+  const normalizedTime = time.length === 5 ? `${time}:00` : time;
+  const result = new Date(`${date}T${normalizedTime}`);
+  return Number.isNaN(result.getTime()) ? null : result;
+};
+
+const formatManualScheduleLabel = (date: string, time: string) => {
+  const scheduledDate = buildManualScheduleDate(date, time);
+  if (!scheduledDate) return 'Sin horario seleccionado';
+  return scheduledDate.toLocaleString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
 const onlyDigits = (value: string) => value.replace(/\D/g, '');
 
 const formatPhoneDisplay = (value: string) => {
@@ -356,6 +374,8 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('asap');
   const [selectedScheduleDayId, setSelectedScheduleDayId] = useState('');
   const [selectedScheduleSlotId, setSelectedScheduleSlotId] = useState('');
+  const [manualScheduleDate, setManualScheduleDate] = useState('');
+  const [manualScheduleTime, setManualScheduleTime] = useState('');
   const [scheduleNow, setScheduleNow] = useState(() => new Date());
   const [newOrderTableId, setNewOrderTableId] = useState('');
   const [newOrderWaiterId, setNewOrderWaiterId] = useState('');
@@ -472,15 +492,16 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
   }, []);
 
   useEffect(() => {
-    if (scheduleMode === 'scheduled' && availableScheduleDays.length === 0) {
-      setScheduleMode('asap');
+    if (availableScheduleDays.length === 0) {
+      if (selectedScheduleDayId) setSelectedScheduleDayId('');
+      if (selectedScheduleSlotId) setSelectedScheduleSlotId('');
       return;
     }
 
     if (!selectedScheduleDay || selectedScheduleDay.id !== selectedScheduleDayId) {
       setSelectedScheduleDayId(selectedScheduleDay?.id ?? '');
     }
-  }, [scheduleMode, availableScheduleDays, selectedScheduleDay, selectedScheduleDayId]);
+  }, [availableScheduleDays, selectedScheduleDay, selectedScheduleDayId, selectedScheduleSlotId]);
 
   useEffect(() => {
     if (!selectedScheduleDay) {
@@ -669,9 +690,17 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
     }
 
     const isAsapSchedule = scheduleMode === 'asap';
-    const scheduledSlotDate = !isAsapSchedule ? selectedScheduleSlot?.startDate : undefined;
+    const manualScheduledDate = !isAsapSchedule ? buildManualScheduleDate(manualScheduleDate, manualScheduleTime) : null;
+    const scheduledSlotDate = !isAsapSchedule
+      ? selectedScheduleSlot?.startDate ?? manualScheduledDate ?? undefined
+      : undefined;
     if (!isAsapSchedule && !scheduledSlotDate) {
       toast.error('Seleccioná un horario válido para el pedido');
+      return;
+    }
+
+    if (scheduledSlotDate && scheduledSlotDate <= new Date()) {
+      toast.error('El horario programado debe ser posterior al momento actual');
       return;
     }
 
@@ -690,6 +719,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
       delivery_address: orderType === 'delivery' ? trimmedDeliveryAddress : undefined,
       delivery_latitude: orderType === 'delivery' ? deliveryCoordinates.latitude : undefined,
       delivery_longitude: orderType === 'delivery' ? deliveryCoordinates.longitude : undefined,
+      delivery_date: orderType === 'delivery' && scheduledSlotDate ? formatLocalDateTimeForPayload(scheduledSlotDate) : undefined,
       scheduled_for: scheduledSlotDate ? formatLocalDateTimeForPayload(scheduledSlotDate) : undefined,
       scheduled_date: scheduledDate,
       scheduled_time: scheduledTime,
@@ -730,6 +760,8 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
     setScheduleMode('asap');
     setSelectedScheduleDayId('');
     setSelectedScheduleSlotId('');
+    setManualScheduleDate('');
+    setManualScheduleTime('');
     setScheduleNow(new Date());
     setSelectedQuantities({});
     setProductFilter('');
@@ -1162,11 +1194,12 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
     const customerName = customerFound?.name ?? newCustomerName;
     const formattedAddress = orderType === 'delivery' ? deliveryAddress.trim() : null;
     const hasScheduleOptions = availableScheduleDays.length > 0;
+    const manualScheduleSummary = formatManualScheduleLabel(manualScheduleDate, manualScheduleTime);
     const scheduleSummary = scheduleMode === 'asap'
       ? 'Lo antes posible'
       : (selectedScheduleDay && selectedScheduleSlot
         ? `${selectedScheduleDay.label} ${selectedScheduleSlot.label}`
-        : 'Sin horario seleccionado');
+        : manualScheduleSummary);
 
     return (
       <div className="space-y-4">
@@ -1225,7 +1258,6 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
                   ? 'border-orange-500 bg-orange-500/10 text-white'
                   : 'border-gray-700 bg-card text-gray-300'
               }`}
-              disabled={!hasScheduleOptions}
             >
               Programado
             </button>
@@ -1266,7 +1298,30 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-yellow-400">La sede seleccionada no tiene horarios disponibles.</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <FieldLabel>Fecha</FieldLabel>
+                  <Input
+                    type="date"
+                    value={manualScheduleDate}
+                    min={formatDateForPayload(new Date())}
+                    onChange={(event) => setManualScheduleDate(event.target.value)}
+                    className={FORM_CONTROL_CLASS}
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Hora</FieldLabel>
+                  <Input
+                    type="time"
+                    value={manualScheduleTime}
+                    onChange={(event) => setManualScheduleTime(event.target.value)}
+                    className={FORM_CONTROL_CLASS}
+                  />
+                </div>
+                <p className="col-span-2 text-xs text-[var(--app-muted)]">
+                  La sede no tiene horarios cargados; podés indicar manualmente cuándo preparar o entregar el pedido.
+                </p>
+              </div>
             )
           ) : null}
         </div>
@@ -1297,7 +1352,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
           <Button
             className="primary-action h-11 flex-1 rounded-lg gap-2"
             onClick={() => void handleSubmit()}
-            disabled={isSubmitting || (scheduleMode === 'scheduled' && !selectedScheduleSlot?.startDate)}
+            disabled={isSubmitting || (scheduleMode === 'scheduled' && !selectedScheduleSlot?.startDate && !buildManualScheduleDate(manualScheduleDate, manualScheduleTime))}
           >
             {isSubmitting ? 'Creando...' : (
               <>

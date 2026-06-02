@@ -13,6 +13,9 @@ export interface DeliveryDriver {
   plate?: string | null;
   status: DriverStatus;
   notes?: string | null;
+  inviteCodeExpiresAt?: string | null;
+  mobileSessionVersion?: number;
+  lastLoginAt?: string | null;
 }
 
 export interface DeliveryOrder {
@@ -113,6 +116,18 @@ export async function createDeliveryDriver(payload: CreateDriverInput): Promise<
 
 export async function updateDeliveryDriver(driverId: string | number, payload: Partial<CreateDriverInput>): Promise<DeliveryDriver> {
   return apiClient.patch(`${API_VERSION}/delivery-logistics/drivers/${driverId}`, payload) as Promise<DeliveryDriver>;
+}
+
+export async function regenerateDeliveryDriverInvite(driverId: string | number): Promise<{
+  driver: DeliveryDriver;
+  inviteCode: string;
+  inviteCodeExpiresAt: string;
+}> {
+  return apiClient.post(`${API_VERSION}/delivery-logistics/drivers/${driverId}/invite`, {}) as Promise<{
+    driver: DeliveryDriver;
+    inviteCode: string;
+    inviteCodeExpiresAt: string;
+  }>;
 }
 
 export async function deleteDeliveryDriver(driverId: string | number): Promise<void> {

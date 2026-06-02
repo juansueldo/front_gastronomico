@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, Tooltip, ZoomControl, useMap } from 'react-leaflet';
+import { MapContainer, Marker, Polyline, Popup, TileLayer, Tooltip, ZoomControl, useMap } from 'react-leaflet';
 import type { LatLngBoundsExpression, LatLngExpression } from 'leaflet';
+import { divIcon } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Bike, CheckCircle2, Copy, LocateFixed, MapPinned, MessageCircle, Printer, RefreshCw, Route, UserRoundCheck } from 'lucide-react';
 import { useNavigate } from 'react-router';
@@ -31,6 +32,41 @@ const FORM_CONTROL_CLASS =
 const SELECT_CONTENT_CLASS = 'border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]';
 const PUBLIC_FRONTEND_URL = ((import.meta as any).env?.VITE_PUBLIC_FRONTEND_URL || window.location.origin).replace(/\/$/, '');
 
+const homeMapIcon = divIcon({
+  className: 'comiio-map-icon',
+  iconSize: [36, 36],
+  iconAnchor: [18, 34],
+  popupAnchor: [0, -30],
+  html: `
+    <div style="display:flex;height:36px;width:36px;align-items:center;justify-content:center;border-radius:999px;background:#fff7ed;border:2px solid #ea580c;box-shadow:0 8px 18px rgba(15,23,42,.22)">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="m3 10.5 9-7 9 7"/>
+        <path d="M5 10v10h14V10"/>
+        <path d="M9 20v-6h6v6"/>
+      </svg>
+    </div>
+  `,
+});
+
+const deliveryMapIcon = divIcon({
+  className: 'comiio-map-icon',
+  iconSize: [42, 42],
+  iconAnchor: [21, 39],
+  popupAnchor: [0, -35],
+  html: `
+    <div style="display:flex;height:42px;width:42px;align-items:center;justify-content:center;border-radius:999px;background:#ecfdf5;border:2px solid #16a34a;box-shadow:0 8px 18px rgba(15,23,42,.24)">
+      <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="6.5" cy="17.5" r="2.5"/>
+        <circle cx="17.5" cy="17.5" r="2.5"/>
+        <path d="M9 17.5h4l2-6h3"/>
+        <path d="M6.5 17.5 9 11h3l3 6.5"/>
+        <path d="M12 8h2.5l1.5 3.5"/>
+        <path d="M4 13h3"/>
+      </svg>
+    </div>
+  `,
+});
+
 const vehicleLabels: Record<VehicleType, string> = {
   motorcycle: 'Moto',
   bicycle: 'Bicicleta',
@@ -59,6 +95,12 @@ function getOrderPosition(order: DeliveryOrder): LatLngExpression | null {
   return lat !== null && lng !== null ? [lat, lng] : null;
 }
 
+function getRoutePosition(route: DeliveryRoute): LatLngExpression | null {
+  const lat = Number(route.lastLatitude);
+  const lng = Number(route.lastLongitude);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : null;
+}
+
 function getOrderLabel(order: DeliveryOrder) {
   return order.order_number || `Pedido #${order.id}`;
 }
@@ -78,6 +120,13 @@ function getOrderItems(order: DeliveryOrder) {
 function formatMoney(value: unknown) {
   const amount = Number(value ?? 0);
   return currencyFormatter.format(Number.isFinite(amount) ? amount : 0);
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 function getTrackingToken(order?: DeliveryOrder | null) {
@@ -118,6 +167,9 @@ function MapBounds({ orders, routes }: { orders: DeliveryOrder[]; routes: Delive
     });
 
     routes.forEach((route) => {
+      const routePosition = getRoutePosition(route);
+      if (routePosition) points.push(routePosition as [number, number]);
+
       route.DeliveryRouteOrders?.forEach((routeOrder) => {
         const order = routeOrder.Order;
         if (!order) return;
@@ -456,6 +508,9 @@ export function DeliveryLogisticsView() {
                       <p className="truncate font-semibold">{driver.name}</p>
                       <p className="text-xs text-[var(--app-muted)]">{vehicleLabels[driver.vehicleType]}{driver.plate ? ` · ${driver.plate}` : ''}</p>
                       <p className="text-xs text-[var(--app-muted)]">{driver.phone || 'Sin teléfono'}</p>
+                      <p className="text-xs text-[var(--app-muted)]">
+                        App: {driver.lastLoginAt ? `activada ${formatDateTime(driver.lastLoginAt)}` : driver.inviteCodeExpiresAt ? `PIN vence ${formatDateTime(driver.inviteCodeExpiresAt)}` : 'sin activar'}
+                      </p>
                     </div>
                     <span className={`rounded-full px-2 py-1 text-xs font-semibold ${
                       driver.status === 'active' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200'
@@ -534,16 +589,10 @@ export function DeliveryLogisticsView() {
                   if (!position) return null;
                   const selected = selectedOrderIds.includes(String(order.id));
                   return (
-                    <CircleMarker
+                    <Marker
                       key={order.id}
-                      center={position}
-                      radius={selected ? 10 : 8}
-                      pathOptions={{
-                        color: selected ? '#16a34a' : '#ff5a0a',
-                        fillColor: selected ? '#22c55e' : '#ff7a1a',
-                        fillOpacity: 0.85,
-                        weight: 2,
-                      }}
+                      position={position}
+                      icon={homeMapIcon}
                       eventHandlers={{ click: () => toggleOrder(order.id) }}
                     >
                       <Tooltip>{getOrderLabel(order)}</Tooltip>
@@ -557,7 +606,7 @@ export function DeliveryLogisticsView() {
                           </button>
                         </div>
                       </Popup>
-                    </CircleMarker>
+                    </Marker>
                   );
                 })}
                 {mapRoutes.map(({ route, points }) => (
@@ -565,6 +614,26 @@ export function DeliveryLogisticsView() {
                     <Polyline key={route.id} positions={points} pathOptions={{ color: '#2563eb', weight: 4, opacity: 0.75 }} />
                   ) : null
                 ))}
+                {board.routes.map((route) => {
+                  const position = getRoutePosition(route);
+                  if (!position) return null;
+                  return (
+                    <Marker
+                      key={`driver-${route.id}`}
+                      position={position}
+                      icon={deliveryMapIcon}
+                    >
+                      <Tooltip>{route.DeliveryDriver?.name || 'Repartidor'}</Tooltip>
+                      <Popup>
+                        <div className="space-y-1 text-sm">
+                          <p className="font-semibold">{route.DeliveryDriver?.name || 'Repartidor'}</p>
+                          <p>{route.name || `Recorrido #${route.id}`}</p>
+                          <p>GPS: {formatDateTime(route.lastLocationAt)}</p>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  );
+                })}
               </MapContainer>
             </div>
           </section>
@@ -617,6 +686,7 @@ export function DeliveryLogisticsView() {
                       <div>
                         <p className="font-semibold">{route.name || `Recorrido #${route.id}`}</p>
                         <p className="text-sm text-[var(--app-muted)]">{route.DeliveryDriver?.name || 'Sin repartidor'} · {route.DeliveryRouteOrders?.length ?? 0} pedidos</p>
+                        <p className="text-xs text-[var(--app-muted)]">GPS: {route.lastLocationAt ? formatDateTime(route.lastLocationAt) : 'sin ubicación'}</p>
                       </div>
                       <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-200">{route.status}</span>
                     </div>

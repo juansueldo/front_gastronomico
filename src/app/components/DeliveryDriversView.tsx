@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ArrowLeft, Bike, Pencil, Plus, Trash2, UserRoundCheck } from 'lucide-react';
+import { ArrowLeft, Bike, ClipboardCopy, KeyRound, Pencil, Plus, Trash2, UserRoundCheck } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { ApiError } from '../core/http/errors';
@@ -7,6 +7,7 @@ import {
   createDeliveryDriver,
   deleteDeliveryDriver,
   listDeliveryDrivers,
+  regenerateDeliveryDriverInvite,
   updateDeliveryDriver,
   type CreateDriverInput,
   type DeliveryDriver,
@@ -92,6 +93,13 @@ function getInitials(name: string) {
     .slice(0, 2) || 'RP';
 }
 
+function formatDateTime(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
 function buildDriverPayload(form: DriverFormState): CreateDriverInput {
   return {
     name: form.name.trim(),
@@ -141,6 +149,11 @@ export function DeliveryDriversView() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [generatedInvite, setGeneratedInvite] = useState<{
+    driver: DeliveryDriver;
+    inviteCode: string;
+    inviteCodeExpiresAt: string;
+  } | null>(null);
   const [form, setForm] = useState<DriverFormState>(emptyForm);
 
   const loadDrivers = useCallback(async (query: RemoteDataTableQuery) => {
@@ -211,6 +224,28 @@ export function DeliveryDriversView() {
     }
   };
 
+  const handleGenerateInvite = async (driver: DeliveryDriver) => {
+    try {
+      const invite = await regenerateDeliveryDriverInvite(driver.id);
+      setGeneratedInvite(invite);
+      toast.success('PIN generado para la app');
+      setReloadKey((current) => current + 1);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'No se pudo generar el PIN'));
+    }
+  };
+
+  const handleCopyInvite = async () => {
+    if (!generatedInvite) return;
+    const text = `Repartidor: ${generatedInvite.driver.name}\nID: ${generatedInvite.driver.id}\nPIN: ${generatedInvite.inviteCode}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Datos de activación copiados');
+    } catch {
+      toast.error('No se pudo copiar');
+    }
+  };
+
   const columns = useMemo<DataTableColumn<DeliveryDriver>[]>(() => [
     {
       key: 'name',
@@ -267,6 +302,26 @@ export function DeliveryDriversView() {
       ),
     },
     {
+      key: 'lastLoginAt',
+      header: 'App',
+      accessor: (driver) => driver.lastLoginAt ?? '',
+      sortable: true,
+      cell: (driver) => (
+        <div className="text-sm">
+          <p className="font-semibold text-[var(--app-strong)]">
+            {driver.lastLoginAt ? 'Activada' : 'Sin activar'}
+          </p>
+          <p className="text-xs text-[var(--app-muted)]">
+            {driver.lastLoginAt
+              ? formatDateTime(driver.lastLoginAt)
+              : driver.inviteCodeExpiresAt
+                ? `PIN vence ${formatDateTime(driver.inviteCodeExpiresAt)}`
+                : 'Generá un PIN'}
+          </p>
+        </div>
+      ),
+    },
+    {
       key: 'notes',
       header: 'Notas',
       accessor: (driver) => driver.notes ?? '',
@@ -276,6 +331,11 @@ export function DeliveryDriversView() {
     },
     createRowActionsColumn<DeliveryDriver>({
       extraActions: [
+        {
+          label: 'Generar PIN app',
+          icon: KeyRound,
+          onClick: (driver) => void handleGenerateInvite(driver),
+        },
         {
           label: 'Editar',
           icon: Pencil,
@@ -456,6 +516,55 @@ export function DeliveryDriversView() {
         loading={isDeleting}
         onConfirm={handleDeleteDriver}
       />
+
+      <Dialog open={Boolean(generatedInvite)} onOpenChange={(open) => {
+        if (!open) setGeneratedInvite(null);
+      }}>
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-[460px] gap-0 p-0">
+          <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
+            <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
+              <KeyRound size={18} />
+            </div>
+            <DialogTitle>PIN de app generado</DialogTitle>
+            <DialogDescription>
+              Compartí estos datos con el repartidor. El PIN se muestra solo ahora.
+            </DialogDescription>
+          </DialogHeader>
+          {generatedInvite ? (
+            <div className="space-y-3 px-5 py-4">
+              <div className="rounded-md border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3">
+                <p className="text-xs font-semibold uppercase text-[var(--app-muted)]">Repartidor</p>
+                <p className="mt-1 font-semibold">{generatedInvite.driver.name}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-md border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3">
+                  <p className="text-xs font-semibold uppercase text-[var(--app-muted)]">ID</p>
+                  <p className="mt-1 text-2xl font-bold">{generatedInvite.driver.id}</p>
+                </div>
+                <div className="rounded-md border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3">
+                  <p className="text-xs font-semibold uppercase text-[var(--app-muted)]">PIN</p>
+                  <p className="mt-1 text-2xl font-bold tracking-normal">{generatedInvite.inviteCode}</p>
+                </div>
+              </div>
+              <p className="text-sm text-[var(--app-muted)]">
+                Vence: {formatDateTime(generatedInvite.inviteCodeExpiresAt)}
+              </p>
+            </div>
+          ) : null}
+          <DialogFooter className="border-t border-[var(--app-line)] px-5 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2 border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+              onClick={() => void handleCopyInvite()}
+            >
+              <ClipboardCopy className="h-4 w-4" />
+              Copiar
+            </Button>
+            <Button type="button" onClick={() => setGeneratedInvite(null)}>Listo</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
