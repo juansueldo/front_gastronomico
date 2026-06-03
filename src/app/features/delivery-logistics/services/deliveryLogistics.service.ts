@@ -13,6 +13,7 @@ export interface DeliveryDriver {
   plate?: string | null;
   status: DriverStatus;
   notes?: string | null;
+  hasInviteCode?: boolean;
   inviteCodeExpiresAt?: string | null;
   mobileSessionVersion?: number;
   lastLoginAt?: string | null;
@@ -121,12 +122,12 @@ export async function updateDeliveryDriver(driverId: string | number, payload: P
 export async function regenerateDeliveryDriverInvite(driverId: string | number): Promise<{
   driver: DeliveryDriver;
   inviteCode: string;
-  inviteCodeExpiresAt: string;
+  inviteCodeExpiresAt?: string | null;
 }> {
   return apiClient.post(`${API_VERSION}/delivery-logistics/drivers/${driverId}/invite`, {}) as Promise<{
     driver: DeliveryDriver;
     inviteCode: string;
-    inviteCodeExpiresAt: string;
+    inviteCodeExpiresAt?: string | null;
   }>;
 }
 

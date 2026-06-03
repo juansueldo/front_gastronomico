@@ -509,7 +509,7 @@ export function DeliveryLogisticsView() {
                       <p className="text-xs text-[var(--app-muted)]">{vehicleLabels[driver.vehicleType]}{driver.plate ? ` · ${driver.plate}` : ''}</p>
                       <p className="text-xs text-[var(--app-muted)]">{driver.phone || 'Sin teléfono'}</p>
                       <p className="text-xs text-[var(--app-muted)]">
-                        App: {driver.lastLoginAt ? `activada ${formatDateTime(driver.lastLoginAt)}` : driver.inviteCodeExpiresAt ? `PIN vence ${formatDateTime(driver.inviteCodeExpiresAt)}` : 'sin activar'}
+                        App: {driver.lastLoginAt ? `activada ${formatDateTime(driver.lastLoginAt)}` : driver.hasInviteCode || driver.inviteCodeExpiresAt ? 'PIN activo' : 'sin activar'}
                       </p>
                     </div>
                     <span className={`rounded-full px-2 py-1 text-xs font-semibold ${

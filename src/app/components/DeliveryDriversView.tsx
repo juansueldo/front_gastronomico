@@ -152,7 +152,7 @@ export function DeliveryDriversView() {
   const [generatedInvite, setGeneratedInvite] = useState<{
     driver: DeliveryDriver;
     inviteCode: string;
-    inviteCodeExpiresAt: string;
+    inviteCodeExpiresAt?: string | null;
   } | null>(null);
   const [form, setForm] = useState<DriverFormState>(emptyForm);
 
@@ -237,7 +237,7 @@ export function DeliveryDriversView() {
 
   const handleCopyInvite = async () => {
     if (!generatedInvite) return;
-    const text = `Repartidor: ${generatedInvite.driver.name}\nID: ${generatedInvite.driver.id}\nPIN: ${generatedInvite.inviteCode}`;
+    const text = `Repartidor: ${generatedInvite.driver.name}\nPIN: ${generatedInvite.inviteCode}`;
     try {
       await navigator.clipboard.writeText(text);
       toast.success('Datos de activación copiados');
@@ -314,8 +314,8 @@ export function DeliveryDriversView() {
           <p className="text-xs text-[var(--app-muted)]">
             {driver.lastLoginAt
               ? formatDateTime(driver.lastLoginAt)
-              : driver.inviteCodeExpiresAt
-                ? `PIN vence ${formatDateTime(driver.inviteCodeExpiresAt)}`
+              : driver.hasInviteCode || driver.inviteCodeExpiresAt
+                ? 'PIN activo'
                 : 'Generá un PIN'}
           </p>
         </div>
@@ -527,7 +527,7 @@ export function DeliveryDriversView() {
             </div>
             <DialogTitle>PIN de app generado</DialogTitle>
             <DialogDescription>
-              Compartí estos datos con el repartidor. El PIN se muestra solo ahora.
+              Compartí este PIN con el repartidor. El PIN se muestra solo ahora y no vence.
             </DialogDescription>
           </DialogHeader>
           {generatedInvite ? (
@@ -536,18 +536,14 @@ export function DeliveryDriversView() {
                 <p className="text-xs font-semibold uppercase text-[var(--app-muted)]">Repartidor</p>
                 <p className="mt-1 font-semibold">{generatedInvite.driver.name}</p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-md border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3">
-                  <p className="text-xs font-semibold uppercase text-[var(--app-muted)]">ID</p>
-                  <p className="mt-1 text-2xl font-bold">{generatedInvite.driver.id}</p>
-                </div>
+              <div className="grid gap-3">
                 <div className="rounded-md border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3">
                   <p className="text-xs font-semibold uppercase text-[var(--app-muted)]">PIN</p>
                   <p className="mt-1 text-2xl font-bold tracking-normal">{generatedInvite.inviteCode}</p>
                 </div>
               </div>
               <p className="text-sm text-[var(--app-muted)]">
-                Vence: {formatDateTime(generatedInvite.inviteCodeExpiresAt)}
+                No vence. Para reemplazarlo, generá un PIN nuevo.
               </p>
             </div>
           ) : null}
