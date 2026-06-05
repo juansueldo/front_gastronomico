@@ -17,6 +17,7 @@ type ChannelType = 'whatsapp' | 'facebook' | 'instagram' | 'email';
 export interface AppNewMessageDetail {
   conversationId: string;
   messageId: string;
+  clientMessageId?: string;
   providerMessageId?: string;
   msgId?: string;
   content: string;

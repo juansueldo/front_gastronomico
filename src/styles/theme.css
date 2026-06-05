@@ -468,7 +468,7 @@
 
   .app-topbar {
     display: grid;
-    grid-template-columns: 1fr auto auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto auto auto;
     gap: 0.45rem;
     align-items: center;
     margin: 0.75rem 1rem 0.65rem;
@@ -491,7 +491,64 @@
     box-shadow: none;
   }
 
-  .app-search input {
+  .app-search-wrap {
+    position: relative;
+    min-width: 0;
+  }
+
+  .app-search-results {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 0.5rem);
+    z-index: 80;
+    overflow: hidden;
+    border: 1px solid var(--app-line);
+    border-radius: 8px;
+    background: var(--app-panel);
+    box-shadow: 0 18px 46px rgb(0 0 0 / 24%);
+  }
+
+  .app-search-result-item {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    text-align: left;
+    color: var(--app-strong);
+  }
+
+  .app-search-result-item:hover,
+  .app-search-result-item:focus-visible {
+    background: var(--app-soft);
+    outline: 0;
+  }
+
+  .app-order-button {
+    display: inline-flex;
+    height: 42px;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    border-radius: 8px;
+    border: 0;
+    background: var(--primary);
+    padding: 0 0.85rem;
+    color: white;
+    font-size: 0.875rem;
+    font-weight: 700;
+    box-shadow: none;
+  }
+
+  .app-order-button:hover {
+    filter: brightness(1.04);
+  }
+
+  .app-search input,
+  .app-search-field {
     height: 42px;
     min-width: 0;
     width: 100%;
@@ -500,19 +557,28 @@
     outline: none !important;
     border: none !important;
     box-shadow: none !important;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    white-space: nowrap;
   }
 
   .app-search input:focus,
   .app-search input:focus-visible,
-  .app-search input:-webkit-autofill:focus {
+  .app-search input:-webkit-autofill:focus,
+  .app-search-field:focus,
+  .app-search-field:focus-visible {
     border-color: transparent !important;
     box-shadow: none !important;
     outline: 0 !important;
     background: transparent !important;
   }
 
-  .app-search input::placeholder {
+  .app-search input::placeholder,
+  .app-search-field:empty::before {
     color: var(--app-muted);
+    content: attr(data-placeholder);
+    pointer-events: none;
   }
 
   .app-icon-button {
@@ -1260,7 +1326,7 @@
     }
 
     .app-topbar {
-      grid-template-columns: auto minmax(0, 1fr) auto auto;
+      grid-template-columns: auto minmax(0, 1fr) auto auto auto;
       margin: 0.75rem;
       padding: 0.35rem;
       gap: 0.25rem;
@@ -1281,7 +1347,17 @@
       padding: 0 0.45rem;
     }
 
-    .app-search input {
+    .app-order-button {
+      width: 40px;
+      padding: 0;
+    }
+
+    .app-order-button span {
+      display: none;
+    }
+
+    .app-search input,
+    .app-search-field {
       height: 40px;
       font-size: 0.88rem;
     }
@@ -1777,6 +1853,10 @@
 .app-topbar .app-search input[type="search"]:focus-visible,
 .app-topbar .app-search input:focus,
 .app-topbar .app-search input:focus-visible,
+.app-topbar .app-search-field,
+.app-topbar .app-search-field:hover,
+.app-topbar .app-search-field:focus,
+.app-topbar .app-search-field:focus-visible,
 .app-topbar .app-search input:-webkit-autofill,
 .app-topbar .app-search input:-webkit-autofill:hover,
 .app-topbar .app-search input:-webkit-autofill:focus,

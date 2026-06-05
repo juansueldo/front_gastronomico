@@ -23,6 +23,7 @@ import {
   Quote,
   Phone,
   Plus,
+  Reply,
   Search,
   Send,
   Smile,
@@ -33,6 +34,7 @@ import {
   UserPlus,
   X,
 } from 'lucide-react';
+import EmojiPicker, { EmojiStyle, Theme, type EmojiClickData } from 'emoji-picker-react';
 import { useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Toaster } from '../shared/ui/components/sonner';
@@ -43,7 +45,9 @@ import { DeleteConfirmDialog } from '../shared/ui/components/delete-confirm-dial
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../shared/ui/components/dialog';
 import { Input } from '../shared/ui/components/input';
 import { Label } from '../shared/ui/components/label';
+import { Popover, PopoverContent, PopoverTrigger } from '../shared/ui/components/popover';
 import { CreateOrderDialog } from './orders/CreateOrderDialog';
+import { THEME_CHANGED_EVENT } from '../theme';
 import {
   createContact,
   fetchMessages,
@@ -83,6 +87,7 @@ type ConversationItem = {
 
 type ChatMessage = {
   id: string;
+  clientMessageId?: string;
   providerMessageId?: string;
   body: string;
   direction: 'inbound' | 'outbound';
@@ -94,6 +99,8 @@ type ChatMessage = {
   mediaFilename?: string;
   mediaSize?: number | null;
   reactions?: Record<string, string>;
+  quotedMessageId?: string;
+  quotedMessageContent?: string;
   deliveredAt?: string;
   readAt?: string;
 };
@@ -137,6 +144,7 @@ const quickReplies = [
   { label: 'Enviar link', icon: Link, text: 'Te comparto el link del pedido.' },
   { label: 'Gracias', icon: Smile, text: 'Gracias por contactarnos.' },
 ];
+const quickReactionUnicodes = ['1f44d', '2764-fe0f', '1f602', '1f62e', '1f622', '1f64f'];
 const activeOrderStatuses = [
   'pending',
   'new',
@@ -239,11 +247,12 @@ function blobToDataUrl(blob: Blob) {
 
 function mapContactToConversation(contact: ContactItem): ConversationItem {
   const unreadCount = Number(contact.unread_count);
+  const phone = normalizeDisplayPhone(contact.phone);
 
   return {
     id: String(contact.id),
-    name: contact.name || contact.phone || `Conversacion ${contact.id}`,
-    phone: contact.phone,
+    name: contact.name || phone || `Conversacion ${contact.id}`,
+    phone,
     avatarUrl: contact.avatar_url ?? contact.avatarUrl ?? null,
     lastMessage: contact.last_message || 'Sin mensajes',
     lastMessageAt: parseDate(contact.last_message_date),
@@ -253,17 +262,21 @@ function mapContactToConversation(contact: ContactItem): ConversationItem {
   };
 }
 
+function sortConversationsByRecent(conversations: ConversationItem[]) {
+  return [...conversations].sort((first, second) => second.lastMessageAt.getTime() - first.lastMessageAt.getTime());
+}
+
 function mergeLoadedConversations(
   loaded: ConversationItem[],
   current: ConversationItem[],
   selectedConversationId: string | null,
 ) {
   if (!selectedConversationId || loaded.some((conversation) => conversation.id === selectedConversationId)) {
-    return loaded;
+    return sortConversationsByRecent(loaded);
   }
 
   const selectedConversation = current.find((conversation) => conversation.id === selectedConversationId);
-  return selectedConversation ? [selectedConversation, ...loaded] : loaded;
+  return sortConversationsByRecent(selectedConversation ? [selectedConversation, ...loaded] : loaded);
 }
 
 function getRecordValue(value: unknown): Record<string, unknown> | null {
@@ -297,13 +310,14 @@ function mapConversationUpdatePayload(payload: Record<string, unknown>, fallback
   const customerPhone = normalizeDisplayPhone(customer.phone);
   const contactIdentifier = typeof contact.identifier === 'string' ? contact.identifier : undefined;
   const contactPhone = normalizeDisplayPhone(contactIdentifier);
+  const fallbackPhone = normalizeDisplayPhone(fallback?.phone);
   const channel = typeof conversation.channel === 'string' ? conversation.channel : undefined;
   const profileImageUrl = getRecordValue(customer.metadata)?.whatsappProfileImageUrl;
 
   return {
     id,
     name: customerName || fallback?.name || customerPhone || contactPhone || `Conversacion ${id}`,
-    phone: customerPhone || fallback?.phone || contactPhone,
+    phone: customerPhone || contactPhone || fallbackPhone,
     avatarUrl: typeof profileImageUrl === 'string' ? profileImageUrl : fallback?.avatarUrl ?? null,
     lastMessage: typeof lastMessagePreview === 'string' && lastMessagePreview.trim()
       ? lastMessagePreview
@@ -320,9 +334,16 @@ function mapConversationUpdatePayload(payload: Record<string, unknown>, fallback
 function mapMessagePayload(message: Record<string, unknown>, fallbackConversationId: string): ChatMessage {
   const createdAt = parseDate(String(message.timestamp ?? message.created_at ?? message.createdAt ?? message.sentAt ?? new Date().toISOString()));
   const legacyDirection = message.direction === 'o' ? 'outbound' : message.direction === 'i' ? 'inbound' : undefined;
+  const quotedMessageId = message.replyToMessageId ?? message.reply_to_message_id ?? message.quotedMessageId ?? message.quoted_msg_id;
+  const quotedMessageContent = message.replyToContent ?? message.reply_to_content ?? message.quotedMessageContent ?? message.quoted_content;
 
   return {
     id: String(message.id ?? message.msg_id ?? `${fallbackConversationId}-${Date.now()}`),
+    clientMessageId: message.clientMessageId !== undefined
+      ? String(message.clientMessageId)
+      : message.client_message_id !== undefined
+        ? String(message.client_message_id)
+        : undefined,
     providerMessageId: message.providerMessageId !== undefined
       ? String(message.providerMessageId)
       : message.provider_message_id !== undefined
@@ -344,6 +365,8 @@ function mapMessagePayload(message: Record<string, unknown>, fallbackConversatio
     reactions: message.reactions && typeof message.reactions === 'object' && !Array.isArray(message.reactions)
       ? Object.fromEntries(Object.entries(message.reactions).map(([key, value]) => [key, String(value)]))
       : undefined,
+    quotedMessageId: quotedMessageId !== undefined && quotedMessageId !== null ? String(quotedMessageId) : undefined,
+    quotedMessageContent: typeof quotedMessageContent === 'string' ? quotedMessageContent : undefined,
   };
 }
 
@@ -354,6 +377,7 @@ function mergeMessageByIdentity(messages: ChatMessage[], incoming: ChatMessage) 
 
   const merged = messages.map((message) => {
     const sameId = message.id === incoming.id;
+    const sameClientId = Boolean(message.clientMessageId && incoming.clientMessageId && message.clientMessageId === incoming.clientMessageId);
     const sameProviderId = Boolean(message.providerMessageId && incoming.providerMessageId && message.providerMessageId === incoming.providerMessageId);
     const sameRecentOptimistic =
       message.status === 'pending'
@@ -361,17 +385,20 @@ function mergeMessageByIdentity(messages: ChatMessage[], incoming: ChatMessage) 
       && message.body.trim() === incomingBody
       && Math.abs(message.createdAt.getTime() - incomingTime) < 30000;
 
-    if (!sameId && !sameProviderId && !sameRecentOptimistic) return message;
+    if (!sameId && !sameClientId && !sameProviderId && !sameRecentOptimistic) return message;
 
     wasMerged = true;
     return {
       ...message,
       ...incoming,
+      clientMessageId: incoming.clientMessageId ?? message.clientMessageId,
       providerMessageId: incoming.providerMessageId ?? message.providerMessageId,
       mediaUrl: incoming.mediaUrl ?? message.mediaUrl,
       mediaMime: incoming.mediaMime ?? message.mediaMime,
       mediaFilename: incoming.mediaFilename ?? message.mediaFilename,
       reactions: incoming.reactions ?? message.reactions,
+      quotedMessageId: incoming.quotedMessageId ?? message.quotedMessageId,
+      quotedMessageContent: incoming.quotedMessageContent ?? message.quotedMessageContent,
       deliveredAt: incoming.deliveredAt ?? message.deliveredAt,
       readAt: incoming.readAt ?? message.readAt,
       status: incoming.status ?? message.status,
@@ -407,12 +434,53 @@ function getAttachmentPreviewLabel(attachment: PendingAttachment) {
   return 'Documento';
 }
 
+function getMessagePreviewText(message: ChatMessage) {
+  if (message.body.trim()) return message.body.trim();
+  if (message.mediaFilename) return message.mediaFilename;
+  if (message.mediaUrl) {
+    const mediaKind = getMediaKind(message);
+    if (mediaKind === 'image') return 'Imagen';
+    if (mediaKind === 'video') return 'Video';
+    if (mediaKind === 'audio') return 'Audio';
+    return 'Adjunto';
+  }
+  return 'Mensaje';
+}
+
+function getQuotedPreview(message: ChatMessage, messages: ChatMessage[]) {
+  if (message.quotedMessageContent?.trim()) return message.quotedMessageContent.trim();
+  if (!message.quotedMessageId) return '';
+  const quotedMessage = messages.find((candidate) => (
+    candidate.id === message.quotedMessageId
+    || candidate.providerMessageId === message.quotedMessageId
+  ));
+  return quotedMessage ? getMessagePreviewText(quotedMessage) : '';
+}
+
+function getEmojiPickerTheme() {
+  if (typeof document === 'undefined') return Theme.DARK;
+  return document.documentElement.classList.contains('dark') ? Theme.DARK : Theme.LIGHT;
+}
+
 function normalizeReactions(value: AppNewMessageDetail['reactions']): Record<string, string> | undefined {
   if (!value) return undefined;
   if (Array.isArray(value)) {
     return Object.fromEntries(value.map((emoji, index) => [`reaction-${index}`, String(emoji)]));
   }
   return Object.fromEntries(Object.entries(value).map(([key, reaction]) => [key, String(reaction)]));
+}
+
+function getVisibleReactionEmojis(reactions?: Record<string, string>) {
+  if (!reactions) return [];
+
+  return Object.entries(reactions).flatMap(([key, value]) => {
+    if (!value) return [];
+    const numericValue = Number(value);
+    if (Number.isFinite(numericValue)) {
+      return numericValue > 0 ? [key] : [];
+    }
+    return [value];
+  });
 }
 
 function getAckLabel(status?: string) {
@@ -659,9 +727,14 @@ export function ConversationList() {
   const [newChatPhone, setNewChatPhone] = useState('');
   const [pendingCustomerChat, setPendingCustomerChat] = useState<CustomerChatNavigation | null>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
+  const [openReactionMessageId, setOpenReactionMessageId] = useState<string | null>(null);
+  const [isMessageEmojiPickerOpen, setIsMessageEmojiPickerOpen] = useState(false);
+  const [emojiPickerTheme, setEmojiPickerTheme] = useState<Theme>(() => getEmojiPickerTheme());
   const messagesViewportRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const previousConversationIdRef = useRef<string | null>(null);
+  const selectedConversationIdRef = useRef<string | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const editorRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -682,7 +755,7 @@ export function ConversationList() {
   const filteredConversations = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
-    return conversations.filter((conversation) => {
+    return sortConversationsByRecent(conversations.filter((conversation) => {
       const matchesSearch = !normalizedSearch
         || conversation.name.toLowerCase().includes(normalizedSearch)
         || (conversation.phone ?? '').toLowerCase().includes(normalizedSearch)
@@ -693,7 +766,7 @@ export function ConversationList() {
         || (filter === 'assigned' && conversation.status === 'assigned');
 
       return matchesSearch && matchesFilter;
-    });
+    }));
   }, [conversations, filter, search]);
 
   const unreadTotal = conversations.reduce((total, conversation) => total + (conversation.unreadCount > 0 ? 1 : 0), 0);
@@ -749,12 +822,16 @@ export function ConversationList() {
     setShowScrollToBottom(!isNearBottom);
   }, []);
 
+  useEffect(() => {
+    selectedConversationIdRef.current = selectedConversationId;
+  }, [selectedConversationId]);
+
   const loadConversations = useCallback(async () => {
     setIsLoadingConversations(true);
     try {
       const data = await listContacts();
       const mapped = data.map(mapContactToConversation);
-      setConversations((current) => mergeLoadedConversations(mapped, current, selectedConversationId));
+      setConversations((current) => mergeLoadedConversations(mapped, current, selectedConversationIdRef.current));
       setSelectedConversationId((current) => current ?? mapped[0]?.id ?? null);
     } catch (error) {
       toast.error(getApiErrorMessage(error, 'No se pudieron cargar los chats'));
@@ -762,7 +839,7 @@ export function ConversationList() {
       setIsLoadingConversations(false);
       setHasLoadedConversations(true);
     }
-  }, [selectedConversationId]);
+  }, []);
 
   const loadMessages = useCallback(async (conversationId: string) => {
     setIsLoadingMessages(true);
@@ -792,6 +869,21 @@ export function ConversationList() {
   }, [loadConversations]);
 
   useEffect(() => {
+    const updateEmojiPickerTheme = () => {
+      window.requestAnimationFrame(() => setEmojiPickerTheme(getEmojiPickerTheme()));
+    };
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+    window.addEventListener(THEME_CHANGED_EVENT, updateEmojiPickerTheme);
+    mediaQuery.addEventListener('change', updateEmojiPickerTheme);
+
+    return () => {
+      window.removeEventListener(THEME_CHANGED_EVENT, updateEmojiPickerTheme);
+      mediaQuery.removeEventListener('change', updateEmojiPickerTheme);
+    };
+  }, []);
+
+  useEffect(() => {
     const customerChat = getCustomerChatNavigation(location.state);
     if (!customerChat) return;
 
@@ -818,6 +910,8 @@ export function ConversationList() {
       shouldStickToBottomRef.current = true;
       setShowScrollToBottom(false);
       setMessages([]);
+      setReplyTarget(null);
+      setOpenReactionMessageId(null);
       scheduleScrollToConversationEnd('auto');
       void loadMessages(selectedConversation.id);
     }
@@ -910,7 +1004,7 @@ export function ConversationList() {
             channel: payload.channel,
           };
 
-        return [nextConversation, ...current.filter((conversation) => conversation.id !== payload.conversationId)];
+        return sortConversationsByRecent([nextConversation, ...current.filter((conversation) => conversation.id !== payload.conversationId)]);
       });
 
       if (payload.conversationId === selectedConversationId) {
@@ -919,6 +1013,7 @@ export function ConversationList() {
           current,
           {
             id: payload.messageId,
+            clientMessageId: payload.clientMessageId,
             providerMessageId: payload.providerMessageId,
             body: payload.content,
             direction: payload.sender === 'agent' ? 'outbound' : 'inbound',
@@ -929,6 +1024,8 @@ export function ConversationList() {
             mediaMime: payload.mediaMime,
             mediaFilename: payload.mediaFilename,
             reactions: incomingReactions,
+            quotedMessageId: payload.quotedMessageId ?? payload.quotedMsgId,
+            quotedMessageContent: payload.quotedMessageContent ?? payload.quotedContent,
             deliveredAt: payload.deliveredAt,
             readAt: payload.readAt,
           },
@@ -940,12 +1037,11 @@ export function ConversationList() {
         scheduleScrollToConversationEnd('smooth');
       }
 
-      void loadConversations();
     };
 
     window.addEventListener(APP_NEW_MESSAGE_EVENT, handleNewMessage);
     return () => window.removeEventListener(APP_NEW_MESSAGE_EVENT, handleNewMessage);
-  }, [loadConversations, scheduleScrollToConversationEnd, selectedConversationId]);
+  }, [scheduleScrollToConversationEnd, selectedConversationId]);
 
   useEffect(() => {
     const handleConversationsChanged = (event: Event) => {
@@ -956,8 +1052,21 @@ export function ConversationList() {
           lastMessagePreview?: string | null;
         };
       }>).detail;
+      const detailRecord = detail && typeof detail === 'object'
+        ? detail as unknown as Record<string, unknown>
+        : {};
+      const messageRecord = detailRecord.message && typeof detailRecord.message === 'object'
+        ? detailRecord.message as Record<string, unknown>
+        : {};
       const updatedConversation = detail?.conversation;
-      const updatedConversationId = updatedConversation?.id !== undefined ? String(updatedConversation.id) : null;
+      const rawUpdatedConversationId = updatedConversation?.id
+        ?? detailRecord.conversationId
+        ?? detailRecord.conversation_id
+        ?? messageRecord.conversationId
+        ?? messageRecord.conversation_id;
+      const updatedConversationId = rawUpdatedConversationId !== undefined && rawUpdatedConversationId !== null
+        ? String(rawUpdatedConversationId)
+        : null;
       const currentConversation = updatedConversationId
         ? conversations.find((conversation) => conversation.id === updatedConversationId)
         : null;
@@ -991,29 +1100,26 @@ export function ConversationList() {
 
         setConversations((current) => {
           const currentItem = current.find((conversation) => conversation.id === updatedConversationId);
-          const payloadRecord = detail && typeof detail === 'object'
-            ? detail as unknown as Record<string, unknown>
-            : {};
           const nextConversation = mapConversationUpdatePayload(
-            payloadRecord,
+            detailRecord,
             currentItem,
           );
 
           if (!nextConversation) return current;
-          return [nextConversation, ...current.filter((conversation) => conversation.id !== nextConversation.id)];
+          return sortConversationsByRecent([nextConversation, ...current.filter((conversation) => conversation.id !== nextConversation.id)]);
         });
       } else {
         void loadConversations();
       }
 
       if (selectedConversationId && didLastMessageChange) {
-        void loadMessages(selectedConversationId);
+        scheduleScrollToConversationEnd('smooth');
       }
     };
 
     window.addEventListener(APP_CONVERSATIONS_CHANGED_EVENT, handleConversationsChanged);
     return () => window.removeEventListener(APP_CONVERSATIONS_CHANGED_EVENT, handleConversationsChanged);
-  }, [conversations, loadConversations, loadMessages, selectedConversationId]);
+  }, [conversations, loadConversations, scheduleScrollToConversationEnd, selectedConversationId]);
 
   const handleSelectConversation = useCallback((conversationId: string) => {
     setSelectedConversationId(conversationId);
@@ -1064,19 +1170,39 @@ export function ConversationList() {
   const handleSendMessage = async () => {
     const body = htmlToWhatsappMarkdown(editorRef.current?.innerHTML ?? newMessage);
     if ((!body && pendingAttachments.length === 0) || !selectedConversation) return;
+    const currentReplyTarget = replyTarget;
+    const quotedMessageId = currentReplyTarget?.providerMessageId ?? currentReplyTarget?.id;
+    const quotedMessageContent = currentReplyTarget ? getMessagePreviewText(currentReplyTarget) : undefined;
+    const replyPayload = currentReplyTarget
+      ? {
+        replyToMessageId: quotedMessageId,
+        reply_to_message_id: quotedMessageId,
+        replyToContent: quotedMessageContent,
+        reply_to_content: quotedMessageContent,
+        quoted_msg_id: quotedMessageId,
+        quoted_content: quotedMessageContent,
+      }
+      : {};
 
     if (pendingAttachments.length > 0) {
-      const mediaMessages: ChatMessage[] = pendingAttachments.map((attachment, index) => ({
-        id: `local-media-${Date.now()}-${index}`,
-        body: index === 0 ? body : '',
-        direction: 'outbound',
-        createdAt: new Date(),
-        status: 'pending',
-        messageType: getMessageTypeFromMime(attachment.mime),
-        mediaUrl: attachment.url,
-        mediaMime: attachment.mime,
-        mediaFilename: attachment.name,
-      }));
+      const localMediaMessagePrefix = `local-media-${Date.now()}`;
+      const mediaMessages: ChatMessage[] = pendingAttachments.map((attachment, index) => {
+        const localMessageId = `${localMediaMessagePrefix}-${index}`;
+        return {
+          id: localMessageId,
+          clientMessageId: localMessageId,
+          body: index === 0 ? body : '',
+          direction: 'outbound',
+          createdAt: new Date(),
+          status: 'pending',
+          messageType: getMessageTypeFromMime(attachment.mime),
+          mediaUrl: attachment.url,
+          mediaMime: attachment.mime,
+          mediaFilename: attachment.name,
+          quotedMessageId: index === 0 ? quotedMessageId : undefined,
+          quotedMessageContent: index === 0 ? quotedMessageContent : undefined,
+        };
+      });
 
       setMessages((current) => [...current, ...mediaMessages]);
       localAudioUrlsRef.current.push(...pendingAttachments.map((attachment) => attachment.url));
@@ -1085,12 +1211,13 @@ export function ConversationList() {
       );
       setPendingAttachments([]);
       setNewMessage('');
+      setReplyTarget(null);
       if (editorRef.current) editorRef.current.innerHTML = '';
-      setConversations((current) => current.map((conversation) => (
+      setConversations((current) => sortConversationsByRecent(current.map((conversation) => (
         conversation.id === selectedConversation.id
           ? { ...conversation, lastMessage: body || getAttachmentPreviewLabel(pendingAttachments[0]), lastMessageAt: new Date() }
           : conversation
-      )));
+      ))));
 
       await Promise.all(mediaMessages.map(async (localMessage, index) => {
         const attachment = pendingAttachments[index];
@@ -1098,6 +1225,8 @@ export function ConversationList() {
           const sent = await sendMessage({
             contactId: selectedConversation.id,
             content: localMessage.body,
+            clientMessageId: localMessage.clientMessageId,
+            ...(index === 0 ? replyPayload : {}),
             media: {
               data: await blobToDataUrl(attachment.file),
               mediaMime: attachment.mime,
@@ -1111,10 +1240,13 @@ export function ConversationList() {
               ? {
                 ...message,
                 id: sentMessage?.id ?? message.id,
+                clientMessageId: sentMessage?.clientMessageId ?? message.clientMessageId,
                 providerMessageId: sentMessage?.providerMessageId ?? message.providerMessageId,
                 status: sentMessage?.status ?? 'sent',
                 mediaUrl: sentMessage?.mediaUrl ?? message.mediaUrl,
                 createdAt: parseDate(sentMessage?.createdAt ?? sentMessage?.sentAt),
+                quotedMessageId: sentMessage?.quotedMessageId ?? message.quotedMessageId,
+                quotedMessageContent: sentMessage?.quotedMessageContent ?? message.quotedMessageContent,
               }
               : message
           )));
@@ -1128,40 +1260,48 @@ export function ConversationList() {
       return;
     }
 
+    const localTextMessageId = `local-${Date.now()}`;
     const optimisticMessage: ChatMessage = {
-      id: `local-${Date.now()}`,
+      id: localTextMessageId,
+      clientMessageId: localTextMessageId,
       body,
       direction: 'outbound',
       createdAt: new Date(),
       status: 'pending',
+      quotedMessageId,
+      quotedMessageContent,
     };
 
     setMessages((current) => [...current, optimisticMessage]);
     setNewMessage('');
+    setReplyTarget(null);
     if (editorRef.current) {
       editorRef.current.innerHTML = '';
     }
     setIsSending(true);
 
     try {
-      const result = await sendMessage({ contactId: selectedConversation.id, content: body });
+      const result = await sendMessage({ contactId: selectedConversation.id, content: body, clientMessageId: optimisticMessage.clientMessageId, ...replyPayload });
       const sentMessage = result?.message as MessagingMessage | undefined;
       setMessages((current) => current.map((message) => (
         message.id === optimisticMessage.id
           ? {
             ...message,
             id: sentMessage?.id ?? message.id,
+            clientMessageId: sentMessage?.clientMessageId ?? message.clientMessageId,
             providerMessageId: sentMessage?.providerMessageId ?? message.providerMessageId,
             status: sentMessage?.status ?? 'sent',
             createdAt: parseDate(sentMessage?.createdAt ?? sentMessage?.sentAt),
+            quotedMessageId: sentMessage?.quotedMessageId ?? message.quotedMessageId,
+            quotedMessageContent: sentMessage?.quotedMessageContent ?? message.quotedMessageContent,
           }
           : message
       )));
-      setConversations((current) => current.map((conversation) => (
+      setConversations((current) => sortConversationsByRecent(current.map((conversation) => (
         conversation.id === selectedConversation.id
           ? { ...conversation, lastMessage: body, lastMessageAt: new Date() }
           : conversation
-      )));
+      ))));
     } catch (error) {
       toast.error(getApiErrorMessage(error, 'No se pudo enviar el mensaje'));
       setMessages((current) => current.map((message) => (
@@ -1286,8 +1426,10 @@ export function ConversationList() {
 
         const audioUrl = URL.createObjectURL(blob);
         localAudioUrlsRef.current.push(audioUrl);
+        const localAudioMessageId = `local-audio-${Date.now()}`;
         const audioMessage: ChatMessage = {
-          id: `local-audio-${Date.now()}`,
+          id: localAudioMessageId,
+          clientMessageId: localAudioMessageId,
           body: '',
           direction: 'outbound',
           createdAt: new Date(),
@@ -1299,16 +1441,17 @@ export function ConversationList() {
         };
 
         setMessages((current) => [...current, audioMessage]);
-        setConversations((current) => current.map((conversation) => (
+        setConversations((current) => sortConversationsByRecent(current.map((conversation) => (
           conversation.id === selectedConversation.id
             ? { ...conversation, lastMessage: 'Audio', lastMessageAt: new Date() }
             : conversation
-        )));
+        ))));
 
         try {
           const sent = await sendMessage({
             contactId: selectedConversation.id,
             content: '',
+            clientMessageId: audioMessage.clientMessageId,
             media: {
               data: await blobToDataUrl(blob),
               mediaMime: cleanAudioMime,
@@ -1321,6 +1464,7 @@ export function ConversationList() {
               ? {
                 ...message,
                 id: sentMessage?.id ?? message.id,
+                clientMessageId: sentMessage?.clientMessageId ?? message.clientMessageId,
                 providerMessageId: sentMessage?.providerMessageId ?? message.providerMessageId,
                 status: sentMessage?.status ?? 'sent',
                 mediaUrl: sentMessage?.mediaUrl ?? message.mediaUrl,
@@ -1402,6 +1546,7 @@ export function ConversationList() {
   const handleReactMessage = async (message: ChatMessage, reaction: string) => {
     const previousReaction = message.reactions?.me;
     const nextReaction = previousReaction === reaction ? '' : reaction;
+    setOpenReactionMessageId(null);
     setMessages((current) => current.map((currentMessage) => (
       currentMessage.id === message.id
         ? {
@@ -1437,6 +1582,22 @@ export function ConversationList() {
       )));
       toast.error(getApiErrorMessage(error, 'No se pudo reaccionar al mensaje'));
     }
+  };
+
+  const handleSelectReplyTarget = (message: ChatMessage) => {
+    setReplyTarget(message);
+    window.requestAnimationFrame(() => editorRef.current?.focus());
+  };
+
+  const handleComposerEmojiClick = (emojiData: EmojiClickData) => {
+    const editor = editorRef.current;
+    editor?.focus();
+    const didInsert = document.execCommand('insertText', false, emojiData.emoji);
+    if (editor && !didInsert) {
+      editor.textContent = `${editor.innerText}${emojiData.emoji}`;
+    }
+    setNewMessage(editor?.innerText ?? `${newMessage}${emojiData.emoji}`);
+    setIsMessageEmojiPickerOpen(false);
   };
 
   const applyEditorCommand = (command: string, value?: string) => {
@@ -1498,7 +1659,7 @@ export function ConversationList() {
         channel: 'whatsapp',
       };
 
-      setConversations((current) => [nextConversation, ...current]);
+      setConversations((current) => sortConversationsByRecent([nextConversation, ...current]));
       setSelectedConversationId(conversationId);
       setIsNewChatOpen(false);
       setNewChatName('');
@@ -1700,28 +1861,71 @@ export function ConversationList() {
                   ) : messages.map((message) => {
                     const outbound = message.direction === 'outbound';
                     const mediaKind = getMediaKind(message);
-                    const visibleReactions = Object.values(message.reactions ?? {}).filter(Boolean);
+                    const visibleReactions = getVisibleReactionEmojis(message.reactions);
+                    const quotedPreview = getQuotedPreview(message, messages);
                     return (
-                      <div key={message.id} className={`mb-5 flex ${outbound ? 'justify-end' : 'justify-start'}`}>
+                      <div key={message.id} className={`mb-10 flex ${outbound ? 'justify-end' : 'justify-start'}`}>
                         <div className={`group relative max-w-[78%] rounded-xl px-4 py-3 shadow-sm ${
                           outbound
                             ? 'rounded-tr-sm bg-emerald-100 text-slate-950 dark:bg-emerald-950/70 dark:text-white'
                             : 'rounded-tl-sm border border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]'
                         }`}
                         >
-                          <div className={`absolute -top-7 z-10 hidden gap-1 rounded-full border border-[var(--app-line)] bg-[var(--app-panel)] p-1 shadow-lg group-hover:flex ${outbound ? 'right-0' : 'left-0'}`}>
-                            {['👍', '❤️', '😂', '😮', '😢'].map((reaction) => (
-                              <button
-                                key={reaction}
-                                type="button"
-                                className="flex h-6 w-6 items-center justify-center rounded-full text-sm transition hover:bg-[var(--app-soft)]"
-                                onClick={() => void handleReactMessage(message, reaction)}
-                                title={`Reaccionar ${reaction}`}
+                          <div className={`absolute -bottom-9 right-0 z-10 items-center gap-1 rounded-full border border-[var(--app-line)] bg-[var(--app-panel)] p-1 shadow-lg ${
+                            openReactionMessageId === message.id ? 'flex' : 'hidden group-hover:flex group-focus-within:flex'
+                          }`}>
+                            <Popover
+                              open={openReactionMessageId === message.id}
+                              onOpenChange={(open) => setOpenReactionMessageId(open ? message.id : null)}
+                            >
+                              <PopoverTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-[var(--app-soft)]"
+                                  title="Reaccionar"
+                                >
+                                  <Smile className="h-4 w-4" />
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                align={outbound ? 'end' : 'start'}
+                                side="top"
+                                sideOffset={8}
+                                className="w-auto overflow-hidden rounded-xl border-[var(--app-line)] bg-[var(--app-panel)] p-0 shadow-xl"
                               >
-                                {reaction}
-                              </button>
-                            ))}
+                                <EmojiPicker
+                                  emojiStyle={EmojiStyle.APPLE}
+                                  theme={emojiPickerTheme}
+                                  reactionsDefaultOpen
+                                  allowExpandReactions
+                                  reactions={quickReactionUnicodes}
+                                  width={320}
+                                  height={360}
+                                  previewConfig={{ showPreview: false }}
+                                  searchPlaceholder="Buscar emoji"
+                                  onReactionClick={(emojiData) => void handleReactMessage(message, emojiData.emoji)}
+                                  onEmojiClick={(emojiData) => void handleReactMessage(message, emojiData.emoji)}
+                                />
+                              </PopoverContent>
+                            </Popover>
+                            <button
+                              type="button"
+                              className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-[var(--app-soft)]"
+                              onClick={() => handleSelectReplyTarget(message)}
+                              title="Responder"
+                            >
+                              <Reply className="h-4 w-4" />
+                            </button>
                           </div>
+                          {quotedPreview ? (
+                            <div className={`mb-2 rounded-lg border-l-4 px-3 py-2 text-xs leading-relaxed ${
+                              outbound
+                                ? 'border-emerald-500 bg-white/45 text-slate-700 dark:bg-white/10 dark:text-emerald-50'
+                                : 'border-[var(--primary)] bg-[var(--app-soft)] text-[var(--app-muted)]'
+                            }`}>
+                              <span className="line-clamp-2">{renderWhatsappText(quotedPreview)}</span>
+                            </div>
+                          ) : null}
                           {message.mediaUrl ? (
                             <div className={message.body ? 'mb-2' : ''}>
                               {mediaKind === 'image' ? (
@@ -1793,6 +1997,24 @@ export function ConversationList() {
                     );
                   })}
                 </div>
+                {replyTarget ? (
+                  <div className="mb-3 flex items-start gap-3 rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] px-3 py-2 text-sm">
+                    <div className="mt-0.5 border-l-4 border-[var(--primary)] pl-3">
+                      <p className="text-xs font-semibold text-[var(--primary)]">
+                        Respondiendo {replyTarget.direction === 'outbound' ? 'tu mensaje' : `a ${selectedConversation.name}`}
+                      </p>
+                      <p className="line-clamp-2 text-xs text-[var(--app-muted)]">{getMessagePreviewText(replyTarget)}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="ml-auto flex size-7 shrink-0 items-center justify-center rounded-md text-[var(--app-muted)] hover:bg-[var(--app-soft)] hover:text-[var(--app-strong)]"
+                      onClick={() => setReplyTarget(null)}
+                      title="Cancelar respuesta"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : null}
                 {pendingAttachments.length > 0 ? (
                   <div className="mb-3 flex gap-2 overflow-x-auto rounded-2xl border border-[var(--app-line)] bg-[var(--app-panel)] p-2">
                     {pendingAttachments.map((attachment) => (
@@ -1893,9 +2115,35 @@ export function ConversationList() {
                       >
                         <Paperclip className="h-5 w-5" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="mb-1 size-10 shrink-0 rounded-full text-[var(--app-strong)] hover:bg-[var(--app-soft)]">
-                        <Smile className="h-5 w-5" />
-                      </Button>
+                      <Popover open={isMessageEmojiPickerOpen} onOpenChange={setIsMessageEmojiPickerOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="mb-1 size-10 shrink-0 rounded-full text-[var(--app-strong)] hover:bg-[var(--app-soft)]"
+                            title="Insertar emoji"
+                          >
+                            <Smile className="h-5 w-5" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="start"
+                          side="top"
+                          sideOffset={10}
+                          className="w-auto overflow-hidden rounded-xl border-[var(--app-line)] bg-[var(--app-panel)] p-0 shadow-xl"
+                        >
+                          <EmojiPicker
+                            emojiStyle={EmojiStyle.APPLE}
+                            theme={emojiPickerTheme}
+                            width={340}
+                            height={420}
+                            previewConfig={{ showPreview: false }}
+                            searchPlaceholder="Buscar emoji"
+                            onEmojiClick={handleComposerEmojiClick}
+                          />
+                        </PopoverContent>
+                      </Popover>
                       <div className="relative flex max-h-40 min-h-[32px] mb-1 flex-1 flex-col justify-end overflow-hidden py-2">
                         {!newMessage.trim() ? (
                           <span className="pointer-events-none absolute left-0 mb-1 bottom-2 text-sm text-[var(--app-muted)]">Escribe un mensaje</span>

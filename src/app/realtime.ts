@@ -183,6 +183,9 @@ function buildMessagingMessageDetail(payload: Record<string, unknown>): AppNewMe
   if (!conversationId) return null;
 
   const direction = String(message.direction ?? 'inbound').toLowerCase();
+  const rawPayload = message.rawPayload && typeof message.rawPayload === 'object'
+    ? message.rawPayload as Record<string, unknown>
+    : {};
   const createdAt = typeof message.createdAt === 'string'
     ? message.createdAt
     : typeof message.sentAt === 'string'
@@ -192,6 +195,14 @@ function buildMessagingMessageDetail(payload: Record<string, unknown>): AppNewMe
   return {
     conversationId,
     messageId: String(message.id ?? `msg-${Date.now()}`),
+    clientMessageId:
+      message.clientMessageId !== undefined
+        ? String(message.clientMessageId)
+        : rawPayload.clientMessageId !== undefined
+        ? String(rawPayload.clientMessageId)
+        : rawPayload.client_message_id !== undefined
+        ? String(rawPayload.client_message_id)
+        : undefined,
     providerMessageId: message.providerMessageId !== undefined ? String(message.providerMessageId) : undefined,
     msgId: String(message.providerMessageId ?? message.id ?? `msg-${Date.now()}`),
     content: typeof message.body === 'string' ? message.body : '',
@@ -200,33 +211,55 @@ function buildMessagingMessageDetail(payload: Record<string, unknown>): AppNewMe
         ? message.mediaUrl
         : typeof message.media_url === 'string'
         ? message.media_url
-        : typeof message.rawPayload?.['mediaUrl'] === 'string'
-        ? message.rawPayload['mediaUrl']
+        : typeof rawPayload.mediaUrl === 'string'
+        ? rawPayload.mediaUrl
         : undefined,
     mediaMime:
       typeof message.mediaMime === 'string'
         ? message.mediaMime
         : typeof message.media_mime === 'string'
         ? message.media_mime
-        : typeof message.rawPayload?.['mediaMime'] === 'string'
-        ? message.rawPayload['mediaMime']
-        : typeof message.rawPayload?.['mimetype'] === 'string'
-        ? message.rawPayload['mimetype']
+        : typeof rawPayload.mediaMime === 'string'
+        ? rawPayload.mediaMime
+        : typeof rawPayload.mimetype === 'string'
+        ? rawPayload.mimetype
         : undefined,
     mediaFilename:
       typeof message.mediaFilename === 'string'
         ? message.mediaFilename
         : typeof message.media_filename === 'string'
         ? message.media_filename
-        : typeof message.rawPayload?.['mediaFilename'] === 'string'
-        ? message.rawPayload['mediaFilename']
-        : typeof message.rawPayload?.['filename'] === 'string'
-        ? message.rawPayload['filename']
+        : typeof rawPayload.mediaFilename === 'string'
+        ? rawPayload.mediaFilename
+        : typeof rawPayload.filename === 'string'
+        ? rawPayload.filename
         : undefined,
     messageType: typeof message.type === 'string' ? message.type : undefined,
     reactions:
-      message.rawPayload && typeof message.rawPayload === 'object'
-        ? (message.rawPayload as Record<string, unknown>).reactions as AppNewMessageDetail['reactions']
+      rawPayload.reactions as AppNewMessageDetail['reactions'] | undefined,
+    quotedMessageId:
+      message.quotedMessageId !== undefined
+        ? String(message.quotedMessageId)
+        : rawPayload.quotedMessageId !== undefined
+        ? String(rawPayload.quotedMessageId)
+        : rawPayload.quoted_msg_id !== undefined
+        ? String(rawPayload.quoted_msg_id)
+        : rawPayload.replyToMessageId !== undefined
+        ? String(rawPayload.replyToMessageId)
+        : rawPayload.reply_to_message_id !== undefined
+        ? String(rawPayload.reply_to_message_id)
+        : undefined,
+    quotedMessageContent:
+      typeof message.quotedMessageContent === 'string'
+        ? message.quotedMessageContent
+        : typeof rawPayload.quotedMessageContent === 'string'
+        ? rawPayload.quotedMessageContent
+        : typeof rawPayload.quoted_content === 'string'
+        ? rawPayload.quoted_content
+        : typeof rawPayload.replyToContent === 'string'
+        ? rawPayload.replyToContent
+        : typeof rawPayload.reply_to_content === 'string'
+        ? rawPayload.reply_to_content
         : undefined,
     status: typeof message.status === 'string' ? message.status : undefined,
     deliveredAt: typeof message.deliveredAt === 'string' ? message.deliveredAt : undefined,

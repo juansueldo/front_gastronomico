@@ -63,9 +63,32 @@ export function mapMessagingMessageDtoToModel(item: MessagingMessageDto): Messag
   const reactions = rawReactions && typeof rawReactions === 'object' && !Array.isArray(rawReactions)
     ? Object.fromEntries(Object.entries(rawReactions).map(([key, value]) => [key, String(value)]))
     : undefined;
+  const quotedMessageId = item.quotedMessageId
+    ?? item.quotedMsgId
+    ?? item.replyToMessageId
+    ?? item.reply_to_message_id
+    ?? rawPayload.quotedMessageId
+    ?? rawPayload.quotedMsgId
+    ?? rawPayload.quoted_msg_id
+    ?? rawPayload.replyToMessageId
+    ?? rawPayload.reply_to_message_id;
+  const quotedMessageContent = item.quotedMessageContent
+    ?? item.quotedContent
+    ?? item.replyToContent
+    ?? item.reply_to_content
+    ?? rawPayload.quotedMessageContent
+    ?? rawPayload.quotedContent
+    ?? rawPayload.quoted_content
+    ?? rawPayload.replyToContent
+    ?? rawPayload.reply_to_content;
+  const clientMessageId = item.clientMessageId
+    ?? item.client_message_id
+    ?? rawPayload.clientMessageId
+    ?? rawPayload.client_message_id;
 
   return {
     id: String(item.id ?? `message-${Date.now()}-${Math.random()}`),
+    clientMessageId: clientMessageId !== undefined && clientMessageId !== null ? String(clientMessageId) : undefined,
     conversationId: item.conversationId !== undefined ? String(item.conversationId) : undefined,
     direction: item.direction,
     type: item.type,
@@ -81,6 +104,8 @@ export function mapMessagingMessageDtoToModel(item: MessagingMessageDto): Messag
     readAt: item.readAt,
     providerMessageId: item.providerMessageId,
     reactions,
+    quotedMessageId: quotedMessageId !== undefined && quotedMessageId !== null ? String(quotedMessageId) : undefined,
+    quotedMessageContent: typeof quotedMessageContent === 'string' ? quotedMessageContent : undefined,
   };
 }
 

@@ -1,4 +1,4 @@
-import { ChangeEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import {
   Bell,
@@ -27,6 +27,7 @@ import {
   SunMedium,
   Tags,
   Truck,
+  Plus,
   UserRoundCheck,
   Users,
   Wallet,
@@ -62,7 +63,17 @@ import {
   markNotificationAsRead,
   type NotificationItem,
 } from '../features/notifications';
+import {
+  fetchActiveOrders as fetchNavbarActiveOrders,
+} from '../features/orders/services/orders.service';
+import {
+  fetchProductCategories,
+  fetchProducts,
+  type ProductCategory,
+  type ProductItem,
+} from '../features/products';
 import { getJsonStorageItem, setJsonStorageItem } from '../shared/storage';
+import { CreateOrderDialog } from './orders/CreateOrderDialog';
 
 const NOTIFICATIONS_CHANGED_EVENT = 'app:notifications-changed';
 
@@ -137,6 +148,54 @@ const statusIndicatorClasses: Record<NonNullable<AuthUser['status']>, string> = 
   away: 'bg-amber-400',
   busy: 'bg-rose-500',
   offline: 'bg-slate-400',
+};
+
+const onlyDigits = (value: string) => value.replace(/\D/g, '');
+
+const getOrderSearchId = (order: any) => String(order?.id ?? order?.order_number ?? '').trim();
+const getOrderDisplayId = (order: any) => String(order?.order_number ?? order?.id ?? '').trim();
+const getOrderCustomerName = (order: any) => String(
+  order?.customerName
+  ?? order?.Customer?.name
+  ?? order?.customer?.name
+  ?? order?.clientName
+  ?? 'Cliente',
+).trim();
+const getOrderCustomerPhone = (order: any) => String(
+  order?.customerPhone
+  ?? order?.Customer?.phone
+  ?? order?.customer?.phone
+  ?? order?.phone
+  ?? '',
+).trim();
+const getOrderStatusText = (order: any) => String(order?.status ?? order?.Status?.name ?? 'Activo').trim();
+const getOrderTotalText = (order: any) => {
+  const rawTotal = order?.total_amount ?? order?.total;
+  const parsedTotal = Number(rawTotal);
+  if (!Number.isFinite(parsedTotal)) {
+    return String(rawTotal ?? '');
+  }
+
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    maximumFractionDigits: 0,
+  }).format(parsedTotal);
+};
+
+const matchesOrderSearch = (order: any, query: string) => {
+  const normalizedQuery = query.trim().toLowerCase();
+  const digitQuery = onlyDigits(query);
+  const textHaystack = [
+    getOrderSearchId(order),
+    getOrderDisplayId(order),
+    getOrderCustomerName(order),
+    order?.detail,
+  ].map((value) => String(value ?? '').toLowerCase()).join(' ');
+  const phoneHaystack = onlyDigits(getOrderCustomerPhone(order));
+
+  return textHaystack.includes(normalizedQuery)
+    || (digitQuery.length > 0 && phoneHaystack.includes(digitQuery));
 };
 
 function getInitials(user: AuthUser | null) {
@@ -229,6 +288,16 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [isSavingStoreProfile, setIsSavingStoreProfile] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => getJsonStorageItem('isSidebarCollapsed', false));
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>(() => getJsonStorageItem('collapsedCategories', {}));
+  const [navbarSearchValue, setNavbarSearchValue] = useState('');
+  const [isNavbarSearchFocused, setIsNavbarSearchFocused] = useState(false);
+  const [navbarOrderResults, setNavbarOrderResults] = useState<any[]>([]);
+  const [isLoadingNavbarOrders, setIsLoadingNavbarOrders] = useState(false);
+  const [isCreateOrderDialogOpen, setIsCreateOrderDialogOpen] = useState(false);
+  const [isCreateOrderDialogMinimized, setIsCreateOrderDialogMinimized] = useState(false);
+  const [availableProducts, setAvailableProducts] = useState<ProductItem[]>([]);
+  const [availableCategories, setAvailableCategories] = useState<ProductCategory[]>([]);
+  const [hasLoadedOrderCatalog, setHasLoadedOrderCatalog] = useState(false);
+  const navbarSearchFieldRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const syncUser = () => setLoggedUser(getLoggedUser() as AuthUser | null);
@@ -560,6 +629,111 @@ export function AppLayout({ children }: AppLayoutProps) {
   const notificationCount = unreadCount || notifications.length;
   const userAvatarUrl = getUserAvatarUrl(loggedUser);
   const currentUserStatus = (loggedUser?.status ?? loggedUser?.presenceStatus ?? 'active') as NonNullable<AuthUser['status']>;
+  const trimmedNavbarSearch = navbarSearchValue.trim();
+  const shouldShowNavbarSearchResults = isNavbarSearchFocused && trimmedNavbarSearch.length >= 2;
+
+  useEffect(() => {
+    if (trimmedNavbarSearch.length < 2) {
+      setNavbarOrderResults([]);
+      setIsLoadingNavbarOrders(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingNavbarOrders(true);
+    const timeoutId = window.setTimeout(() => {
+      void fetchNavbarActiveOrders()
+        .then((orders) => {
+          if (cancelled) return;
+          setNavbarOrderResults(
+            orders
+              .filter((order) => matchesOrderSearch(order, trimmedNavbarSearch))
+              .slice(0, 8),
+          );
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setNavbarOrderResults([]);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setIsLoadingNavbarOrders(false);
+          }
+        });
+    }, 220);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [trimmedNavbarSearch]);
+
+  const loadOrderCatalog = useCallback(async () => {
+    if (hasLoadedOrderCatalog) return;
+
+    const [productsResult, categoriesResult] = await Promise.allSettled([
+      fetchProducts(),
+      fetchProductCategories(),
+    ]);
+
+    if (productsResult.status === 'fulfilled') {
+      const products = productsResult.value as any;
+      setAvailableProducts(Array.isArray(products) ? products : products?.rows ?? products?.products ?? products?.data ?? []);
+    } else {
+      toast.error('No se pudieron cargar los productos');
+    }
+
+    if (categoriesResult.status === 'fulfilled') {
+      const categories = categoriesResult.value as any;
+      setAvailableCategories(Array.isArray(categories) ? categories : categories?.rows ?? categories?.categories ?? categories?.data ?? []);
+    } else {
+      toast.error('No se pudieron cargar las categorías');
+    }
+
+    setHasLoadedOrderCatalog(true);
+  }, [hasLoadedOrderCatalog]);
+
+  const openCreateOrderDialog = () => {
+    setIsCreateOrderDialogOpen(true);
+    setIsCreateOrderDialogMinimized(false);
+    void loadOrderCatalog();
+  };
+
+  const closeCreateOrderDialog = () => {
+    setIsCreateOrderDialogOpen(false);
+    setIsCreateOrderDialogMinimized(false);
+  };
+
+  const handleNavbarOrderCreated = () => {
+    closeCreateOrderDialog();
+    window.dispatchEvent(new CustomEvent('app:orders-changed'));
+    if (location.pathname !== '/orders') {
+      navigate('/orders');
+    }
+  };
+
+  const handleSelectNavbarOrder = (order: any) => {
+    const orderId = getOrderSearchId(order);
+    if (!orderId) return;
+
+    setNavbarSearchValue('');
+    if (navbarSearchFieldRef.current) {
+      navbarSearchFieldRef.current.textContent = '';
+    }
+    setNavbarOrderResults([]);
+    setIsNavbarSearchFocused(false);
+    navigate(`/orders?orderId=${encodeURIComponent(orderId)}`);
+  };
+
+  const clearNavbarSearch = () => {
+    setNavbarSearchValue('');
+    setNavbarOrderResults([]);
+    if (navbarSearchFieldRef.current) {
+      navbarSearchFieldRef.current.textContent = '';
+      navbarSearchFieldRef.current.blur();
+    }
+  };
 
   const renderUserMenu = (align: 'start' | 'end' = 'start', triggerClassName = 'legacy-user-trigger') => (
     <DropdownMenu>
@@ -674,14 +848,77 @@ export function AppLayout({ children }: AppLayoutProps) {
             {renderUserMenu('start', 'legacy-user-trigger mobile-user-trigger')}
           </div>
 
-          <div className="app-search">
-            <Search className="h-5 w-5 text-app-muted" />
-            <input type="search"  style={{
-              outline: "none",
-              border: "none",
-              boxShadow: "none",
-            }} placeholder="Buscar pedidos, clientes, productos..." />
+          <div className="app-search-wrap">
+            <div className="app-search">
+              <Search className="h-5 w-5 text-app-muted" />
+              <div
+                ref={navbarSearchFieldRef}
+                role="textbox"
+                aria-label="Buscar pedidos activos"
+                contentEditable
+                suppressContentEditableWarning
+                data-placeholder="Buscar pedidos, clientes..."
+                className="app-search-field"
+                onInput={(event) => setNavbarSearchValue(event.currentTarget.textContent ?? '')}
+                onFocus={() => setIsNavbarSearchFocused(true)}
+                onBlur={() => window.setTimeout(() => setIsNavbarSearchFocused(false), 150)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    const firstOrder = navbarOrderResults[0];
+                    if (firstOrder) handleSelectNavbarOrder(firstOrder);
+                  }
+                  if (event.key === 'Escape') {
+                    event.preventDefault();
+                    clearNavbarSearch();
+                  }
+                }}
+                style={{
+                  outline: 'none',
+                  border: 'none',
+                  boxShadow: 'none',
+                }}
+              />
+            </div>
+            {shouldShowNavbarSearchResults ? (
+              <div className="app-search-results" onMouseDown={(event) => event.preventDefault()}>
+                {isLoadingNavbarOrders ? (
+                  <div className="px-3 py-3 text-sm text-app-muted">Buscando pedidos activos...</div>
+                ) : navbarOrderResults.length === 0 ? (
+                  <div className="px-3 py-3 text-sm text-app-muted">No hay pedidos activos para esa búsqueda.</div>
+                ) : (
+                  navbarOrderResults.map((order) => {
+                    const orderId = getOrderSearchId(order);
+                    const displayId = getOrderDisplayId(order) || orderId;
+                    const customerPhone = getOrderCustomerPhone(order);
+                    return (
+                      <button
+                        key={orderId}
+                        type="button"
+                        className="app-search-result-item"
+                        onClick={() => handleSelectNavbarOrder(order)}
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-app-strong">
+                            Pedido {displayId} - {getOrderCustomerName(order)}
+                          </span>
+                          <span className="block truncate text-xs text-app-muted">
+                            {customerPhone ? `${customerPhone} - ` : ''}{getOrderStatusText(order)}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-sm font-semibold text-app-strong">{getOrderTotalText(order)}</span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            ) : null}
           </div>
+
+          <button type="button" className="app-order-button" onClick={openCreateOrderDialog}>
+            <Plus className="h-4 w-4" />
+            <span>Pedido</span>
+          </button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -765,6 +1002,17 @@ export function AppLayout({ children }: AppLayoutProps) {
         </header>
 
         <main className="app-main min-h-0 flex-1">{children}</main>
+
+        {isCreateOrderDialogOpen && isCreateOrderDialogMinimized ? (
+          <button
+            type="button"
+            className="fixed bottom-5 right-5 z-[70] inline-flex items-center gap-2 rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] px-4 py-3 text-sm font-semibold text-app-strong shadow-[0_18px_44px_rgb(0_0_0_/_26%)] transition hover:bg-[var(--app-soft)]"
+            onClick={() => setIsCreateOrderDialogMinimized(false)}
+          >
+            <ClipboardList className="h-4 w-4 text-orange-500" />
+            Pedido en curso
+          </button>
+        ) : null}
 
         {isMobileMoreOpen ? (
           <div className="mobile-more-backdrop md:hidden" onClick={() => setIsMobileMoreOpen(false)}>
@@ -886,6 +1134,15 @@ export function AppLayout({ children }: AppLayoutProps) {
           </section>
         </div>
       )}
+
+      <CreateOrderDialog
+        open={isCreateOrderDialogOpen && !isCreateOrderDialogMinimized}
+        onClose={closeCreateOrderDialog}
+        onCreated={handleNavbarOrderCreated}
+        onMinimize={() => setIsCreateOrderDialogMinimized(true)}
+        availableProducts={availableProducts}
+        availableCategories={availableCategories}
+      />
     </div>
   );
 }

@@ -47,6 +47,8 @@ export interface SendMessageRequest {
   contactId: number | string;
   contact_id?: number | string;
   content?: string;
+  clientMessageId?: string;
+  client_message_id?: string;
   media?: {
     data?: string;
     mediaData?: string;
@@ -85,15 +87,21 @@ function normalizePhone(value?: string) {
   return digits || withoutSuffix;
 }
 
+function normalizeDisplayPhone(value?: string) {
+  const phone = normalizePhone(value);
+  return phone && /^\d+$/.test(phone) ? phone : '';
+}
+
 function mapConversationToContact(conversation: MessagingConversation): ContactItem {
   const customerName = conversation.customer?.name?.trim();
-  const customerPhone = normalizePhone(conversation.customer?.phone);
-  const contactIdentifier = normalizePhone(conversation.contact?.identifier);
+  const customerPhone = normalizeDisplayPhone(conversation.customer?.phone);
+  const contactIdentifier = normalizeDisplayPhone(conversation.contact?.identifier);
+  const externalChatPhone = normalizeDisplayPhone(conversation.externalChatId);
 
   return {
     id: conversation.id,
-    name: customerName || customerPhone || contactIdentifier || `Conversacion ${conversation.id}`,
-    phone: customerPhone || contactIdentifier,
+    name: customerName || customerPhone || contactIdentifier || externalChatPhone || `Conversacion ${conversation.id}`,
+    phone: customerPhone || contactIdentifier || externalChatPhone || undefined,
     avatarUrl: conversation.customer?.profileImageUrl ?? null,
     avatar_url: conversation.customer?.profileImageUrl ?? null,
     label: mapConversationStatusToLegacyLabel(conversation.status),
@@ -111,6 +119,8 @@ function mapMessagingMessageToLegacyMessage(message: MessagingMessage, conversat
 
   return {
     id: message.id,
+    clientMessageId: message.clientMessageId,
+    client_message_id: message.clientMessageId,
     msg_id: message.providerMessageId ?? message.id,
     contact_id: conversationId,
     direction: message.direction === 'outbound' ? 'o' : 'i',
@@ -131,6 +141,10 @@ function mapMessagingMessageToLegacyMessage(message: MessagingMessage, conversat
     ack,
     status: message.status,
     reactions: message.reactions,
+    quotedMessageId: message.quotedMessageId,
+    quoted_msg_id: message.quotedMessageId,
+    quotedMessageContent: message.quotedMessageContent,
+    quoted_content: message.quotedMessageContent,
   };
 }
 
@@ -181,7 +195,18 @@ export async function sendMessage(request: SendMessageRequest) {
     return { ok: true, skipped: true };
   }
 
-  return sendConversationMessage(request.contact_id ?? request.contactId, { body, media: request.media });
+  return sendConversationMessage(request.contact_id ?? request.contactId, {
+    body,
+    clientMessageId: request.clientMessageId,
+    client_message_id: request.client_message_id,
+    media: request.media,
+    replyToMessageId: request.replyToMessageId as string | number | undefined,
+    reply_to_message_id: request.reply_to_message_id as string | number | undefined,
+    replyToContent: request.replyToContent as string | undefined,
+    reply_to_content: request.reply_to_content as string | undefined,
+    quoted_msg_id: request.quoted_msg_id as string | number | undefined,
+    quoted_content: request.quoted_content as string | undefined,
+  });
 }
 
 export async function reactMessage(messageId: string | number, reaction: string) {

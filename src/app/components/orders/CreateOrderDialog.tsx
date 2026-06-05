@@ -8,13 +8,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../shared/ui/components/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../shared/ui/components/select';
 import { toast } from 'sonner';
 import { getLoggedUser } from '../../core/storage/authStorage';
 import {
@@ -118,15 +111,6 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
   maximumFractionDigits: 0,
 });
 const ORDER_HEADQUARTER_STORAGE_KEY = 'cash:selected-headquarter-id';
-const PHONE_PREFIX_OPTIONS = [
-  { value: '+54', label: '+54', country: 'Argentina' },
-  { value: '+598', label: '+598', country: 'Uruguay' },
-  { value: '+595', label: '+595', country: 'Paraguay' },
-  { value: '+56', label: '+56', country: 'Chile' },
-  { value: '+55', label: '+55', country: 'Brasil' },
-  { value: '+591', label: '+591', country: 'Bolivia' },
-];
-
 const getStoredHeadquarterId = () => getStorageItem(ORDER_HEADQUARTER_STORAGE_KEY);
 
 function getNormalizedProductCategoryIds(product: ProductItem): string[] {
@@ -208,17 +192,14 @@ const formatManualScheduleLabel = (date: string, time: string) => {
 const onlyDigits = (value: string) => value.replace(/\D/g, '');
 
 const formatPhoneDisplay = (value: string) => {
-  const digits = onlyDigits(value).slice(0, 14);
+  const digits = onlyDigits(value).slice(0, 15);
   if (digits.length <= 2) return digits;
   if (digits.length <= 6) return `${digits.slice(0, 2)} ${digits.slice(2)}`;
   if (digits.length <= 10) return `${digits.slice(0, 2)} ${digits.slice(2, 6)} ${digits.slice(6)}`;
   return `${digits.slice(0, 2)} ${digits.slice(2, 6)} ${digits.slice(6, 10)} ${digits.slice(10)}`;
 };
 
-const buildFullPhone = (prefix: string, phoneValue: string) => {
-  const digits = onlyDigits(phoneValue);
-  return digits ? `${prefix}${digits}` : '';
-};
+const buildFullPhone = (phoneValue: string) => onlyDigits(phoneValue).slice(0, 15);
 
 const buildScheduleState = (schedules: HeadquarterSchedule[] | undefined, now: Date) => {
   if (!schedules || schedules.length === 0) {
@@ -341,7 +322,6 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
   const [step, setStep] = useState<Step>('phone');
 
   // Paso 1 — Teléfono
-  const [phonePrefix, setPhonePrefix] = useState('+54');
   const [phone, setPhone] = useState('');
   const [isSearchingCustomer, setIsSearchingCustomer] = useState(false);
   const [customerFound, setCustomerFound] = useState<CustomerData | null>(null);
@@ -388,7 +368,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
 
   const activeSteps = orderType === 'delivery' ? STEPS : STEPS_DINE_IN;
   const selectedHeadquarter = headquarters.find((headquarter) => String(headquarter.id) === selectedHeadquarterId);
-  const fullPhone = buildFullPhone(phonePrefix, phone);
+  const fullPhone = buildFullPhone(phone);
   const scheduleState = useMemo(
     () => buildScheduleState(normalizeHeadquarterSchedules(selectedHeadquarter?.schedules), scheduleNow),
     [selectedHeadquarter?.schedules, scheduleNow],
@@ -414,8 +394,7 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
 
     setCustomerFound(initialCustomer);
     setCustomerNotFound(false);
-    setPhonePrefix('+54');
-    setPhone(initialCustomer.phone.replace(/^\+?54/, '').trim());
+    setPhone(onlyDigits(initialCustomer.phone));
     setStep('type');
 
     if (initialCustomer.savedAddress) {
@@ -745,7 +724,6 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
 
   const handleClose = () => {
     setStep('phone');
-    setPhonePrefix('+54');
     setPhone('');
     setCustomerFound(null);
     setCustomerNotFound(false);
@@ -781,38 +759,14 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
       </div>
 
       <div>
-        <FieldLabel>Teléfono</FieldLabel>
+        <FieldLabel>Teléfono internacional</FieldLabel>
         <div className="flex h-12 overflow-hidden rounded-lg border border-[var(--primary)] bg-[var(--app-panel)] text-[var(--app-strong)] shadow-[0_0_0_1px_rgb(255_90_10_/_16%)]">
           <div className="flex items-center gap-2 border-r border-[var(--app-line)] px-3">
             <Phone className="h-4 w-4 text-[var(--app-strong)]" />
-            <Select value={phonePrefix} onValueChange={setPhonePrefix}>
-              <SelectTrigger
-                aria-label="Código de área"
-                className="h-full min-w-[138px] border-0 bg-transparent px-0 py-0 text-sm font-semibold text-[var(--app-strong)] shadow-none ring-0 focus:border-0 focus:ring-0 focus-visible:border-0 focus-visible:ring-0 [&>svg]:text-[var(--app-muted)]"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent
-                align="start"
-                className="z-[90] w-60 rounded-xl border-[var(--app-line)] bg-[var(--app-panel)] p-1 text-[var(--app-strong)] shadow-[0_18px_46px_rgb(0_0_0_/_32%)]"
-              >
-                {PHONE_PREFIX_OPTIONS.map((option) => (
-                  <SelectItem
-                    key={option.value}
-                    value={option.value}
-                    className="rounded-lg px-3 py-2.5 text-sm text-[var(--app-strong)] focus:bg-[var(--app-soft)] focus:text-[var(--app-strong)] data-[state=checked]:bg-[var(--primary)] data-[state=checked]:text-white"
-                  >
-                    <span className="flex w-full items-center justify-between gap-4">
-                      <span className="font-semibold">{option.label}</span>
-                      <span className="text-xs opacity-75">{option.country}</span>
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <span className="text-sm font-semibold text-[var(--app-strong)]">WhatsApp</span>
           </div>
           <input
-            placeholder="11 2345 6789"
+            placeholder="54911 2345 6789"
             value={formatPhoneDisplay(phone)}
             onChange={(e) => setPhone(onlyDigits(e.target.value))}
             onKeyDown={(e) => e.key === 'Enter' && void searchCustomer()}
@@ -821,6 +775,9 @@ export function CreateOrderDialog({ open, onClose, onCreated, availableProducts,
             className="min-w-0 flex-1 border-0 bg-transparent px-4 text-base text-[var(--app-strong)] outline-none placeholder:text-[var(--app-muted)] focus:border-0 focus:shadow-none"
           />
         </div>
+        <p className="mt-2 text-xs leading-5 text-[var(--app-muted)]">
+          Usá formato internacional, solo números, sin + ni espacios. Ej: 5491123456789 para vincularlo con WhatsApp.
+        </p>
       </div>
 
       <div className="-mx-5 -mb-5 flex justify-end gap-3 border-t border-[var(--app-line)] bg-[var(--app-panel-subtle)] px-5 py-4 sm:-mx-7 sm:-mb-6 sm:px-7">

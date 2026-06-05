@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 import { Badge } from '../shared/ui/components/badge';
 import { Button } from '../shared/ui/components/button';
 import { Input } from '../shared/ui/components/input';
@@ -165,6 +166,8 @@ const buildDateFromScheduled = (scheduledDate?: string, scheduledTime?: string) 
 };
 
 export function ActiveOrdersView() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [orders, setOrders] = useState<ActiveOrderItem[]>([]);
   const [detailOrder, setDetailOrder] = useState<ActiveOrderItem | null>(null);
   const [statusOrder, setStatusOrder] = useState<ActiveOrderItem | null>(null);
@@ -313,6 +316,25 @@ export function ActiveOrdersView() {
     const intervalId = window.setInterval(() => { void loadOrders(); }, 20_000);
     return () => { window.clearInterval(intervalId); };
   }, []);
+
+  useEffect(() => {
+    const handleOrdersChanged = () => { void loadOrders(); };
+    window.addEventListener('app:orders-changed', handleOrdersChanged);
+    return () => window.removeEventListener('app:orders-changed', handleOrdersChanged);
+  }, []);
+
+  useEffect(() => {
+    const requestedOrderId = new URLSearchParams(location.search).get('orderId');
+    if (!requestedOrderId) return;
+
+    const matchingOrder = orders.find((order) => (
+      order.id === requestedOrderId || order.detail === requestedOrderId
+    ));
+
+    if (matchingOrder) {
+      setDetailOrder(matchingOrder);
+    }
+  }, [location.search, orders]);
 
   useEffect(() => {
     const loadDeliveryZone = async () => {
@@ -550,6 +572,23 @@ export function ActiveOrdersView() {
   const handleOpenDetail = (order: ActiveOrderItem) => {
     if (suppressNextClick.current) { suppressNextClick.current = false; return; }
     setDetailOrder(order);
+  };
+
+  const handleCloseDetail = () => {
+    setDetailOrder(null);
+
+    const params = new URLSearchParams(location.search);
+    if (!params.has('orderId')) return;
+
+    params.delete('orderId');
+    const nextSearch = params.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextSearch ? `?${nextSearch}` : '',
+      },
+      { replace: true },
+    );
   };
 
   const handleOpenStatusDialog = (order: ActiveOrderItem) => setStatusOrder(order);
@@ -1189,7 +1228,7 @@ export function ActiveOrdersView() {
       </div>
 
       {/* ── Dialog detalle de orden ── */}
-      <Dialog open={!!detailOrder} onOpenChange={() => setDetailOrder(null)}>
+      <Dialog open={!!detailOrder} onOpenChange={(open) => { if (!open) handleCloseDetail(); }}>
         <DialogContent className={DIALOG_CONTENT_CLASS}>
           <DialogHeader className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-[var(--app-line)] px-5 pb-4 pt-5 pr-16 text-left">
             <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">

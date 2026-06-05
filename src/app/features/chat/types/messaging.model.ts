@@ -40,6 +40,7 @@ export interface MessagingConversation {
 
 export interface MessagingMessage {
   id: string;
+  clientMessageId?: string;
   conversationId?: string;
   direction?: 'inbound' | 'outbound';
   type?: string;
@@ -55,6 +56,8 @@ export interface MessagingMessage {
   readAt?: string;
   providerMessageId?: string;
   reactions?: Record<string, string>;
+  quotedMessageId?: string;
+  quotedMessageContent?: string;
 }
 
 export interface PaginatedMessagingResult<T> {

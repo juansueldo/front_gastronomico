@@ -41,6 +41,8 @@ export type MessagingConversationDto = {
 
 export type MessagingMessageDto = {
   id?: string | number;
+  clientMessageId?: string | number | null;
+  client_message_id?: string | number | null;
   conversationId?: string | number;
   direction?: 'inbound' | 'outbound';
   type?: string;
@@ -61,10 +63,20 @@ export type MessagingMessageDto = {
   readAt?: string;
   providerMessageId?: string;
   reactions?: Record<string, string> | string[] | null;
+  quotedMessageId?: string | number | null;
+  quotedMessageContent?: string | null;
+  quotedMsgId?: string | number | null;
+  quotedContent?: string | null;
+  replyToMessageId?: string | number | null;
+  reply_to_message_id?: string | number | null;
+  replyToContent?: string | null;
+  reply_to_content?: string | null;
 };
 
 export interface SendConversationMessageRequest {
   body?: string;
+  clientMessageId?: string;
+  client_message_id?: string;
   media?: {
     data?: string;
     mediaData?: string;
@@ -73,6 +85,12 @@ export interface SendConversationMessageRequest {
     mediaFilename?: string;
     caption?: string;
   };
+  replyToMessageId?: string | number;
+  reply_to_message_id?: string | number;
+  replyToContent?: string;
+  reply_to_content?: string;
+  quoted_msg_id?: string | number;
+  quoted_content?: string;
 }
 
 export interface SendDirectMessageRequest {
