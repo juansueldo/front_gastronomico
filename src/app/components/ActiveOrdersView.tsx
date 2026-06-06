@@ -28,6 +28,9 @@ import {
   Search,
   SlidersHorizontal,
   ClipboardList,
+  Copy,
+  LayoutGrid,
+  List,
   MoreVertical,
   Printer,
   ReceiptText,
@@ -72,6 +75,7 @@ import { CreateOrderDialog } from './orders/CreateOrderDialog';
 
 type OrderVisualPriority = 'default' | 'on-time' | 'delayed' | 'old';
 type PrintMode = 'comanda' | 'factura';
+type OrdersViewMode = 'cards' | 'list';
 
 interface ActiveOrderItem {
   id: string;
@@ -102,6 +106,8 @@ const DIALOG_CONTENT_CLASS = 'w-[calc(100vw-2rem)] max-w-[720px] gap-0 overflow-
 const FORM_CONTROL_CLASS =
   'h-10 rounded-md border-[var(--app-line)] bg-[var(--app-panel-subtle)] text-[var(--app-strong)] placeholder:text-[var(--app-muted)] focus:border-[var(--primary)] focus-visible:border-[var(--primary)] focus-visible:ring-[var(--primary)]/25';
 const SELECT_CONTENT_CLASS = 'border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]';
+const INITIAL_VISIBLE_ORDERS = 12;
+const ORDERS_LOAD_BATCH = 8;
 
 const GOOGLE_MAPS_API_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 
@@ -193,7 +199,8 @@ export function ActiveOrdersView() {
   const [channelFilter, setChannelFilter] = useState<'all' | ActiveOrderItem['type']>('all');
   const [dateFilter, setDateFilter] = useState('');
   const [sortBy, setSortBy] = useState<'recent' | 'older' | 'total-high' | 'total-low'>('recent');
-  const [page, setPage] = useState(1);
+  const [viewMode, setViewMode] = useState<OrdersViewMode>('cards');
+  const [visibleOrdersCount, setVisibleOrdersCount] = useState(INITIAL_VISIBLE_ORDERS);
   const deliveryOrders = useMemo(
     () => orders.filter((order) => order.type === 'delivery'),
     [orders],
@@ -201,6 +208,8 @@ export function ActiveOrdersView() {
 
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressNextClick = useRef(false);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const deliveryMapRef = useRef<HTMLDivElement | null>(null);
   const googleMapInstanceRef = useRef<any>(null);
   const googleMapMarkersRef = useRef<any[]>([]);
@@ -229,10 +238,13 @@ export function ActiveOrdersView() {
       : undefined;
 
     const normalizedItems = Array.isArray(order?.items)
-      ? order.items.map((item: any) => String(item))
+      ? order.items.map((item: any) => String(item).trim()).filter(Boolean)
       : Array.isArray(order?.OrderItems)
         ? order.OrderItems.map((item: any) => {
-            const name = item?.Product?.name ?? `Producto ${item?.productId ?? ''}`.trim();
+            const name = String(item?.Product?.name ?? '').trim();
+            if (!name) {
+              return '';
+            }
             const quantity = Number(item?.quantity ?? 0);
             const modifiers = Array.isArray(item?.OrderItemModifiers)
               ? item.OrderItemModifiers.map((modifier: any) => (
@@ -243,15 +255,14 @@ export function ActiveOrdersView() {
               : [];
             const baseLabel = quantity > 1 ? `${name} x${quantity}` : String(name);
             return modifiers.length > 0 ? `${baseLabel} (${modifiers.join(', ')})` : baseLabel;
-          })
+          }).filter(Boolean)
         : [];
 
     const customerFullName = [order?.Customer?.name].filter(Boolean).join(' ').trim();
     const customerName =
-      order?.customerName ||
-      order?.Customer?.name ||
-      customerFullName ||
-      (order?.customerId ? `Cliente #${order.customerId}` : `Orden ${order?.order_number ?? order?.id ?? ''}`);
+      String(order?.customerName ?? '').trim()
+      || String(order?.Customer?.name ?? '').trim()
+      || customerFullName;
 
     return {
       id: String(order?.id ?? order?.order_number ?? crypto.randomUUID()),
@@ -263,7 +274,7 @@ export function ActiveOrdersView() {
       latitude: order?.latitude ?? order?.delivery_latitude ?? undefined,
       longitude: order?.longitude ?? order?.delivery_longitude ?? undefined,
       items: normalizedItems,
-      detail: String(order?.detail ?? order?.order_number ?? 'Sin detalle'),
+      detail: String(order?.detail ?? '').trim(),
       status: getOrderStatusLabel(String(order?.status ?? order?.Status?.name ?? 'pending')),
       total: String(displayTotal),
       createdAt: String(order?.createdAt ?? order?.order_date ?? ''),
@@ -709,13 +720,56 @@ export function ActiveOrdersView() {
     toast.success(chargeOrders.length === 1 ? `Orden ${chargeOrders[0].id} cobrada` : `${chargeOrders.length} pedidos cobrados`);
   };
 
+  const buildOrderClipboardText = (order: ActiveOrderItem) => {
+    const orderDateInfo = getOrderDateInfo(order);
+    const lines = [
+      `Pedido: ${order.id}`,
+      order.customerName ? `Cliente / mesa: ${order.customerName}` : '',
+      `Tipo: ${order.type === 'delivery' ? 'Delivery' : 'Salon'}`,
+      order.status ? `Estado: ${order.status}` : '',
+      orderDateInfo.time !== '--:--' ? `Hora: ${orderDateInfo.time}${orderDateInfo.dayLabel !== '--' ? ` (${orderDateInfo.dayLabel})` : ''}` : '',
+      order.address ? `Direccion: ${order.address}` : '',
+      order.latitude !== undefined && order.longitude !== undefined ? `Coordenadas: ${order.latitude}, ${order.longitude}` : '',
+      order.items.length > 0 ? `Items:\n${order.items.map((item) => `- ${item}`).join('\n')}` : '',
+      order.detail ? `Detalle: ${order.detail}` : '',
+      order.notes ? `Observaciones: ${order.notes}` : '',
+      order.total ? `Total: ${order.total}` : '',
+    ];
+
+    return lines.filter(Boolean).join('\n');
+  };
+
+  const copyOrderToClipboard = async (order: ActiveOrderItem) => {
+    const text = buildOrderClipboardText(order);
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.setAttribute('readonly', 'true');
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      toast.success(`Pedido ${order.id} copiado`);
+    } catch {
+      toast.error('No se pudo copiar el pedido');
+    }
+  };
+
   const buildPrintableHtml = (order: ActiveOrderItem, mode: PrintMode) => {
     const title = mode === 'comanda'
       ? `Comanda ${order.type === 'delivery' ? 'delivery' : 'cocina'}`
       : 'Factura';
     const itemsHtml = order.items.length > 0
       ? order.items.map((item) => `<li>${item}</li>`).join('')
-      : '<li>Sin items cargados</li>';
+      : '';
+    const orderDateInfo = getOrderDateInfo(order);
 
     return `
       <!doctype html>
@@ -739,14 +793,14 @@ export function ActiveOrdersView() {
           <h1>${title}</h1>
           <p class="muted">Pedido ${order.id}</p>
           <div class="box">
-            <p><strong>Cliente / mesa:</strong> ${order.customerName}</p>
+            ${order.customerName ? `<p><strong>Cliente / mesa:</strong> ${order.customerName}</p>` : ''}
             <p><strong>Tipo:</strong> ${order.type === 'delivery' ? 'Delivery' : 'Salón'}</p>
             <p><strong>Estado:</strong> ${order.status}</p>
-            <p><strong>Hora:</strong> ${getOrderDateInfo(order).time}</p>
+            ${orderDateInfo.time !== '--:--' ? `<p><strong>Hora:</strong> ${orderDateInfo.time}</p>` : ''}
             ${order.address ? `<p><strong>Dirección:</strong> ${order.address}</p>` : ''}
           </div>
-          <h2>Items</h2>
-          <ul>${itemsHtml}</ul>
+          ${itemsHtml ? `<h2>Items</h2><ul>${itemsHtml}</ul>` : ''}
+          ${order.detail ? `<h2>Detalle</h2><p>${order.detail}</p>` : ''}
           ${order.notes ? `<h2>Observaciones</h2><p>${order.notes}</p>` : ''}
           ${mode === 'factura' ? `<p class="total">Total: ${order.total}</p>` : ''}
         </body>
@@ -905,30 +959,104 @@ export function ActiveOrdersView() {
     return withFilters;
   }, [channelFilter, dateFilter, orders, searchValue, sortBy, statusFilter]);
 
-  const pageSize = 6;
-  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const paginatedOrders = filteredOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const paginatedOrderIds = paginatedOrders.map((order) => order.id);
-  const arePageOrdersSelected = paginatedOrderIds.length > 0
-    && paginatedOrderIds.every((orderId) => selectedOrderIds.includes(orderId));
+  const visibleOrders = filteredOrders.slice(0, visibleOrdersCount);
+  const visibleOrderIds = visibleOrders.map((order) => order.id);
+  const hasMoreOrders = visibleOrders.length < filteredOrders.length;
+  const areVisibleOrdersSelected = visibleOrderIds.length > 0
+    && visibleOrderIds.every((orderId) => selectedOrderIds.includes(orderId));
 
-  const togglePageSelection = () => {
+  const toggleVisibleSelection = () => {
     setSelectedOrderIds((current) => {
-      if (arePageOrdersSelected) {
-        return current.filter((orderId) => !paginatedOrderIds.includes(orderId));
+      if (areVisibleOrdersSelected) {
+        return current.filter((orderId) => !visibleOrderIds.includes(orderId));
       }
 
-      return Array.from(new Set([...current, ...paginatedOrderIds]));
+      return Array.from(new Set([...current, ...visibleOrderIds]));
     });
   };
 
   useEffect(() => {
-    setPage(1);
+    setVisibleOrdersCount(INITIAL_VISIBLE_ORDERS);
   }, [searchValue, statusFilter, channelFilter, dateFilter, sortBy]);
 
+  useEffect(() => {
+    if (!hasMoreOrders || !loadMoreRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+
+        setVisibleOrdersCount((current) => Math.min(current + ORDERS_LOAD_BATCH, filteredOrders.length));
+      },
+      {
+        root: scrollContainerRef.current,
+        rootMargin: '360px 0px',
+      },
+    );
+
+    observer.observe(loadMoreRef.current);
+    return () => observer.disconnect();
+  }, [filteredOrders.length, hasMoreOrders, visibleOrders.length]);
+
+  const renderOrderSelectionCheckbox = (order: ActiveOrderItem, className = 'pt-1') => (
+    <div
+      className={className}
+      onClick={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+      onTouchStart={(event) => event.stopPropagation()}
+    >
+      <Checkbox
+        checked={selectedOrderIds.includes(order.id)}
+        onCheckedChange={() => toggleOrderSelection(order.id)}
+        aria-label={`Seleccionar pedido ${order.id}`}
+      />
+    </div>
+  );
+
+  const renderOrderActions = (order: ActiveOrderItem) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          size="icon"
+          variant="outline"
+          className="h-9 w-9 rounded-xl border-border bg-card/70"
+          onClick={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="w-56 border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]"
+        onClick={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <DropdownMenuItem onClick={() => void copyOrderToClipboard(order)}>
+          <Copy className="mr-2 h-4 w-4" />
+          Copiar pedido
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => printOrder(order, 'comanda')}>
+          <ChefHat className="mr-2 h-4 w-4" />
+          Imprimir comanda
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => printOrder(order, 'factura')}>
+          <ReceiptText className="mr-2 h-4 w-4" />
+          Imprimir factura
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => openChargeDialog([order])}>
+          <CreditCard className="mr-2 h-4 w-4" />
+          Cobrar pedido
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   return (
-    <div className="h-full overflow-y-auto">
+    <div ref={scrollContainerRef} className="h-full overflow-y-auto">
       <div className="relative px-3 py-4 sm:p-4 md:p-6">
 
         <div className="relative space-y-5">
@@ -1037,7 +1165,31 @@ export function ActiveOrdersView() {
                 <ArrowUpDown className="h-4 w-4" />
               </span>
             </div>
-            <div className="flex items-center justify-between gap-3 sm:justify-end">
+            <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
+              <div className="inline-flex rounded-xl border border-border bg-card/70 p-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={viewMode === 'cards' ? 'default' : 'ghost'}
+                  className="h-8 gap-2 rounded-lg px-3"
+                  aria-pressed={viewMode === 'cards'}
+                  onClick={() => setViewMode('cards')}
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                  Cards
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={viewMode === 'list' ? 'default' : 'ghost'}
+                  className="h-8 gap-2 rounded-lg px-3"
+                  aria-pressed={viewMode === 'list'}
+                  onClick={() => setViewMode('list')}
+                >
+                  <List className="h-4 w-4" />
+                  Lista
+                </Button>
+              </div>
               <span className="text-lg text-foreground sm:text-2xl">Total: {filteredOrders.length} pedidos</span>
               <Button
                 type="button"
@@ -1055,11 +1207,11 @@ export function ActiveOrdersView() {
           <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card/60 p-3 text-sm text-foreground sm:flex-row sm:items-center sm:justify-between">
             <label className="flex items-center gap-2">
               <Checkbox
-                checked={arePageOrdersSelected}
-                onCheckedChange={togglePageSelection}
-                aria-label="Seleccionar pedidos de esta página"
+                checked={areVisibleOrdersSelected}
+                onCheckedChange={toggleVisibleSelection}
+                aria-label="Seleccionar pedidos cargados"
               />
-              <span>Seleccionar página</span>
+              <span>Seleccionar cargados</span>
             </label>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-muted-foreground">
@@ -1089,12 +1241,12 @@ export function ActiveOrdersView() {
           </div>
 
           <div className="space-y-3">
-            {paginatedOrders.length === 0 ? (
+            {visibleOrders.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border bg-card/60 p-8 text-center text-sm text-muted-foreground">
                 No hay pedidos para los filtros seleccionados.
               </div>
-            ) : (
-              paginatedOrders.map((order) => {
+            ) : viewMode === 'cards' ? (
+              visibleOrders.map((order) => {
                 const orderDateInfo = getOrderDateInfo(order);
                 const isPriority = getOrderVisualPriority(order) === 'default';
                 const priorityStyle = isPriority ? 'border-orange-500/80' : getOrderCardClass(order).replace('bg-card', 'bg-card/70');
@@ -1113,66 +1265,26 @@ export function ActiveOrdersView() {
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex min-w-0 gap-3">
-                        <div
-                          className="pt-1"
-                          onClick={(event) => event.stopPropagation()}
-                          onMouseDown={(event) => event.stopPropagation()}
-                          onTouchStart={(event) => event.stopPropagation()}
-                        >
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => toggleOrderSelection(order.id)}
-                            aria-label={`Seleccionar pedido ${order.id}`}
-                          />
-                        </div>
+                        {renderOrderSelectionCheckbox(order)}
                         <div className="min-w-0 space-y-2">
                           <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-lg font-semibold text-foreground md:text-2xl">{order.id}</span>
-                          <Badge variant="secondary" className={`${getStatusBadgeClass(getPriorityLabel(order))} text-xs`}>
-                            {getPriorityLabel(order)}
-                          </Badge>
+                            <span className="text-lg font-semibold text-foreground md:text-2xl">{order.id}</span>
+                            <Badge variant="secondary" className={`${getStatusBadgeClass(getPriorityLabel(order))} text-xs`}>
+                              {getPriorityLabel(order)}
+                            </Badge>
                           </div>
-                          <p className="break-words text-base text-foreground sm:text-lg">{order.customerName}</p>
-                          <p className="break-words text-sm text-muted-foreground">{order.detail}</p>
+                          {order.customerName ? (
+                            <p className="break-words text-base text-foreground sm:text-lg">{order.customerName}</p>
+                          ) : null}
+                          {order.detail ? (
+                            <p className="break-words text-sm text-muted-foreground">{order.detail}</p>
+                          ) : null}
                           <p className="text-sm text-muted-foreground">{order.status}</p>
                         </div>
                       </div>
 
                       <div className="flex flex-row flex-wrap items-center justify-between gap-2 sm:flex-col sm:items-end">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="outline"
-                              className="h-9 w-9 rounded-xl border-border bg-card/70"
-                              onClick={(event) => event.stopPropagation()}
-                              onMouseDown={(event) => event.stopPropagation()}
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent
-                            align="end"
-                            className="w-56 border-[var(--app-line)] bg-[var(--app-panel)] text-[var(--app-strong)]"
-                            onClick={(event) => event.stopPropagation()}
-                            onMouseDown={(event) => event.stopPropagation()}
-                          >
-                            <DropdownMenuItem onClick={() => printOrder(order, 'comanda')}>
-                              <ChefHat className="mr-2 h-4 w-4" />
-                              Imprimir comanda
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => printOrder(order, 'factura')}>
-                              <ReceiptText className="mr-2 h-4 w-4" />
-                              Imprimir factura
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => openChargeDialog([order])}>
-                              <CreditCard className="mr-2 h-4 w-4" />
-                              Cobrar pedido
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {renderOrderActions(order)}
                         <Badge
                           variant="secondary"
                           className={order.type === 'delivery' ? 'bg-blue-500/20 text-blue-700 dark:text-blue-100' : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-100'}
@@ -1187,42 +1299,92 @@ export function ActiveOrdersView() {
                   </article>
                 );
               })
-            )}
-          </div>
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-border bg-card/60">
+                <table className="w-full min-w-[920px] border-collapse text-left text-sm text-foreground">
+                  <thead className="border-b border-border bg-background/70 text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="w-12 px-3 py-3"></th>
+                      <th className="px-3 py-3">Pedido</th>
+                      <th className="px-3 py-3">Cliente / detalle</th>
+                      <th className="px-3 py-3">Estado</th>
+                      <th className="px-3 py-3">Canal</th>
+                      <th className="px-3 py-3">Horario</th>
+                      <th className="px-3 py-3 text-right">Total</th>
+                      <th className="w-14 px-3 py-3"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {visibleOrders.map((order) => {
+                      const orderDateInfo = getOrderDateInfo(order);
+                      const priorityStyle = getOrderVisualPriority(order) === 'default'
+                        ? 'border-l-orange-500/80'
+                        : getOrderCardClass(order).replace('bg-card', 'bg-card/70');
+                      const isSelected = selectedOrderIds.includes(order.id);
 
-          <div className="flex items-center justify-center gap-2 pb-2 pt-2">
-            <button
-              type="button"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card/70 text-foreground disabled:opacity-40"
-              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              disabled={currentPage <= 1}
-            >
-              ‹
-            </button>
-            {Array.from({ length: totalPages }).slice(0, 5).map((_, index) => {
-              const pageNumber = index + 1;
-              return (
-                <button
-                  key={pageNumber}
-                  type="button"
-                  onClick={() => setPage(pageNumber)}
-                  className={`inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-2 ${
-                    pageNumber === currentPage ? 'bg-primary text-white' : 'border border-border bg-card/70 text-foreground'
-                  }`}
-                >
-                  {pageNumber}
-                </button>
-              );
-            })}
-            {totalPages > 5 ? <span className="px-1 text-muted-foreground">...</span> : null}
-            <button
-              type="button"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card/70 text-foreground disabled:opacity-40"
-              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-              disabled={currentPage >= totalPages}
-            >
-              ›
-            </button>
+                      return (
+                        <tr
+                          key={order.id}
+                          onClick={() => handleOpenDetail(order)}
+                          onContextMenu={(event) => handleContextMenu(event, order)}
+                          onTouchStart={() => handleLongPressStart(order)}
+                          onTouchEnd={handleLongPressEnd}
+                          onMouseDown={() => handleLongPressStart(order)}
+                          onMouseUp={handleLongPressEnd}
+                          onMouseLeave={handleLongPressEnd}
+                          className={`cursor-pointer border-l-4 transition hover:bg-card ${priorityStyle} ${isSelected ? 'outline outline-2 outline-primary/50' : ''}`}
+                        >
+                          <td className="px-3 py-3 align-top">
+                            {renderOrderSelectionCheckbox(order, 'flex items-center')}
+                          </td>
+                          <td className="px-3 py-3 align-top">
+                            <div className="space-y-1">
+                              <span className="font-semibold text-foreground">{order.id}</span>
+                              <Badge variant="secondary" className={`${getStatusBadgeClass(getPriorityLabel(order))} text-xs`}>
+                                {getPriorityLabel(order)}
+                              </Badge>
+                            </div>
+                          </td>
+                          <td className="max-w-[320px] px-3 py-3 align-top">
+                            {order.customerName ? (
+                              <p className="truncate font-medium text-foreground">{order.customerName}</p>
+                            ) : null}
+                            {order.detail ? (
+                              <p className="truncate text-muted-foreground">{order.detail}</p>
+                            ) : null}
+                          </td>
+                          <td className="px-3 py-3 align-top text-muted-foreground">{order.status}</td>
+                          <td className="px-3 py-3 align-top">
+                            <Badge
+                              variant="secondary"
+                              className={order.type === 'delivery' ? 'bg-blue-500/20 text-blue-700 dark:text-blue-100' : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-100'}
+                            >
+                              {order.type === 'delivery' ? 'Delivery' : 'Salón'}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-3 align-top">
+                            <p>{orderDateInfo.time}</p>
+                            <p className="text-xs text-muted-foreground">{orderDateInfo.dayLabel}</p>
+                          </td>
+                          <td className="px-3 py-3 text-right align-top font-semibold">{order.total}</td>
+                          <td className="px-3 py-3 align-top">{renderOrderActions(order)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {visibleOrders.length > 0 ? (
+              <div ref={loadMoreRef} className="flex min-h-16 items-center justify-center pb-2 pt-2 text-sm text-muted-foreground">
+                {hasMoreOrders ? (
+                  <span>{isLoadingOrders ? 'Actualizando pedidos...' : `Cargando más pedidos (${visibleOrders.length}/${filteredOrders.length})`}</span>
+                ) : (
+                  <span>Fin de la lista</span>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1246,10 +1408,12 @@ export function ActiveOrdersView() {
                     {detailOrder.type === 'delivery' ? 'Delivery' : 'Salón'}
                   </Badge>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-muted-foreground">Cliente / mesa</span>
-                  <span>{detailOrder.customerName}</span>
-                </div>
+                {detailOrder.customerName ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">Cliente / mesa</span>
+                    <span>{detailOrder.customerName}</span>
+                  </div>
+                ) : null}
                 {detailOrder.type === 'delivery' && detailOrder.address && (
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-muted-foreground">Dirección</span>
@@ -1260,22 +1424,28 @@ export function ActiveOrdersView() {
                   <span className="text-muted-foreground">Estado</span>
                   <span>{detailOrder.status}</span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-muted-foreground">Hora</span>
-                  <span>{detailOrder.createdAt}</span>
-                </div>
-                <div className="rounded-lg border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3">
-                  <p className="mb-2 text-muted-foreground">Items</p>
-                  <ul className="space-y-1">
-                    {detailOrder.items.map((item) => (
-                      <li key={item} className="text-foreground">• {item}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <p className="mb-1 text-muted-foreground">Detalle</p>
-                  <p>{detailOrder.detail}</p>
-                </div>
+                {getOrderDateInfo(detailOrder).time !== '--:--' ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">Hora</span>
+                    <span>{getOrderDateInfo(detailOrder).time}</span>
+                  </div>
+                ) : null}
+                {detailOrder.items.length > 0 ? (
+                  <div className="rounded-lg border border-[var(--app-line)] bg-[var(--app-panel-subtle)] p-3">
+                    <p className="mb-2 text-muted-foreground">Items</p>
+                    <ul className="space-y-1">
+                      {detailOrder.items.map((item) => (
+                        <li key={item} className="text-foreground">- {item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {detailOrder.detail ? (
+                  <div>
+                    <p className="mb-1 text-muted-foreground">Detalle</p>
+                    <p>{detailOrder.detail}</p>
+                  </div>
+                ) : null}
                 {detailOrder.notes && (
                   <div>
                     <p className="mb-1 text-muted-foreground">Observaciones</p>
@@ -1288,6 +1458,15 @@ export function ActiveOrdersView() {
                 </div>
               </div>
               <DialogFooter className="flex-col gap-2 border-t border-[var(--app-line)] px-5 py-4 sm:flex-row">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full border-[var(--app-line)] bg-transparent text-[var(--app-strong)] hover:bg-[var(--app-soft)] sm:w-auto"
+                  onClick={() => void copyOrderToClipboard(detailOrder)}
+                >
+                  <Copy className="h-4 w-4" />
+                  Copiar
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -1333,7 +1512,9 @@ export function ActiveOrdersView() {
               <div className="max-h-44 space-y-2 overflow-y-auto pr-1 text-sm">
                 {chargeOrders.map((order) => (
                   <div key={order.id} className="flex items-center justify-between gap-3">
-                    <span className="min-w-0 truncate text-[var(--app-muted)]">{order.id} · {order.customerName}</span>
+                    <span className="min-w-0 truncate text-[var(--app-muted)]">
+                      {order.customerName ? `${order.id} - ${order.customerName}` : order.id}
+                    </span>
                     <span className="shrink-0 font-medium text-[var(--app-strong)]">{order.total}</span>
                   </div>
                 ))}

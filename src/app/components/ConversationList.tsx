@@ -6,6 +6,7 @@ import {
   Bold,
   ChevronDown,
   Code,
+  Copy,
   Download,
   FileText,
   Filter,
@@ -113,6 +114,14 @@ type CustomerOrderSummary = {
   status?: string;
   total?: string | number;
   createdAt?: string;
+  created_at?: string;
+  order_date?: string;
+  detail?: string;
+  notes?: string;
+  address?: string;
+  delivery_address?: string;
+  items?: unknown[];
+  OrderItems?: unknown[];
   Customer?: { id?: string | number };
   customer?: { id?: string | number };
 };
@@ -137,7 +146,6 @@ const filterLabels: Record<ConversationFilter, string> = {
   assigned: 'Asignados',
 };
 
-const customerTags = ['Cliente frecuente', 'VIP'];
 const quickReplies = [
   { label: 'Confirmar pedido', icon: PackageCheck, text: 'Tu pedido esta confirmado.' },
   { label: 'Ya salio', icon: Bike, text: 'Tu pedido ya salio.' },
@@ -162,6 +170,17 @@ const activeOrderStatuses = [
   'listo',
   'en reparto',
 ];
+const AUTO_SEND_ORDER_CONFIRMATION_KEY = 'chat:auto-send-order-confirmation';
+
+function getStoredAutoSendOrderConfirmation() {
+  if (typeof window === 'undefined') return true;
+  return window.localStorage.getItem(AUTO_SEND_ORDER_CONFIRMATION_KEY) !== 'false';
+}
+
+function setStoredAutoSendOrderConfirmation(value: boolean) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(AUTO_SEND_ORDER_CONFIRMATION_KEY, value ? 'true' : 'false');
+}
 
 function getOrderStatus(order: CustomerOrderSummary) {
   return String(order.status ?? '').trim();
@@ -177,6 +196,89 @@ function getOrderNumber(order: CustomerOrderSummary) {
 
 function getOrderTotal(order: CustomerOrderSummary) {
   return order.total ?? (order as Record<string, unknown>).total_amount ?? (order as Record<string, unknown>).totalAmount ?? 0;
+}
+
+function formatOrderTotal(order: CustomerOrderSummary) {
+  const total = getOrderTotal(order);
+  const parsedTotal = Number(total);
+  if (!Number.isFinite(parsedTotal)) return String(total ?? '').trim();
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    maximumFractionDigits: 0,
+  }).format(parsedTotal);
+}
+
+function getOrderCreatedAt(order: CustomerOrderSummary) {
+  return order.createdAt ?? order.created_at ?? order.order_date ?? undefined;
+}
+
+function getOrderAddress(order: CustomerOrderSummary) {
+  return String(order.address ?? order.delivery_address ?? '').trim();
+}
+
+function getOrderDetail(order: CustomerOrderSummary) {
+  return String(order.detail ?? '').trim();
+}
+
+function getOrderItems(order: CustomerOrderSummary) {
+  const rawItems = Array.isArray(order.items)
+    ? order.items
+    : Array.isArray(order.OrderItems)
+      ? order.OrderItems
+      : [];
+
+  return rawItems.flatMap((item) => {
+    if (typeof item === 'string') return item.trim() ? [item.trim()] : [];
+    const record = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+    const product = record.Product && typeof record.Product === 'object' ? record.Product as Record<string, unknown> : {};
+    const name = String(record.name ?? product.name ?? '').trim();
+    if (!name) return [];
+    const quantity = Number(record.quantity ?? 0);
+    return [quantity > 1 ? `${name} x${quantity}` : name];
+  });
+}
+
+function buildOrderPlainText(order: CustomerOrderSummary, customerName?: string) {
+  const createdAt = getOrderCreatedAt(order);
+  const createdDate = createdAt ? parseDate(createdAt) : null;
+  const items = getOrderItems(order);
+  const lines = [
+    `Pedido #${getOrderNumber(order)}`,
+    customerName ? `Cliente: ${customerName}` : '',
+    getOrderStatus(order) ? `Estado: ${getOrderStatus(order)}` : '',
+    createdDate ? `Fecha: ${createdDate.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : '',
+    getOrderAddress(order) ? `Direccion: ${getOrderAddress(order)}` : '',
+    items.length > 0 ? `Items:\n${items.map((item) => `- ${item}`).join('\n')}` : '',
+    getOrderDetail(order) ? `Detalle: ${getOrderDetail(order)}` : '',
+    order.notes ? `Observaciones: ${order.notes}` : '',
+    formatOrderTotal(order) ? `Total: ${formatOrderTotal(order)}` : '',
+  ];
+
+  return lines.filter(Boolean).join('\n');
+}
+
+function buildOrderConfirmationMessage(order: CustomerOrderSummary, customerName?: string) {
+  return [
+    'Tu pedido fue confirmado.',
+    '',
+    buildOrderPlainText(order, customerName),
+  ].join('\n');
+}
+
+function extractCreatedOrder(value: unknown): CustomerOrderSummary | null {
+  const record = value && typeof value === 'object' ? value as Record<string, unknown> : null;
+  const data = record?.data && typeof record.data === 'object' ? record.data as Record<string, unknown> : null;
+  const candidate = record?.order ?? data?.order ?? record?.createdOrder ?? data ?? value;
+  return candidate && typeof candidate === 'object' ? candidate as CustomerOrderSummary : null;
+}
+
+function sortOrdersByDateDesc(orders: CustomerOrderSummary[]) {
+  return [...orders].sort((first, second) => {
+    const firstDate = getOrderCreatedAt(first);
+    const secondDate = getOrderCreatedAt(second);
+    return parseDate(secondDate).getTime() - parseDate(firstDate).getTime();
+  });
 }
 
 function getOrderCustomerId(order: CustomerOrderSummary) {
@@ -719,6 +821,7 @@ export function ConversationList() {
   const [isCustomerPanelOpen, setIsCustomerPanelOpen] = useState(false);
   const [isCreateOrderOpen, setIsCreateOrderOpen] = useState(false);
   const [isOrderDialogMinimized, setIsOrderDialogMinimized] = useState(false);
+  const [autoSendOrderConfirmation, setAutoSendOrderConfirmation] = useState(getStoredAutoSendOrderConfirmation);
   const [customerLookup, setCustomerLookup] = useState<CustomerLookupResult | null>(null);
   const [customerOrders, setCustomerOrders] = useState<CustomerOrderSummary[]>([]);
   const [availableProducts, setAvailableProducts] = useState<ProductItem[]>([]);
@@ -771,13 +874,21 @@ export function ConversationList() {
 
   const unreadTotal = conversations.reduce((total, conversation) => total + (conversation.unreadCount > 0 ? 1 : 0), 0);
   const assignedTotal = conversations.filter((conversation) => conversation.status === 'assigned').length;
-  const activeOrder = customerOrders.find(isActiveOrder);
+  const activeOrders = useMemo(
+    () => customerOrders.filter(isActiveOrder),
+    [customerOrders],
+  );
   const createOrderInitialCustomer = useMemo(() => (
     customerLookup
       ?? (selectedConversation?.phone
         ? { name: selectedConversation.name, phone: selectedConversation.phone }
         : null)
   ), [customerLookup, selectedConversation?.name, selectedConversation?.phone]);
+
+  const handleAutoSendOrderConfirmationChange = (nextValue: boolean) => {
+    setAutoSendOrderConfirmation(nextValue);
+    setStoredAutoSendOrderConfirmation(nextValue);
+  };
 
   const scrollToConversationEnd = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const viewport = messagesViewportRef.current;
@@ -1312,6 +1423,87 @@ export function ConversationList() {
     }
   };
 
+  const sendProgrammaticTextMessage = async (body: string) => {
+    if (!body.trim() || !selectedConversation) return false;
+
+    const localTextMessageId = `local-auto-${Date.now()}`;
+    const optimisticMessage: ChatMessage = {
+      id: localTextMessageId,
+      clientMessageId: localTextMessageId,
+      body,
+      direction: 'outbound',
+      createdAt: new Date(),
+      status: 'pending',
+    };
+
+    setMessages((current) => [...current, optimisticMessage]);
+    setConversations((current) => sortConversationsByRecent(current.map((conversation) => (
+      conversation.id === selectedConversation.id
+        ? { ...conversation, lastMessage: body, lastMessageAt: new Date() }
+        : conversation
+    ))));
+    scheduleScrollToConversationEnd('smooth');
+
+    try {
+      const result = await sendMessage({
+        contactId: selectedConversation.id,
+        content: body,
+        clientMessageId: optimisticMessage.clientMessageId,
+      });
+      const sentMessage = result?.message as MessagingMessage | undefined;
+      setMessages((current) => current.map((message) => (
+        message.id === optimisticMessage.id
+          ? {
+            ...message,
+            id: sentMessage?.id ?? message.id,
+            clientMessageId: sentMessage?.clientMessageId ?? message.clientMessageId,
+            providerMessageId: sentMessage?.providerMessageId ?? message.providerMessageId,
+            status: sentMessage?.status ?? 'sent',
+            createdAt: parseDate(sentMessage?.createdAt ?? sentMessage?.sentAt),
+          }
+          : message
+      )));
+      return true;
+    } catch (error) {
+      setMessages((current) => current.map((message) => (
+        message.id === optimisticMessage.id ? { ...message, status: 'failed' } : message
+      )));
+      toast.error(getApiErrorMessage(error, 'No se pudo enviar la confirmacion'));
+      return false;
+    }
+  };
+
+  const handleCopyOrder = async (order: CustomerOrderSummary) => {
+    const text = buildOrderPlainText(order, customerLookup?.name ?? selectedConversation?.name);
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.setAttribute('readonly', 'true');
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      toast.success(`Pedido #${getOrderNumber(order)} copiado`);
+    } catch {
+      toast.error('No se pudo copiar la orden');
+    }
+  };
+
+  const handleSendOrderConfirmation = async (order: CustomerOrderSummary) => {
+    const message = buildOrderConfirmationMessage(order, customerLookup?.name ?? selectedConversation?.name);
+    const didSend = await sendProgrammaticTextMessage(message);
+    if (didSend) {
+      toast.success('Confirmacion enviada por WhatsApp');
+    }
+  };
+
   const stopRecording = (shouldSend: boolean) => {
     cancelRecordingRef.current = !shouldSend;
     mediaRecorderRef.current?.stop();
@@ -1793,11 +1985,11 @@ export function ConversationList() {
                   <div className="min-w-0">
                     <h2 className="truncate text-base font-semibold">{selectedConversation.name}</h2>
                     <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs">
-                      {activeOrder ? (
+                      {activeOrders.length > 0 ? (
                         <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md border border-[var(--app-line)] bg-[var(--app-surface)] px-2 py-1 text-[var(--app-muted)]">
                           <PackageCheck className="h-3.5 w-3.5 shrink-0 text-[var(--primary)]" />
                           <span className="truncate">
-                            Pedido #{getOrderNumber(activeOrder)} · <span className="font-medium text-[var(--primary)]">{getOrderStatus(activeOrder) || 'Activo'}</span>
+                            {activeOrders.length === 1 ? '1 pedido activo' : `${activeOrders.length} pedidos activos`}
                           </span>
                         </span>
                       ) : (
@@ -1852,6 +2044,61 @@ export function ConversationList() {
                   <div className="mx-auto mb-4 w-fit rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] px-4 py-1 text-sm font-medium">
                     Hoy
                   </div>
+                  {activeOrders.length > 0 ? (
+                    <div className="mb-4 space-y-2">
+                      {activeOrders.map((order) => {
+                        const items = getOrderItems(order);
+                        const createdAt = getOrderCreatedAt(order);
+                        return (
+                          <div
+                            key={String(order.id ?? getOrderNumber(order))}
+                            className="rounded-lg border border-[var(--primary)]/35 bg-[var(--app-panel)] p-3 text-sm shadow-sm"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <PackageCheck className="h-4 w-4 text-[var(--primary)]" />
+                                  <p className="font-semibold text-[var(--app-strong)]">Pedido #{getOrderNumber(order)}</p>
+                                  <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-200">
+                                    {getOrderStatus(order) || 'Activo'}
+                                  </Badge>
+                                </div>
+                                <div className="mt-2 space-y-1 text-xs text-[var(--app-muted)]">
+                                  {createdAt ? <p>{formatConversationTime(parseDate(createdAt))}</p> : null}
+                                  {getOrderAddress(order) ? <p className="break-words">{getOrderAddress(order)}</p> : null}
+                                  {items.length > 0 ? <p className="line-clamp-2">{items.join(', ')}</p> : null}
+                                </div>
+                              </div>
+                              <div className="flex shrink-0 flex-col items-end gap-2">
+                                <p className="font-semibold text-[var(--primary)]">{formatOrderTotal(order)}</p>
+                                <div className="flex gap-1">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 border-[var(--app-line)] bg-[var(--app-surface)] px-2 text-xs"
+                                    onClick={() => void handleCopyOrder(order)}
+                                  >
+                                    <Copy className="mr-1 h-3.5 w-3.5" />
+                                    Copiar
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="h-8 px-2 text-xs"
+                                    onClick={() => void handleSendOrderConfirmation(order)}
+                                  >
+                                    <Send className="mr-1 h-3.5 w-3.5" />
+                                    Enviar
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                   {isLoadingMessages ? (
                     <div className="text-sm text-[var(--app-muted)]">Cargando mensajes...</div>
                   ) : messages.length === 0 ? (
@@ -2230,45 +2477,60 @@ export function ConversationList() {
 
               <section className="border-t border-[var(--app-line)] pt-5">
                 <div className="mb-4 flex items-center justify-between">
-                  <h3 className="font-semibold">{activeOrder ? 'Pedido activo' : 'Pedidos recientes'}</h3>
+                  <h3 className="font-semibold">{activeOrders.length > 0 ? 'Pedidos activos' : 'Pedidos recientes'}</h3>
                   <button type="button" className="text-sm font-semibold text-[var(--primary)]" onClick={() => setIsCreateOrderOpen(true)}>Crear pedido</button>
                 </div>
+                <label className="mb-4 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--app-line)] bg-[var(--app-surface)] p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={autoSendOrderConfirmation}
+                    onChange={(event) => handleAutoSendOrderConfirmationChange(event.target.checked)}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block font-semibold text-[var(--app-strong)]">Enviar confirmacion automaticamente</span>
+                    <span className="block text-xs text-[var(--app-muted)]">Cuando se cree un pedido desde este chat, se enviara por WhatsApp al cliente.</span>
+                  </span>
+                </label>
                 <div className="space-y-4 text-sm">
-                  {(activeOrder ? [activeOrder] : customerOrders.slice(0, 3)).map((order) => (
-                    <div key={String(order.id ?? getOrderNumber(order))} className="flex justify-between gap-3 rounded-lg border border-[var(--app-line)] p-3">
-                      <div><p className="font-semibold">#{getOrderNumber(order)}</p><p className="text-[var(--app-muted)]">{order.createdAt ? formatConversationTime(parseDate(order.createdAt)) : '-'}</p></div>
-                      <div className="text-right"><p className="font-semibold text-[var(--primary)]">{getOrderStatus(order) || 'Activo'}</p><p>$ {getOrderTotal(order)}</p></div>
+                  {(activeOrders.length > 0 ? activeOrders : customerOrders.slice(0, 3)).map((order) => (
+                    <div key={String(order.id ?? getOrderNumber(order))} className="space-y-3 rounded-lg border border-[var(--app-line)] p-3">
+                      <div className="flex justify-between gap-3">
+                        <div>
+                          <p className="font-semibold">#{getOrderNumber(order)}</p>
+                          <p className="text-[var(--app-muted)]">{getOrderCreatedAt(order) ? formatConversationTime(parseDate(getOrderCreatedAt(order))) : '-'}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold text-[var(--primary)]">{getOrderStatus(order) || 'Activo'}</p>
+                          <p>{formatOrderTotal(order)}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 flex-1 border-[var(--app-line)] bg-[var(--app-surface)] text-xs"
+                          onClick={() => void handleCopyOrder(order)}
+                        >
+                          <Copy className="mr-1 h-3.5 w-3.5" />
+                          Copiar
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-8 flex-1 text-xs"
+                          onClick={() => void handleSendOrderConfirmation(order)}
+                        >
+                          <Send className="mr-1 h-3.5 w-3.5" />
+                          Enviar
+                        </Button>
+                      </div>
                     </div>
                   ))}
                   {customerOrders.length === 0 ? (
                     <p className="text-sm text-[var(--app-muted)]">No hay pedidos registrados para este cliente.</p>
                   ) : null}
-                </div>
-              </section>
-
-              <section className="border-t border-[var(--app-line)] pt-5">
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="font-semibold">Etiquetas</h3>
-                  <button type="button" className="text-[var(--primary)]"><Plus className="h-4 w-4" /></button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {customerTags.map((tag, index) => (
-                    <Badge key={tag} className={index === 0 ? 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-200' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200'}>
-                      {tag}
-                      <X className="ml-1 h-3 w-3" />
-                    </Badge>
-                  ))}
-                </div>
-              </section>
-
-              <section className="border-t border-[var(--app-line)] pt-5">
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="font-semibold">Notas</h3>
-                  <button type="button" className="text-sm font-semibold text-[var(--primary)]">+ Agregar nota</button>
-                </div>
-                <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-slate-800 dark:border-orange-900/70 dark:bg-orange-950/30 dark:text-orange-100">
-                  <p>Cliente prefiere retiro en local. Muy amable.</p>
-                  <p className="mt-4 text-xs opacity-70">Guardado por el equipo</p>
                 </div>
               </section>
             </div>
@@ -2310,15 +2572,25 @@ export function ConversationList() {
           setIsOrderDialogMinimized(false);
         }}
         onMinimize={() => setIsOrderDialogMinimized(true)}
-        onCreated={() => {
+        onCreated={async (createdOrder) => {
           setIsCreateOrderOpen(false);
           setIsOrderDialogMinimized(false);
+          const createdOrderSummary = extractCreatedOrder(createdOrder);
+          let nextOrders = customerOrders;
           if (customerLookup?.id) {
-            void listCustomerOrders(customerLookup.id).then((orders) => {
+            await listCustomerOrders(customerLookup.id).then((orders) => {
               const customerScopedOrders = (Array.isArray(orders) ? orders as CustomerOrderSummary[] : [])
                 .filter((order) => belongsToCustomer(order, customerLookup.id));
+              nextOrders = customerScopedOrders;
               setCustomerOrders(customerScopedOrders);
             }).catch(() => undefined);
+          }
+
+          const candidateOrder = createdOrderSummary
+            ?? sortOrdersByDateDesc(nextOrders.filter(isActiveOrder))[0];
+
+          if (autoSendOrderConfirmation && candidateOrder) {
+            await handleSendOrderConfirmation(candidateOrder);
           }
         }}
         availableProducts={availableProducts}
