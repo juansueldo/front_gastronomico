@@ -1,5 +1,5 @@
 import { type ChangeEvent, useEffect, useRef, useState } from 'react';
-import { Camera, Bell, Shield, Globe, Moon, LogOut, Save, Store } from 'lucide-react';
+import { Camera, Bell, Shield, Globe, Moon, LogOut, Save, Store, Copy } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '../shared/ui/components/avatar';
 import { Button } from '../shared/ui/components/button';
 import { Input } from '../shared/ui/components/input';
@@ -84,12 +84,61 @@ export function SettingsView() {
     return `${window.location.origin.replace(/\/$/, '')}/${trimmed.replace(/^\//, '')}`;
   };
 
-  const loadStoreSlugs = async () => {
+  const getSlugFromUser = (user: Partial<AuthUser> | null) => {
+    const store = user?.store && typeof user.store === 'object' ? user.store : null;
+    const rawSlug = store?.slug ?? user?.slug ?? user?.storeSlug ?? user?.store_slug;
+
+    return typeof rawSlug === 'string' ? rawSlug.trim() : '';
+  };
+
+  const getLocalStoreSlug = (user: Partial<AuthUser> | null): StoreSlug | null => {
+    const slugUrl = getSlugFromUser(user);
+
+    if (!slugUrl) {
+      return null;
+    }
+
+    const store = user?.store && typeof user.store === 'object' ? user.store : null;
+    const customerId = Number(user?.customerId ?? user?.customer_id ?? user?.id ?? 0);
+
+    return {
+      id: '',
+      customerId: Number.isFinite(customerId) ? customerId : 0,
+      slugUrl,
+      statusId: 1,
+    };
+  };
+
+  const syncSavedSlug = (slugUrl: string) => {
+    const nextStore = {
+      ...(loggedUser?.store && typeof loggedUser.store === 'object' ? loggedUser.store : {}),
+      slug: slugUrl,
+    };
+
+    updateLoggedUser({
+      slug: slugUrl,
+      storeSlug: slugUrl,
+      store_slug: slugUrl,
+      store: nextStore,
+    });
+    setLoggedUser((current) => current ? {
+      ...current,
+      slug: slugUrl,
+      storeSlug: slugUrl,
+      store_slug: slugUrl,
+      store: {
+        ...(current.store && typeof current.store === 'object' ? current.store : {}),
+        slug: slugUrl,
+      },
+    } : current);
+  };
+
+  const loadStoreSlugs = async (fallbackUser?: Partial<AuthUser> | null) => {
     setIsLoadingSlugs(true);
 
     try {
       const slugs = await fetchCustomerSlugs();
-      const currentSlug = slugs[0] ?? null;
+      const currentSlug = slugs[0] ?? getLocalStoreSlug(fallbackUser ?? loggedUser);
       setStoreSlug(currentSlug);
       setSlugUrlInput(currentSlug?.slugUrl ?? '');
       setSlugStatusId(String(currentSlug?.statusId ?? 1));
@@ -127,7 +176,7 @@ export function SettingsView() {
     }
 
     setTheme(getThemePreference());
-    void loadStoreSlugs();
+    void loadStoreSlugs(storedUser);
   }, []);
 
   const getInitials = (name: string) => {
@@ -280,7 +329,7 @@ export function SettingsView() {
     setIsSavingSlug(true);
 
     try {
-      if (storeSlug) {
+      if (storeSlug?.id) {
         const updated = await updateCustomerSlug({
           slugId: storeSlug.id,
           slugUrl: trimmedSlug,
@@ -289,6 +338,7 @@ export function SettingsView() {
         setStoreSlug(updated);
         setSlugUrlInput(updated.slugUrl);
         setSlugStatusId(String(updated.statusId));
+        syncSavedSlug(updated.slugUrl);
         toast.success('Slug actualizado correctamente');
       } else {
         const created = await createCustomerSlug({
@@ -298,6 +348,7 @@ export function SettingsView() {
         setStoreSlug(created);
         setSlugUrlInput(created.slugUrl);
         setSlugStatusId(String(created.statusId));
+        syncSavedSlug(created.slugUrl);
         toast.success('Slug creado correctamente');
       }
     } catch (error) {
@@ -418,6 +469,64 @@ export function SettingsView() {
                 </Button>
               </div>
             </div>
+          </div>
+
+          {/* Store Slug Section */}
+          <div className="bg-card rounded-lg p-6 space-y-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-white font-medium mb-1 flex items-center gap-2">
+                  <Globe className="h-5 w-5" />
+                  Slug público
+                </h2>
+                <p className="text-sm text-gray-400">
+                  Tu cuenta tiene un único slug para la tienda pública.
+                </p>
+              </div>
+              {isLoadingSlugs ? (
+                <span className="text-sm text-gray-400">Cargando slug...</span>
+              ) : null}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+              <div className="space-y-2">
+                <Label className="text-gray-300">Slug de la cuenta</Label>
+                <Input
+                  value={slugUrlInput}
+                  onChange={(event) => setSlugUrlInput(event.target.value)}
+                  placeholder="sabor-nuestro"
+                  disabled={isLoadingSlugs || isSavingSlug}
+                  className="bg-body border-orange-600 text-white"
+                />
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row md:pb-0">
+                <Button
+                  type="button"
+                  onClick={() => void handleCopyStoreUrl(slugUrlInput)}
+                  disabled={!slugUrlInput.trim()}
+                  variant="outline"
+                  className="bg-transparent border-orange-600 text-white hover:bg-gray-700"
+                >
+                  <Copy className="h-4 w-4 mr-2" />
+                  Copiar URL
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void handleSaveSlug()}
+                  disabled={isLoadingSlugs || isSavingSlug}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {isSavingSlug ? 'Guardando...' : 'Guardar slug'}
+                </Button>
+              </div>
+            </div>
+
+            {slugUrlInput.trim() ? (
+              <p className="rounded-md border border-orange-700 bg-body px-3 py-2 text-sm text-gray-300 break-all">
+                {normalizeStoreUrl(slugUrlInput)}
+              </p>
+            ) : null}
           </div>
 
           {/* Store Image Section */}

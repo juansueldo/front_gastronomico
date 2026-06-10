@@ -21,6 +21,7 @@ interface BackendSlug {
   id?: string | number;
   customer_id?: string | number;
   customerId?: string | number;
+  slug?: string;
   slug_url?: string;
   slugUrl?: string;
   status_id?: string | number;
@@ -71,12 +72,47 @@ const normalizeSlug = (item: BackendSlug): StoreSlug => {
   const statusId = Number(item.status_id ?? item.statusId ?? 1);
 
   return {
-    id: String(item.id ?? `slug-${Date.now()}-${Math.random()}`),
+    id: item.id == null ? '' : String(item.id),
     customerId: Number.isFinite(customerId) ? customerId : 0,
-    slugUrl: item.slug_url ?? item.slugUrl ?? '',
+    slugUrl: item.slug_url ?? item.slugUrl ?? item.slug ?? '',
     statusId: Number.isFinite(statusId) ? statusId : 1,
     createdAt: item.created_at ?? item.createdAt,
   };
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+);
+
+const looksLikeSlug = (value: Record<string, unknown>) => (
+  'slug' in value
+  || 'slug_url' in value
+  || 'slugUrl' in value
+  || 'customer_id' in value
+  || 'customerId' in value
+);
+
+const extractSlugRows = (data: unknown): BackendSlug[] => {
+  if (Array.isArray(data)) {
+    return data as BackendSlug[];
+  }
+
+  if (!isRecord(data)) {
+    return [];
+  }
+
+  const candidates = [data.rows, data.data, data.slugs, data.slug];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate as BackendSlug[];
+    }
+
+    if (isRecord(candidate)) {
+      return [candidate as BackendSlug];
+    }
+  }
+
+  return looksLikeSlug(data) ? [data as BackendSlug] : [];
 };
 
 export const fetchCustomerSlugs = async (customerId?: number): Promise<StoreSlug[]> => {
@@ -92,15 +128,7 @@ export const fetchCustomerSlugs = async (customerId?: number): Promise<StoreSlug
     throw new Error(data?.error || data?.detail || 'No se pudieron obtener los slugs');
   }
 
-  const rows = Array.isArray(data)
-    ? data
-    : Array.isArray(data?.rows)
-      ? data.rows
-      : Array.isArray(data?.data)
-        ? data.data
-        : Array.isArray(data?.slugs)
-          ? data.slugs
-          : [];
+  const rows = extractSlugRows(data);
 
   return rows.map((item) => normalizeSlug(item as BackendSlug));
 };

@@ -294,6 +294,34 @@ export async function getProductIngredientOptions(productId: string): Promise<Pr
   })).filter((row: ProductIngredientOption) => Number.isFinite(row.inventoryItemId));
 }
 
+export async function listProductIngredientOptions(params?: { productId?: string }): Promise<ProductIngredientOption[]> {
+  const data = await apiClient.get(`${API_VERSION}/product/ingredient-options/list`, {
+    params,
+    config: { cache: 'none' },
+  });
+  const rows = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.options)
+      ? data.options
+      : Array.isArray(data?.data)
+        ? data.data
+        : [];
+
+  return rows.map((row: any) => ({
+    id: row?.id ? String(row.id) : undefined,
+    productId: row?.productId ? String(row.productId) : undefined,
+    inventoryItemId: Number(row?.inventoryItemId ?? row?.inventory_item_id),
+    name: String(row?.name ?? ''),
+    unit: String(row?.unit ?? 'unidad'),
+    isRemovable: row?.isRemovable ?? row?.is_removable ?? true,
+    isAddable: row?.isAddable ?? row?.is_addable ?? false,
+    defaultIncluded: row?.defaultIncluded ?? row?.default_included ?? true,
+    extraPrice: Number(row?.extraPrice ?? row?.extra_price ?? 0),
+    extraQuantity: Number(row?.extraQuantity ?? row?.extra_quantity ?? 1),
+    maxExtraQuantity: Number(row?.maxExtraQuantity ?? row?.max_extra_quantity ?? 1),
+  })).filter((row: ProductIngredientOption) => Number.isFinite(row.inventoryItemId));
+}
+
 /**
  * Ajusta stock directo de producto
  */
@@ -366,6 +394,10 @@ export async function createIngredient(payload: CreateIngredientRequest): Promis
     createdAt: row?.createdAt,
     updatedAt: row?.updatedAt,
   };
+}
+
+export async function deleteIngredient(ingredientId: string): Promise<any> {
+  return apiClient.delete(`${API_VERSION}/product/ingredient/${ingredientId}`);
 }
 
 /**

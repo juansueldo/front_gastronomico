@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, PackageCheck, Plus, ShoppingCart, Wrench } from 'lucide-react';
+import { AlertTriangle, PackageCheck, Plus, ShoppingCart, Trash2, Wrench } from 'lucide-react';
 import { Badge } from '../shared/ui/components/badge';
 import { Button } from '../shared/ui/components/button';
 import { Input } from '../shared/ui/components/input';
@@ -14,7 +14,8 @@ import {
 import { toast } from 'sonner';
 import { fetchProductCategories, productApi, type ProductCategory } from '../features/products';
 import { DataTable, type DataTableColumn } from '../shared/ui/components/data-table';
-import type { ProductItem, ProductRecipeConfig, ProductStockBalance } from '../features/products';
+import { DeleteConfirmDialog } from '../shared/ui/components/delete-confirm-dialog';
+import type { ProductIngredientOption, ProductItem, ProductRecipeConfig, ProductStockBalance } from '../features/products';
 
 type AdjustTarget =
   | { type: 'ingredient'; key: string; name: string; unit: string }
@@ -89,15 +90,23 @@ export function InventoryView() {
   const [consumeOrderLines, setConsumeOrderLines] = useState<ConsumeOrderLine[]>([
     { id: crypto.randomUUID(), productId: '', quantity: '1' },
   ]);
+  const [ingredientToDelete, setIngredientToDelete] = useState<IngredientInventoryRow | null>(null);
   const [currentStockInput, setCurrentStockInput] = useState('0');
   const [minStockInput, setMinStockInput] = useState('0');
   const [isSavingStockAdjustment, setIsSavingStockAdjustment] = useState(false);
   const [isCreatingIngredient, setIsCreatingIngredient] = useState(false);
   const [isSavingConsumption, setIsSavingConsumption] = useState(false);
   const [isSavingOrderConsumption, setIsSavingOrderConsumption] = useState(false);
+  const [isDeletingIngredient, setIsDeletingIngredient] = useState(false);
 
   const parseDecimalInput = (value: string) => Number(value.replace(',', '.'));
   const normalizeIngredientKey = (name: string, unit: string) => `${name.trim().toLowerCase()}::${unit.trim().toLowerCase()}`;
+  const getIngredientUsageKey = (ingredient: { inventoryItemId?: string | number; name: string; unit: string }) => {
+    const inventoryItemId = Number(ingredient.inventoryItemId);
+    return Number.isInteger(inventoryItemId) && inventoryItemId > 0
+      ? String(inventoryItemId)
+      : normalizeIngredientKey(ingredient.name, ingredient.unit);
+  };
 
   const loadInventoryContext = async () => {
     const [
@@ -107,6 +116,7 @@ export function InventoryView() {
       stockBalances,
       directProductStock,
       ingredientCatalog,
+      ingredientOptions,
     ] = await Promise.all([
       productApi.listProducts(),
       fetchProductCategories(),
@@ -114,6 +124,7 @@ export function InventoryView() {
       productApi.listIngredientStock(),
       productApi.listProductStock(),
       productApi.listIngredients(),
+      productApi.listProductIngredientOptions(),
     ]);
 
     const nextRecipesByProductId: Record<string, ProductRecipeConfig> = {};
@@ -133,7 +144,7 @@ export function InventoryView() {
       }
 
       recipe.ingredients.forEach((ingredient) => {
-        const ingredientKey = normalizeIngredientKey(ingredient.name, ingredient.unit);
+        const ingredientKey = getIngredientUsageKey(ingredient);
         const currentUsage = ingredientUsageMap.get(ingredientKey);
 
         if (!currentUsage) {
@@ -149,11 +160,31 @@ export function InventoryView() {
       });
     });
 
+    ingredientOptions.forEach((option: ProductIngredientOption) => {
+      if (!option.productId) {
+        return;
+      }
+
+      const ingredientKey = getIngredientUsageKey(option);
+      const currentUsage = ingredientUsageMap.get(ingredientKey);
+
+      if (!currentUsage) {
+        ingredientUsageMap.set(ingredientKey, {
+          name: option.name,
+          unit: option.unit ?? 'unidad',
+          usedByProducts: new Set([option.productId]),
+        });
+        return;
+      }
+
+      currentUsage.usedByProducts.add(option.productId);
+    });
+
     const ingredientRowsByNormalizedKey = new Map<string, IngredientInventoryRow>();
 
     ingredientCatalog.forEach((ingredient) => {
       const normalizedKey = normalizeIngredientKey(ingredient.name, ingredient.unit);
-      const usage = ingredientUsageMap.get(normalizedKey);
+      const usage = ingredientUsageMap.get(String(ingredient.key)) ?? ingredientUsageMap.get(normalizedKey);
 
       ingredientRowsByNormalizedKey.set(normalizedKey, {
         key: ingredient.key || normalizedKey,
@@ -168,7 +199,7 @@ export function InventoryView() {
     stockBalances.forEach((stock) => {
       const normalizedKey = normalizeIngredientKey(stock.name, stock.unit);
       const existing = ingredientRowsByNormalizedKey.get(normalizedKey);
-      const usage = ingredientUsageMap.get(normalizedKey);
+      const usage = ingredientUsageMap.get(String(stock.key)) ?? ingredientUsageMap.get(normalizedKey);
 
       ingredientRowsByNormalizedKey.set(normalizedKey, {
         key: stock.key || existing?.key || normalizedKey,
@@ -505,6 +536,39 @@ export function InventoryView() {
     }
   };
 
+  const openDeleteIngredientDialog = (row: IngredientInventoryRow) => {
+    if (row.usedByProducts > 0) {
+      toast.error('No se puede eliminar: el ingrediente está asociado a uno o más productos');
+      return;
+    }
+
+    setIngredientToDelete(row);
+  };
+
+  const confirmDeleteIngredient = async () => {
+    if (!ingredientToDelete || isDeletingIngredient) {
+      return;
+    }
+
+    if (ingredientToDelete.usedByProducts > 0) {
+      toast.error('No se puede eliminar: el ingrediente está asociado a uno o más productos');
+      setIngredientToDelete(null);
+      return;
+    }
+
+    try {
+      setIsDeletingIngredient(true);
+      await productApi.deleteIngredient(ingredientToDelete.key);
+      toast.success('Ingrediente eliminado');
+      setIngredientToDelete(null);
+      await loadInventoryContext();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo eliminar el ingrediente');
+    } finally {
+      setIsDeletingIngredient(false);
+    }
+  };
+
   const unifiedColumns: DataTableColumn<UnifiedInventoryRow>[] = [
     {
       key: 'type',
@@ -581,6 +645,7 @@ export function InventoryView() {
       className: 'text-right',
       cell: (row) => {
         const directProduct = row.directProduct;
+        const ingredient = row.ingredient;
 
         return (
           <div className="flex flex-col items-stretch justify-end gap-2 sm:flex-row sm:items-center">
@@ -607,6 +672,19 @@ export function InventoryView() {
                 onClick={() => openConsumeDialog({ type: 'product', productId: directProduct.productId, productName: directProduct.productName })}
               >
                 Consumir
+              </Button>
+            ) : null}
+            {row.type === 'ingredient' && ingredient ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full border-red-500/70 bg-transparent text-red-200 hover:bg-red-500/10 sm:w-auto"
+                title={ingredient.usedByProducts > 0 ? 'No se puede eliminar porque tiene productos asociados' : 'Eliminar ingrediente'}
+                disabled={ingredient.usedByProducts > 0}
+                onClick={() => openDeleteIngredientDialog(ingredient)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Eliminar
               </Button>
             ) : null}
           </div>
@@ -927,6 +1005,20 @@ export function InventoryView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmDialog
+        open={Boolean(ingredientToDelete)}
+        onOpenChange={(open) => {
+          if (!open) setIngredientToDelete(null);
+        }}
+        title="¿Eliminar ingrediente?"
+        description="Antes de eliminarlo se verifica que no esté asociado a recetas ni modificadores de productos."
+        itemLabel="Ingrediente"
+        itemName={ingredientToDelete ? `${ingredientToDelete.name} (${ingredientToDelete.unit})` : ''}
+        itemIcon={<PackageCheck size={24} className="text-[var(--primary)]" />}
+        loading={isDeletingIngredient}
+        onConfirm={confirmDeleteIngredient}
+      />
     </div>
   );
 }
