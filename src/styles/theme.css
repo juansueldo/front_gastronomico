@@ -1732,8 +1732,7 @@
   [class*="bg-orange-"][class~="text-white"],
   [class~="bg-primary"][class~="text-white"],
   [class~="bg-[var(--primary)]"][class~="text-white"],
-  [data-slot="button"][class*="bg-orange-"],
-  [data-slot="badge"][class*="bg-orange-"] {
+  [data-slot="button"][class*="bg-orange-"] {
     color: #fff !important;
   }
   .text-gray-300{

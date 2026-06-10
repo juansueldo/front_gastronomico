@@ -1,6 +1,7 @@
 export {
   completeOrder,
   createOrder,
+  deleteOrder,
   fetchActiveOrders,
   fetchOrders,
   finalizeOrder,

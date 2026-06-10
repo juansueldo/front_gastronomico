@@ -19,6 +19,7 @@ import {
 } from '../../../shared/ui/components/data-table';
 import { CreateOrderDialog } from '../../../components/orders/CreateOrderDialog';
 import { fetchProductCategories, fetchProducts, type ProductCategory, type ProductItem } from '../../products';
+import { formatOrderNumber } from '../../../shared/utils/orderNumbers';
 import { deleteCustomer, listCustomerOrders, listCustomers, type Customer } from '../services/customers.service';
 
 const currencyFormatter = new Intl.NumberFormat('es-AR', {
@@ -58,7 +59,7 @@ type CustomerOrderHistoryItem = {
 };
 
 function getOrderNumber(order: CustomerOrderHistoryItem) {
-  return order.orderNumber ?? order.order_number ?? order.id ?? '-';
+  return formatOrderNumber(order, '-');
 }
 
 function getOrderDate(order: CustomerOrderHistoryItem) {

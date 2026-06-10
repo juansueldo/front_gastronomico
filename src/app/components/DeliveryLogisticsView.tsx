@@ -17,9 +17,9 @@ import {
   type DeliveryBoard,
   type DeliveryOrder,
   type DeliveryRoute,
-  type VehicleType,
 } from '../features/delivery-logistics';
 import { ApiError } from '../core/http/errors';
+import { formatOrderNumber } from '../shared/utils/orderNumbers';
 
 const DEFAULT_CENTER: LatLngExpression = [-34.603722, -58.381592];
 const currencyFormatter = new Intl.NumberFormat('es-AR', {
@@ -67,13 +67,6 @@ const deliveryMapIcon = divIcon({
   `,
 });
 
-const vehicleLabels: Record<VehicleType, string> = {
-  motorcycle: 'Moto',
-  bicycle: 'Bicicleta',
-  car: 'Auto',
-  other: 'Otro',
-};
-
 function getApiErrorMessage(error: unknown, fallback: string) {
   if (error instanceof ApiError || error instanceof Error) return error.message;
   return fallback;
@@ -101,8 +94,9 @@ function getRoutePosition(route: DeliveryRoute): LatLngExpression | null {
   return Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : null;
 }
 
-function getOrderLabel(order: DeliveryOrder) {
-  return order.order_number || `Pedido #${order.id}`;
+function getOrderLabel(order?: DeliveryOrder | null) {
+  if (!order) return 'Pedido eliminado';
+  return formatOrderNumber(order, String(order.id));
 }
 
 function getCustomerName(order: DeliveryOrder) {
@@ -488,45 +482,6 @@ export function DeliveryLogisticsView() {
       <section className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         <aside className="space-y-4">
           <section className="rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] p-4">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <UserRoundCheck className="h-5 w-5 text-[var(--primary)]" />
-                <h2 className="font-semibold">Repartidores</h2>
-              </div>
-              <Button type="button" size="sm" variant="outline" className="gap-2 border-[var(--app-line)]" onClick={() => navigate('/delivery-logistics/drivers')}>
-                Administrar
-              </Button>
-            </div>
-
-            <div className="space-y-2">
-              {board.drivers.length === 0 ? (
-                <p className="rounded-md border border-dashed border-[var(--app-line)] p-3 text-sm text-[var(--app-muted)]">Todavía no hay repartidores. Crealos desde la vista de administración.</p>
-              ) : board.drivers.map((driver) => (
-                <div key={driver.id} className="rounded-md border border-[var(--app-line)] bg-[var(--app-surface)] p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold">{driver.name}</p>
-                      <p className="text-xs text-[var(--app-muted)]">{vehicleLabels[driver.vehicleType]}{driver.plate ? ` · ${driver.plate}` : ''}</p>
-                      <p className="text-xs text-[var(--app-muted)]">{driver.phone || 'Sin teléfono'}</p>
-                      <p className="text-xs text-[var(--app-muted)]">
-                        App: {driver.lastLoginAt ? `activada ${formatDateTime(driver.lastLoginAt)}` : driver.hasInviteCode || driver.inviteCodeExpiresAt ? 'PIN activo' : 'sin activar'}
-                      </p>
-                    </div>
-                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                      driver.status === 'active' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200'
-                        : driver.status === 'busy' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-200'
-                          : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-                    }`}
-                    >
-                      {driver.status === 'active' ? 'Activo' : driver.status === 'busy' ? 'En reparto' : 'Inactivo'}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-lg border border-[var(--app-line)] bg-[var(--app-panel)] p-4">
             <div className="mb-4 flex items-center gap-2">
               <Route className="h-5 w-5 text-[var(--primary)]" />
               <h2 className="font-semibold">Armar recorrido</h2>
@@ -685,31 +640,52 @@ export function DeliveryLogisticsView() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-semibold">{route.name || `Recorrido #${route.id}`}</p>
-                        <p className="text-sm text-[var(--app-muted)]">{route.DeliveryDriver?.name || 'Sin repartidor'} · {route.DeliveryRouteOrders?.length ?? 0} pedidos</p>
+                        <p className="text-sm text-[var(--app-muted)]">
+                          {route.DeliveryDriver?.name || 'Sin repartidor'} · {(route.DeliveryRouteOrders ?? []).filter((routeOrder) => Boolean(routeOrder.Order)).length} pedidos
+                        </p>
                         <p className="text-xs text-[var(--app-muted)]">GPS: {route.lastLocationAt ? formatDateTime(route.lastLocationAt) : 'sin ubicación'}</p>
                       </div>
                       <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-200">{route.status}</span>
                     </div>
                     <ol className="mt-3 space-y-2 text-sm">
-                      {(route.DeliveryRouteOrders ?? []).slice().sort((a, b) => Number(a.sequence) - Number(b.sequence)).map((routeOrder) => (
-                        <li key={routeOrder.id} className="flex gap-2 rounded-md border border-[var(--app-line)] bg-[var(--app-panel)] p-2">
-                          <span className="font-semibold text-[var(--primary)]">{routeOrder.sequence}.</span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate">{getOrderLabel(routeOrder.Order as DeliveryOrder)}</span>
-                            <span className="block truncate text-xs text-[var(--app-muted)]">{routeOrder.Order?.delivery_address}</span>
-                            <span className="mt-2 flex flex-wrap gap-2">
-                              <Button type="button" variant="outline" size="sm" className="h-8 border-[var(--app-line)]" onClick={() => routeOrder.Order && void handleCopyTrackingLink(routeOrder.Order)}>
-                                <Copy className="mr-1 h-3.5 w-3.5" />
-                                Link
-                              </Button>
-                              <Button type="button" variant="outline" size="sm" className="h-8 border-[var(--app-line)]" onClick={() => routeOrder.Order && handleSendTrackingWhatsApp(routeOrder.Order)}>
-                                <MessageCircle className="mr-1 h-3.5 w-3.5" />
-                                WhatsApp
-                              </Button>
+                      {(route.DeliveryRouteOrders ?? []).slice().sort((a, b) => Number(a.sequence) - Number(b.sequence)).map((routeOrder) => {
+                        const order = routeOrder.Order;
+                        return (
+                          <li key={routeOrder.id} className="flex gap-2 rounded-md border border-[var(--app-line)] bg-[var(--app-panel)] p-2">
+                            <span className="font-semibold text-[var(--primary)]">{routeOrder.sequence}.</span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate">{getOrderLabel(order)}</span>
+                              <span className="block truncate text-xs text-[var(--app-muted)]">
+                                {order?.delivery_address ?? 'Este pedido ya no existe'}
+                              </span>
+                              <span className="mt-2 flex flex-wrap gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 border-[var(--app-line)]"
+                                  disabled={!order}
+                                  onClick={() => order && void handleCopyTrackingLink(order)}
+                                >
+                                  <Copy className="mr-1 h-3.5 w-3.5" />
+                                  Link
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 border-[var(--app-line)]"
+                                  disabled={!order}
+                                  onClick={() => order && handleSendTrackingWhatsApp(order)}
+                                >
+                                  <MessageCircle className="mr-1 h-3.5 w-3.5" />
+                                  WhatsApp
+                                </Button>
+                              </span>
                             </span>
-                          </span>
-                        </li>
-                      ))}
+                          </li>
+                        );
+                      })}
                     </ol>
                     {locationStatus[String(route.id)] ? (
                       <p className="mt-3 rounded-md bg-[var(--app-soft)] p-2 text-xs font-semibold text-[var(--app-muted)]">

@@ -73,6 +73,7 @@ import {
   type ProductItem,
 } from '../features/products';
 import { getJsonStorageItem, setJsonStorageItem } from '../shared/storage';
+import { formatOrderNumber } from '../shared/utils/orderNumbers';
 import { CreateOrderDialog } from './orders/CreateOrderDialog';
 
 const NOTIFICATIONS_CHANGED_EVENT = 'app:notifications-changed';
@@ -153,7 +154,7 @@ const statusIndicatorClasses: Record<NonNullable<AuthUser['status']>, string> = 
 const onlyDigits = (value: string) => value.replace(/\D/g, '');
 
 const getOrderSearchId = (order: any) => String(order?.id ?? order?.order_number ?? '').trim();
-const getOrderDisplayId = (order: any) => String(order?.order_number ?? order?.id ?? '').trim();
+const getOrderDisplayId = (order: any) => formatOrderNumber(order, String(order?.id ?? order?.order_number ?? '').trim());
 const getOrderCustomerName = (order: any) => String(
   order?.customerName
   ?? order?.Customer?.name

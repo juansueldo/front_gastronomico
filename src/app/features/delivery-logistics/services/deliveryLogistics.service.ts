@@ -69,7 +69,7 @@ export interface DeliveryRouteOrder {
   sequence: number;
   status: string;
   printedAt?: string | null;
-  Order?: DeliveryOrder;
+  Order?: DeliveryOrder | null;
 }
 
 export interface DeliveryRoute {

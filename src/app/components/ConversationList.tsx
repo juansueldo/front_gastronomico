@@ -66,6 +66,7 @@ import { fetchProductCategories, fetchProducts, type ProductCategory, type Produ
 import { findCustomerByPhone, listCustomerOrders, type CustomerLookupResult } from '../features/customers';
 import { APP_CONVERSATIONS_CHANGED_EVENT, APP_NEW_MESSAGE_EVENT, type AppNewMessageDetail } from '../pushNotifications';
 import { ApiError } from '../core/http/errors';
+import { formatOrderNumber } from '../shared/utils/orderNumbers';
 
 type ConversationFilter = 'all' | 'unread' | 'assigned';
 
@@ -191,7 +192,7 @@ function isActiveOrder(order: CustomerOrderSummary) {
 }
 
 function getOrderNumber(order: CustomerOrderSummary) {
-  return order.orderNumber ?? (order as Record<string, unknown>).order_number ?? order.id ?? '-';
+  return formatOrderNumber(order, '-');
 }
 
 function getOrderTotal(order: CustomerOrderSummary) {

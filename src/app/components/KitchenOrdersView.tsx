@@ -15,11 +15,13 @@ import { Badge } from '../shared/ui/components/badge';
 import { Button } from '../shared/ui/components/button';
 import { toast } from 'sonner';
 import { fetchActiveOrders, transitionOrderStatus } from '../features/orders/services/orders.service';
+import { formatOrderNumber } from '../shared/utils/orderNumbers';
 
 type KitchenOrderStatus = 'Nuevo' | 'En preparación' | 'Listo para servir' | 'Entregado';
 
 interface KitchenOrderItem {
   id: string;
+  orderNumber: string;
   customerName: string;
   type: 'delivery' | 'salon';
   status: KitchenOrderStatus;
@@ -28,7 +30,15 @@ interface KitchenOrderItem {
   scheduledTime?: string;
   detail: string;
   notes?: string;
-  items: string[];
+  items: KitchenOrderLineItem[];
+}
+
+interface KitchenOrderLineItem {
+  id: string;
+  name: string;
+  quantity: number;
+  modifiers: string[];
+  imageUrl?: string;
 }
 
 type DelayLevel = 'normal' | 'warning' | 'critical';
@@ -180,27 +190,74 @@ const formatAgeMinutes = (order: KitchenOrderItem) => {
   return ageMinutes === null ? '--' : `${ageMinutes} min`;
 };
 
+const normalizeOptionalText = (value: unknown) => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmedValue = value.trim();
+  return trimmedValue.length > 0 ? trimmedValue : undefined;
+};
+
+const getProductImageUrl = (item: any) => {
+  const product = item?.Product ?? item?.product ?? {};
+  return normalizeOptionalText(item?.imageUrl)
+    ?? normalizeOptionalText(item?.image_url)
+    ?? normalizeOptionalText(item?.image)
+    ?? normalizeOptionalText(item?.thumbnailUrl)
+    ?? normalizeOptionalText(item?.thumbnail_url)
+    ?? normalizeOptionalText(product?.imageUrl)
+    ?? normalizeOptionalText(product?.image_url)
+    ?? normalizeOptionalText(product?.image)
+    ?? normalizeOptionalText(product?.thumbnailUrl)
+    ?? normalizeOptionalText(product?.thumbnail_url);
+};
+
+const mapOrderItem = (item: any, index: number): KitchenOrderLineItem => {
+  if (typeof item === 'string') {
+    return {
+      id: `${index}-${item}`,
+      name: item,
+      quantity: 1,
+      modifiers: [],
+    };
+  }
+
+  const product = item?.Product ?? item?.product ?? {};
+  const name = normalizeOptionalText(item?.name)
+    ?? normalizeOptionalText(item?.productName)
+    ?? normalizeOptionalText(item?.product_name)
+    ?? normalizeOptionalText(product?.name)
+    ?? `Producto ${item?.productId ?? item?.product_id ?? ''}`.trim();
+  const quantity = Number(item?.quantity ?? item?.qty ?? 1);
+  const modifiers = Array.isArray(item?.OrderItemModifiers)
+    ? item.OrderItemModifiers.map((modifier: any) => (
+      modifier?.type === 'removed'
+        ? `Sin ${modifier?.name}`
+        : `Extra ${modifier?.name}${Number(modifier?.quantity ?? 1) > 1 ? ` x${modifier.quantity}` : ''}`
+    ))
+    : Array.isArray(item?.modifiers)
+      ? item.modifiers.map((modifier: any) => String(modifier?.name ?? modifier)).filter(Boolean)
+      : [];
+
+  return {
+    id: String(item?.id ?? item?.productId ?? item?.product_id ?? `${index}-${name}`),
+    name,
+    quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+    modifiers,
+    imageUrl: getProductImageUrl(item),
+  };
+};
+
 const mapBackendOrder = (order: any): KitchenOrderItem => {
   const backendType = String(order?.type ?? '');
   const type: KitchenOrderItem['type'] = backendType === 'delivery' ? 'delivery' : 'salon';
   const customerFullName = [order?.Customer?.name].filter(Boolean).join(' ').trim();
 
   const items = Array.isArray(order?.items)
-    ? order.items.map((item: any) => String(item))
+    ? order.items.map(mapOrderItem)
     : Array.isArray(order?.OrderItems)
-      ? order.OrderItems.map((item: any) => {
-        const name = item?.Product?.name ?? `Producto ${item?.productId ?? ''}`.trim();
-        const quantity = Number(item?.quantity ?? 0);
-        const modifiers = Array.isArray(item?.OrderItemModifiers)
-          ? item.OrderItemModifiers.map((modifier: any) => (
-            modifier?.type === 'removed'
-              ? `Sin ${modifier?.name}`
-              : `Extra ${modifier?.name}${Number(modifier?.quantity ?? 1) > 1 ? ` x${modifier.quantity}` : ''}`
-          ))
-          : [];
-        const baseLabel = quantity > 1 ? `${name} x${quantity}` : String(name);
-        return modifiers.length > 0 ? `${baseLabel} (${modifiers.join(', ')})` : baseLabel;
-      })
+      ? order.OrderItems.map(mapOrderItem)
       : [];
 
   const customerName = order?.customerName
@@ -210,6 +267,7 @@ const mapBackendOrder = (order: any): KitchenOrderItem => {
 
   return {
     id: String(order?.id ?? order?.order_number ?? crypto.randomUUID()),
+    orderNumber: formatOrderNumber(order, String(order?.id ?? order?.order_number ?? '')),
     customerName: String(customerName),
     type,
     status: normalizeKitchenStatus(String(order?.status ?? order?.Status?.name ?? 'pending')),
@@ -217,7 +275,12 @@ const mapBackendOrder = (order: any): KitchenOrderItem => {
     scheduledDate: order?.scheduled_date ?? order?.scheduledDate ?? order?.requested_date ?? order?.requestedDate ?? undefined,
     scheduledTime: order?.scheduled_time ?? order?.scheduledTime ?? order?.requested_time ?? order?.requestedTime ?? undefined,
     detail: String(order?.detail ?? order?.order_number ?? 'Sin detalle'),
-    notes: order?.notes ?? undefined,
+    notes: normalizeOptionalText(order?.notes)
+      ?? normalizeOptionalText(order?.orderNotes)
+      ?? normalizeOptionalText(order?.order_notes)
+      ?? normalizeOptionalText(order?.observations)
+      ?? normalizeOptionalText(order?.comment)
+      ?? normalizeOptionalText(order?.comments),
     items,
   };
 };
@@ -324,7 +387,7 @@ export function KitchenOrdersView() {
       }
 
       delayedAlertedOrdersRef.current.add(order.id);
-      toast.warning(`Pedido ${order.id} demorado (${ageMinutes ?? '--'} min)`);
+      toast.warning(`Pedido ${order.orderNumber} demorado (${ageMinutes ?? '--'} min)`);
     });
 
     delayedAlertedOrdersRef.current.forEach((orderId) => {
@@ -406,7 +469,7 @@ export function KitchenOrdersView() {
         ))
         .filter((currentOrder) => currentOrder.status !== 'Entregado'));
 
-      toast.success(`Pedido ${order.id} actualizado a ${nextStatus}`);
+      toast.success(`Pedido ${order.orderNumber} actualizado a ${nextStatus}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo actualizar el pedido');
     } finally {
@@ -417,7 +480,12 @@ export function KitchenOrdersView() {
   return (
     <div
       ref={kdsContainerRef}
-      className={`h-full overflow-y-auto p-4 md:p-6 ${isFullscreen ? 'kds-fullscreen' : ''}`}
+      className={`bg-background p-4 text-foreground md:p-6 ${
+        isFullscreen
+          ? 'kds-fullscreen h-screen max-h-screen overflow-y-auto overscroll-contain'
+          : 'h-full overflow-y-auto'
+      }`}
+      style={isFullscreen ? { height: '100dvh', maxHeight: '100dvh', overflowY: 'auto' } : undefined}
     >
       <div className="relative">
         
@@ -425,7 +493,7 @@ export function KitchenOrdersView() {
         <div className="relative space-y-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h1 className="flex items-center gap-3 text-2xl font-semibold text-white md:text-3xl">
+              <h1 className="flex items-center gap-3 text-2xl font-semibold text-foreground md:text-3xl">
                 <ChefHat className="h-8 w-8 text-orange-400" />
                 Cocina
               </h1>
@@ -571,7 +639,7 @@ export function KitchenOrdersView() {
                             className={`rounded-xl border p-3 ${statusCardClass[order.status]} ${delayClass}`}
                           >
                             <div className="mb-2 flex items-center justify-between gap-2">
-                              <span className="text-lg font-semibold text-foreground">{order.id}</span>
+                              <span className="text-lg font-semibold text-foreground">{order.orderNumber}</span>
                               <Badge variant="secondary" className={`text-xs ${statusBadgeClass[order.status]}`}>
                                 {order.type === 'delivery' ? 'Delivery' : 'Salón'}
                               </Badge>
@@ -580,10 +648,39 @@ export function KitchenOrdersView() {
                             <p className="truncate text-base text-foreground">{order.customerName}</p>
                             <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{order.detail}</p>
 
+                            {order.notes ? (
+                              <div className="mt-3 rounded-lg border border-orange-500/40 bg-orange-500/10 px-3 py-2 text-sm text-foreground">
+                                <span className="font-semibold text-orange-700 dark:text-orange-200">Notas: </span>
+                                <span>{order.notes}</span>
+                              </div>
+                            ) : null}
+
                             {order.items.length > 0 ? (
-                              <ul className="mt-3 space-y-1 text-sm text-foreground">
+                              <ul className="mt-3 space-y-2 text-sm text-foreground">
                                 {order.items.slice(0, 3).map((item) => (
-                                  <li key={`${order.id}-${item}`} className="truncate">• {item}</li>
+                                  <li key={`${order.id}-${item.id}`} className="flex min-h-12 items-center gap-3 rounded-lg bg-background/60 p-2">
+                                    {item.imageUrl ? (
+                                      <img
+                                        src={item.imageUrl}
+                                        alt={item.name}
+                                        className="size-10 shrink-0 rounded-md border border-border bg-muted object-cover"
+                                        loading="lazy"
+                                      />
+                                    ) : null}
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="truncate font-medium">{item.name}</span>
+                                        {item.quantity > 1 ? (
+                                          <span className="shrink-0 rounded-md bg-primary px-1.5 py-0.5 text-xs font-semibold text-white">
+                                            x{item.quantity}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      {item.modifiers.length > 0 ? (
+                                        <p className="truncate text-xs text-muted-foreground">{item.modifiers.join(', ')}</p>
+                                      ) : null}
+                                    </div>
+                                  </li>
                                 ))}
                                 {order.items.length > 3 ? (
                                   <li className="text-muted-foreground">+{order.items.length - 3} más</li>

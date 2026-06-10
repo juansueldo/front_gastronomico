@@ -34,6 +34,7 @@ import {
   MoreVertical,
   Printer,
   ReceiptText,
+  Trash2,
 } from 'lucide-react';
 import { Checkbox } from '../shared/ui/components/checkbox';
 import {
@@ -57,6 +58,7 @@ import {
   upsertDeliveryZone,
 } from '../features/delivery-zones';
 import {
+  deleteOrder,
   fetchActiveOrders as fetchBackendActiveOrders,
   finalizeOrder,
   getAvailableOrderStatusTargets,
@@ -69,9 +71,11 @@ import {
   type ProductCategory,
   type ProductItem,
 } from '../features/products';
+import { formatOrderNumber, getRawOrderNumber } from '../shared/utils/orderNumbers';
 
 // ← NUEVO: importar el dialog de creación
 import { CreateOrderDialog } from './orders/CreateOrderDialog';
+import { DeleteConfirmDialog } from '../shared/ui/components/delete-confirm-dialog';
 
 type OrderVisualPriority = 'default' | 'on-time' | 'delayed' | 'old';
 type PrintMode = 'comanda' | 'factura';
@@ -79,6 +83,7 @@ type OrdersViewMode = 'cards' | 'list';
 
 interface ActiveOrderItem {
   id: string;
+  orderNumber: string;
   contactId: number;
   type: 'delivery' | 'salon';
   headquarterId?: number;
@@ -177,9 +182,11 @@ export function ActiveOrdersView() {
   const [orders, setOrders] = useState<ActiveOrderItem[]>([]);
   const [detailOrder, setDetailOrder] = useState<ActiveOrderItem | null>(null);
   const [statusOrder, setStatusOrder] = useState<ActiveOrderItem | null>(null);
+  const [orderToDelete, setOrderToDelete] = useState<ActiveOrderItem | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [chargeOrders, setChargeOrders] = useState<ActiveOrderItem[]>([]);
   const [isChargingOrders, setIsChargingOrders] = useState(false);
+  const [isDeletingOrder, setIsDeletingOrder] = useState(false);
 
   // ← NUEVO: un solo boolean para abrir/cerrar CreateOrderDialog
   const [isCreateOrderDialogOpen, setIsCreateOrderDialogOpen] = useState(false);
@@ -222,6 +229,8 @@ export function ActiveOrdersView() {
   const statusOptions = statusOrder
     ? getAvailableOrderStatusTargets(statusOrder.status).map((status) => getOrderStatusLabel(status))
     : [];
+
+  const getOrderDisplayNumber = (order: ActiveOrderItem) => order.orderNumber || formatOrderNumber(order, order.id);
 
   const normalizeOrder = (order: any): ActiveOrderItem => {
     const rawTotal = order?.total_amount ?? order?.total ?? 0;
@@ -266,6 +275,7 @@ export function ActiveOrdersView() {
 
     return {
       id: String(order?.id ?? order?.order_number ?? crypto.randomUUID()),
+      orderNumber: formatOrderNumber(order, getRawOrderNumber(order) || String(order?.id ?? '')),
       contactId: Number(order?.contactId ?? order?.customerId ?? 0),
       type: normalizedType,
       headquarterId: normalizedHeadquarterId,
@@ -339,7 +349,7 @@ export function ActiveOrdersView() {
     if (!requestedOrderId) return;
 
     const matchingOrder = orders.find((order) => (
-      order.id === requestedOrderId || order.detail === requestedOrderId
+      order.id === requestedOrderId || order.orderNumber === requestedOrderId || order.detail === requestedOrderId
     ));
 
     if (matchingOrder) {
@@ -406,8 +416,8 @@ export function ActiveOrdersView() {
             const marker = new google.maps.Marker({
               position,
               map: googleMapInstanceRef.current,
-              title: `${order.id} · ${getPriorityLabel(order)}`,
-              label: { text: order.id.replace('A-', ''), color: '#ffffff', fontSize: '11px', fontWeight: '700' },
+              title: `${getOrderDisplayNumber(order)} · ${getPriorityLabel(order)}`,
+              label: { text: getOrderDisplayNumber(order).replace('A-', ''), color: '#ffffff', fontSize: '11px', fontWeight: '700' },
               icon: {
                 path: google.maps.SymbolPath.CIRCLE,
                 fillColor: getPriorityMapPinColor(priority),
@@ -686,15 +696,13 @@ export function ActiveOrdersView() {
 
     try {
       setIsChargingOrders(true);
-      await createCashMovement({
+      await Promise.all(chargeOrders.map((order) => createCashMovement({
         type: 'venta',
-        concept: chargeOrders.length === 1
-          ? `Orden ${chargeOrders[0].id}`
-          : `Pedidos ${chargeOrders.map((order) => order.id).join(', ')}`,
-        amount,
+        concept: `Orden ${getOrderDisplayNumber(order)}`,
+        amount: parseMoneyValue(order.total),
         paymentMethod: finalizePaymentMethod,
-        headquarterId: chargeOrders[0]?.headquarterId,
-      });
+        headquarterId: order.headquarterId,
+      })));
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : 'No se pudo registrar la venta en caja');
       setIsChargingOrders(false);
@@ -717,13 +725,40 @@ export function ActiveOrdersView() {
     setChargeOrders([]);
     setIsChargingOrders(false);
     void loadOrders();
-    toast.success(chargeOrders.length === 1 ? `Orden ${chargeOrders[0].id} cobrada` : `${chargeOrders.length} pedidos cobrados`);
+    toast.success(chargeOrders.length === 1 ? `Orden ${getOrderDisplayNumber(chargeOrders[0])} cobrada` : `${chargeOrders.length} pedidos cobrados`);
+  };
+
+  const confirmDeleteOrder = async () => {
+    if (!orderToDelete || isDeletingOrder) {
+      return;
+    }
+
+    const deletedOrderId = orderToDelete.id;
+    const deletedOrderLabel = getOrderDisplayNumber(orderToDelete);
+
+    try {
+      setIsDeletingOrder(true);
+      await deleteOrder(deletedOrderId);
+      setOrders((prev) => prev.filter((order) => order.id !== deletedOrderId));
+      setSelectedOrderIds((prev) => prev.filter((orderId) => orderId !== deletedOrderId));
+      setDetailOrder((prev) => prev?.id === deletedOrderId ? null : prev);
+      setStatusOrder((prev) => prev?.id === deletedOrderId ? null : prev);
+      setChargeOrders((prev) => prev.filter((order) => order.id !== deletedOrderId));
+      setOrderToDelete(null);
+      void loadOrders();
+      toast.success(`Pedido ${deletedOrderLabel} eliminado`);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : 'No se pudo eliminar el pedido');
+    } finally {
+      setIsDeletingOrder(false);
+    }
   };
 
   const buildOrderClipboardText = (order: ActiveOrderItem) => {
     const orderDateInfo = getOrderDateInfo(order);
+    const orderNumber = getOrderDisplayNumber(order);
     const lines = [
-      `Pedido: ${order.id}`,
+      `Pedido: ${orderNumber}`,
       order.customerName ? `Cliente / mesa: ${order.customerName}` : '',
       `Tipo: ${order.type === 'delivery' ? 'Delivery' : 'Salon'}`,
       order.status ? `Estado: ${order.status}` : '',
@@ -756,7 +791,7 @@ export function ActiveOrdersView() {
         document.execCommand('copy');
         document.body.removeChild(textArea);
       }
-      toast.success(`Pedido ${order.id} copiado`);
+      toast.success(`Pedido ${orderNumber} copiado`);
     } catch {
       toast.error('No se pudo copiar el pedido');
     }
@@ -776,7 +811,7 @@ export function ActiveOrdersView() {
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>${title} ${order.id}</title>
+          <title>${title} ${getOrderDisplayNumber(order)}</title>
           <style>
             body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
             h1 { font-size: 22px; margin: 0 0 8px; }
@@ -791,7 +826,7 @@ export function ActiveOrdersView() {
         </head>
         <body>
           <h1>${title}</h1>
-          <p class="muted">Pedido ${order.id}</p>
+          <p class="muted">Pedido ${getOrderDisplayNumber(order)}</p>
           <div class="box">
             ${order.customerName ? `<p><strong>Cliente / mesa:</strong> ${order.customerName}</p>` : ''}
             <p><strong>Tipo:</strong> ${order.type === 'delivery' ? 'Delivery' : 'Salón'}</p>
@@ -893,14 +928,24 @@ export function ActiveOrdersView() {
 
   const getStatusBadgeClass = (status: string) => {
     const normalizedStatus = status.trim().toLowerCase();
-    if (normalizedStatus.includes('nuevo')) return 'bg-slate-500/20 text-slate-700 dark:text-slate-200';
-    if (normalizedStatus.includes('prepar')) return 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-200';
-    if (normalizedStatus.includes('listo')) return 'bg-blue-500/20 text-blue-700 dark:text-blue-200';
-    if (normalizedStatus.includes('camino')) return 'bg-violet-500/20 text-violet-700 dark:text-violet-200';
-    if (normalizedStatus.includes('entregado')) return 'bg-emerald-600/20 text-emerald-700 dark:text-emerald-100';
-    if (normalizedStatus.includes('cancel')) return 'bg-red-500/20 text-red-700 dark:text-red-200';
-    return 'bg-gray-500/20 text-gray-700 dark:text-gray-200';
+    if (normalizedStatus.includes('antiguo')) return 'border border-red-300 bg-red-100 text-red-800 dark:border-red-800 dark:bg-red-950/60 dark:text-red-100';
+    if (normalizedStatus.includes('demorado')) return 'border border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-100';
+    if (normalizedStatus.includes('horario')) return 'border border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-100';
+    if (normalizedStatus.includes('reci')) return 'border border-orange-300 bg-orange-100 text-orange-800 dark:border-orange-800 dark:bg-orange-950/60 dark:text-orange-100';
+    if (normalizedStatus.includes('nuevo')) return 'border border-slate-300 bg-slate-100 text-slate-800 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-100';
+    if (normalizedStatus.includes('prepar')) return 'border border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-100';
+    if (normalizedStatus.includes('listo')) return 'border border-blue-300 bg-blue-100 text-blue-800 dark:border-blue-800 dark:bg-blue-950/60 dark:text-blue-100';
+    if (normalizedStatus.includes('camino')) return 'border border-violet-300 bg-violet-100 text-violet-800 dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-100';
+    if (normalizedStatus.includes('entregado')) return 'border border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-100';
+    if (normalizedStatus.includes('cancel')) return 'border border-red-300 bg-red-100 text-red-800 dark:border-red-800 dark:bg-red-950/60 dark:text-red-100';
+    return 'border border-gray-300 bg-gray-100 text-gray-800 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-100';
   };
+
+  const getChannelBadgeClass = (type: ActiveOrderItem['type']) => (
+    type === 'delivery'
+      ? 'border border-blue-300 bg-blue-100 text-blue-800 dark:border-blue-800 dark:bg-blue-950/60 dark:text-blue-100'
+      : 'border border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-100'
+  );
 
   const getOrderDateInfo = (order: ActiveOrderItem) => {
     const referenceDate = getOrderReferenceDate(order);
@@ -1008,7 +1053,7 @@ export function ActiveOrdersView() {
       <Checkbox
         checked={selectedOrderIds.includes(order.id)}
         onCheckedChange={() => toggleOrderSelection(order.id)}
-        aria-label={`Seleccionar pedido ${order.id}`}
+        aria-label={`Seleccionar pedido ${getOrderDisplayNumber(order)}`}
       />
     </div>
   );
@@ -1050,6 +1095,14 @@ export function ActiveOrdersView() {
         <DropdownMenuItem onClick={() => openChargeDialog([order])}>
           <CreditCard className="mr-2 h-4 w-4" />
           Cobrar pedido
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="text-red-700 focus:bg-red-50 focus:text-red-800 dark:text-red-300 dark:focus:bg-red-950/50 dark:focus:text-red-200"
+          onClick={() => setOrderToDelete(order)}
+        >
+          <Trash2 className="mr-2 h-4 w-4" />
+          Eliminar pedido
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -1268,7 +1321,7 @@ export function ActiveOrdersView() {
                         {renderOrderSelectionCheckbox(order)}
                         <div className="min-w-0 space-y-2">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-lg font-semibold text-foreground md:text-2xl">{order.id}</span>
+                            <span className="text-lg font-semibold text-foreground md:text-2xl">{getOrderDisplayNumber(order)}</span>
                             <Badge variant="secondary" className={`${getStatusBadgeClass(getPriorityLabel(order))} text-xs`}>
                               {getPriorityLabel(order)}
                             </Badge>
@@ -1287,7 +1340,7 @@ export function ActiveOrdersView() {
                         {renderOrderActions(order)}
                         <Badge
                           variant="secondary"
-                          className={order.type === 'delivery' ? 'bg-blue-500/20 text-blue-700 dark:text-blue-100' : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-100'}
+                          className={getChannelBadgeClass(order.type)}
                         >
                           {order.type === 'delivery' ? 'Delivery' : 'Salón'}
                         </Badge>
@@ -1339,7 +1392,7 @@ export function ActiveOrdersView() {
                           </td>
                           <td className="px-3 py-3 align-top">
                             <div className="space-y-1">
-                              <span className="font-semibold text-foreground">{order.id}</span>
+                              <span className="font-semibold text-foreground">{getOrderDisplayNumber(order)}</span>
                               <Badge variant="secondary" className={`${getStatusBadgeClass(getPriorityLabel(order))} text-xs`}>
                                 {getPriorityLabel(order)}
                               </Badge>
@@ -1357,7 +1410,7 @@ export function ActiveOrdersView() {
                           <td className="px-3 py-3 align-top">
                             <Badge
                               variant="secondary"
-                              className={order.type === 'delivery' ? 'bg-blue-500/20 text-blue-700 dark:text-blue-100' : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-100'}
+                              className={getChannelBadgeClass(order.type)}
                             >
                               {order.type === 'delivery' ? 'Delivery' : 'Salón'}
                             </Badge>
@@ -1396,7 +1449,7 @@ export function ActiveOrdersView() {
             <div className="row-span-2 flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--primary)]/45 bg-[var(--primary)]/10 text-[var(--primary)]">
               <ClipboardList size={18} />
             </div>
-            <DialogTitle>Detalle del pedido {detailOrder?.id}</DialogTitle>
+            <DialogTitle>Detalle del pedido {detailOrder ? getOrderDisplayNumber(detailOrder) : ''}</DialogTitle>
             <DialogDescription>Revisa la orden, imprime documentos o envíala a cobro.</DialogDescription>
           </DialogHeader>
           {detailOrder && (
@@ -1404,7 +1457,7 @@ export function ActiveOrdersView() {
               <div className="space-y-3 px-5 py-4 text-sm">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-muted-foreground">Tipo</span>
-                  <Badge variant="secondary" className={detailOrder.type === 'delivery' ? 'bg-label-info text-white text-xs' : 'bg-label-success text-white text-xs'}>
+                  <Badge variant="secondary" className={`${getChannelBadgeClass(detailOrder.type)} text-xs`}>
                     {detailOrder.type === 'delivery' ? 'Delivery' : 'Salón'}
                   </Badge>
                 </div>
@@ -1489,6 +1542,15 @@ export function ActiveOrdersView() {
                   <CreditCard className="h-4 w-4" />
                   Cobrar
                 </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full border-red-500/60 bg-transparent text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/40 sm:w-auto"
+                  onClick={() => setOrderToDelete(detailOrder)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Eliminar
+                </Button>
               </DialogFooter>
             </>
           )}
@@ -1513,7 +1575,7 @@ export function ActiveOrdersView() {
                 {chargeOrders.map((order) => (
                   <div key={order.id} className="flex items-center justify-between gap-3">
                     <span className="min-w-0 truncate text-[var(--app-muted)]">
-                      {order.customerName ? `${order.id} - ${order.customerName}` : order.id}
+                      {order.customerName ? `${getOrderDisplayNumber(order)} - ${order.customerName}` : getOrderDisplayNumber(order)}
                     </span>
                     <span className="shrink-0 font-medium text-[var(--app-strong)]">{order.total}</span>
                   </div>
@@ -1555,11 +1617,28 @@ export function ActiveOrdersView() {
         </DialogContent>
       </Dialog>
 
+      <DeleteConfirmDialog
+        open={Boolean(orderToDelete)}
+        onOpenChange={(open) => {
+          if (!open && !isDeletingOrder) {
+            setOrderToDelete(null);
+          }
+        }}
+        title="¿Eliminar pedido?"
+        description="Esta acción eliminará el pedido de forma permanente."
+        itemLabel="Pedido"
+        itemName={orderToDelete ? `${getOrderDisplayNumber(orderToDelete)}${orderToDelete.customerName ? ` - ${orderToDelete.customerName}` : ''}` : ''}
+        itemIcon={<ReceiptText size={24} className="text-[var(--primary)]" />}
+        confirmLabel="Sí, eliminar pedido"
+        loading={isDeletingOrder}
+        onConfirm={confirmDeleteOrder}
+      />
+
       {/* ── Dialog cambio de estado ── */}
       <Dialog open={!!statusOrder} onOpenChange={() => setStatusOrder(null)}>
         <DialogContent className="border-border bg-card text-foreground">
           <DialogHeader>
-            <DialogTitle>Cambiar estado {statusOrder ? `(${statusOrder.id})` : ''}</DialogTitle>
+            <DialogTitle>Cambiar estado {statusOrder ? `(${getOrderDisplayNumber(statusOrder)})` : ''}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
             {statusOptions.length === 0 ? (

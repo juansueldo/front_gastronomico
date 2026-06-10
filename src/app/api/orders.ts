@@ -588,6 +588,17 @@ export async function finalizeOrder(orderId: string): Promise<any> {
   return response;
 }
 
+export async function deleteOrder(orderId: string): Promise<any> {
+  const response = await endpoints.deleteOrder(orderId);
+
+  if (useFallbackOrdersCache) {
+    writeFallbackOrders(readFallbackOrders().filter((order) => String(order?.id ?? '') !== orderId));
+    removeStoredActiveOrder(orderId);
+  }
+
+  return response;
+}
+
 export async function transitionOrderStatus(
   orderId: string,
   currentStatus: string,
